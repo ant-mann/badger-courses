@@ -15,6 +15,18 @@ import {
   mergeInstructorRecords,
   makeSectionRows,
 } from './import-helpers.mjs';
+import {
+  SCHEDULE_TIMEZONE,
+  countBits,
+  deriveDurationMinutes,
+  formatLocalDate,
+  formatMinutesLocal,
+  isOnlineInstructionMode,
+  makeDaysMask,
+  meetingTimeToMinutes,
+  parseTemporaryRestrictionFlag,
+  summarizeSchedulableMeetings,
+} from './schedule-helpers.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -559,6 +571,410 @@ function synthesizeCourseFromPackageEntry(entry, defaultTermCode) {
   };
 }
 
+function normalizeTextList(values) {
+  return (values ?? [])
+    .flatMap((value) => {
+      if (typeof value === 'string') return [value.trim()];
+      if (value == null) return [];
+      return [String(value).trim()];
+    })
+    .filter(Boolean);
+}
+
+function collectRestrictionNotesForPackage(pkg, courseByKey) {
+  const course = courseByKey.get(`${pkg.termCode}:${pkg.courseId}`);
+  const notes = new Set();
+
+  for (const note of normalizeTextList([course?.enrollmentPrerequisites])) {
+    notes.add(note);
+  }
+
+  for (const note of normalizeTextList(course?.subject?.footnotes)) {
+    notes.add(note);
+  }
+
+  for (const group of pkg.enrollmentRequirementGroups?.catalogRequirementGroups ?? []) {
+    for (const note of normalizeTextList([group?.description])) {
+      notes.add(note);
+    }
+  }
+
+  for (const group of pkg.enrollmentRequirementGroups?.classAssociationRequirementGroups ?? []) {
+    for (const note of normalizeTextList([group?.description])) {
+      notes.add(note);
+    }
+  }
+
+  for (const section of pkg.sections ?? []) {
+    for (const note of normalizeTextList(section?.footnotes)) {
+      notes.add(note);
+    }
+
+    for (const note of normalizeTextList(section?.subject?.footnotes)) {
+      notes.add(note);
+    }
+
+    for (const material of section?.classMaterials ?? []) {
+      for (const note of normalizeTextList([material?.sectionNotes])) {
+        notes.add(note);
+      }
+    }
+  }
+
+  for (const detailField of ['instructorDescription', 'typicalTopicsAndOrSchedule', 'format']) {
+    for (const note of normalizeTextList([pkg.instructorProvidedClassDetails?.[detailField]])) {
+      notes.add(note);
+    }
+  }
+
+  return [...notes].join(' | ') || null;
+}
+
+function makeSectionBundleLabel(pkg, courseByKey) {
+  const sectionTypeOrder = new Map([
+    ['LEC', 0],
+    ['SEM', 1],
+    ['LAB', 2],
+    ['DIS', 3],
+    ['QUIZ', 4],
+  ]);
+  const course = courseByKey.get(`${pkg.termCode}:${pkg.courseId}`);
+  const designation = course?.courseDesignation ?? pkg.courseDesignation ?? `${pkg.subjectCode ?? ''} ${pkg.courseId ?? ''}`.trim();
+  const bundle = (pkg.sections ?? [])
+    .map((section) => ({
+      sectionType: section.type ?? 'SEC',
+      sectionNumber: section.sectionNumber ?? '???',
+      sectionClassNumber: section.classUniqueId?.classNumber ?? Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((left, right) => {
+      const leftTypeOrder = sectionTypeOrder.get(left.sectionType) ?? 99;
+      const rightTypeOrder = sectionTypeOrder.get(right.sectionType) ?? 99;
+      if (leftTypeOrder !== rightTypeOrder) return leftTypeOrder - rightTypeOrder;
+
+      const typeCompare = left.sectionType.localeCompare(right.sectionType);
+      if (typeCompare !== 0) {
+        return typeCompare;
+      }
+
+      const numberCompare = left.sectionNumber.localeCompare(right.sectionNumber, undefined, { numeric: true });
+      if (numberCompare !== 0) return numberCompare;
+      return left.sectionClassNumber - right.sectionClassNumber;
+    })
+    .map((section) => `${section.sectionType} ${section.sectionNumber}`)
+    .join(' + ');
+
+  return bundle ? `${designation} ${bundle}` : designation;
+}
+
+function buildPackageMetadata(mergedPackageRecords, courseRecordsByKey) {
+  const metadata = new Map();
+
+  for (const pkg of mergedPackageRecords) {
+    const restrictionNote = collectRestrictionNotesForPackage(pkg, courseRecordsByKey);
+    metadata.set(pkg.packageId, {
+      restriction_note: restrictionNote,
+      has_temporary_restriction: parseTemporaryRestrictionFlag(restrictionNote),
+      section_bundle_label: makeSectionBundleLabel(pkg, courseRecordsByKey),
+    });
+  }
+
+  return metadata;
+}
+
+function materializeCanonicalSections(db) {
+  db.prepare(`
+    INSERT INTO canonical_sections (
+      term_code,
+      subject_code,
+      catalog_number,
+      course_id,
+      course_designation,
+      title,
+      minimum_credits,
+      maximum_credits,
+      section_class_number,
+      source_package_id,
+      source_package_last_updated,
+      section_number,
+      section_type,
+      instruction_mode,
+      session_code,
+      open_seats,
+      waitlist_current_size,
+      capacity,
+      currently_enrolled,
+      has_open_seats,
+      has_waitlist,
+      is_full
+    )
+    SELECT
+      so.term_code,
+      so.subject_code,
+      so.catalog_number,
+      so.course_id,
+      so.course_designation,
+      so.title,
+      c.minimum_credits,
+      c.maximum_credits,
+      so.section_class_number,
+      so.source_package_id,
+      so.source_package_last_updated,
+      so.section_number,
+      so.section_type,
+      so.instruction_mode,
+      so.session_code,
+      so.open_seats,
+      so.waitlist_current_size,
+      so.capacity,
+      so.currently_enrolled,
+      so.has_open_seats,
+      so.has_waitlist,
+      so.is_full
+    FROM section_overview_v so
+    JOIN courses c
+      ON c.term_code = so.term_code
+     AND c.course_id = so.course_id
+  `).run();
+}
+
+function buildCanonicalMeetingRows(db) {
+  const rows = db.prepare(`
+    SELECT
+      s.package_id,
+      cs.source_package_id,
+      cs.section_class_number,
+      m.meeting_index,
+      m.meeting_type,
+      m.meeting_time_start,
+      m.meeting_time_end,
+      m.meeting_days,
+      m.start_date,
+      m.end_date,
+      m.exam_date,
+      m.room,
+      m.building_code,
+      b.building_name,
+      b.street_address,
+      b.latitude,
+      b.longitude,
+      m.location_known,
+      cs.instruction_mode
+    FROM canonical_sections cs
+    JOIN sections s
+      ON s.term_code = cs.term_code
+     AND s.course_id = cs.course_id
+     AND s.section_class_number = cs.section_class_number
+    JOIN meetings m
+      ON m.package_id = s.package_id
+     AND m.section_class_number = cs.section_class_number
+    LEFT JOIN buildings b
+      ON b.building_code = m.building_code
+    ORDER BY s.package_id, cs.section_class_number, m.meeting_index
+  `).all();
+
+  return rows.map((row) => {
+    const startMinute = meetingTimeToMinutes(row.meeting_time_start);
+    const endMinute = meetingTimeToMinutes(row.meeting_time_end);
+    const isOnline = Number(isOnlineInstructionMode(row.instruction_mode));
+
+    return {
+      ...row,
+      timezone_name: SCHEDULE_TIMEZONE,
+      days_mask: makeDaysMask(row.meeting_days),
+      start_minute_local: startMinute,
+      end_minute_local: endMinute,
+      duration_minutes: deriveDurationMinutes(startMinute, endMinute),
+      is_online: isOnline,
+    };
+  });
+}
+
+function materializeCanonicalMeetings(db) {
+  const insertCanonicalMeeting = db.prepare(`
+    INSERT INTO canonical_meetings (
+      package_id,
+      source_package_id,
+      section_class_number,
+      meeting_index,
+      meeting_type,
+      meeting_time_start,
+      meeting_time_end,
+      meeting_days,
+      start_date,
+      end_date,
+      exam_date,
+      room,
+      building_code,
+      building_name,
+      street_address,
+      latitude,
+      longitude,
+      timezone_name,
+      days_mask,
+      start_minute_local,
+      end_minute_local,
+      duration_minutes,
+      is_online,
+      location_known
+    ) VALUES (
+      @package_id,
+      @source_package_id,
+      @section_class_number,
+      @meeting_index,
+      @meeting_type,
+      @meeting_time_start,
+      @meeting_time_end,
+      @meeting_days,
+      @start_date,
+      @end_date,
+      @exam_date,
+      @room,
+      @building_code,
+      @building_name,
+      @street_address,
+      @latitude,
+      @longitude,
+      @timezone_name,
+      @days_mask,
+      @start_minute_local,
+      @end_minute_local,
+      @duration_minutes,
+      @is_online,
+      @location_known
+    )
+  `);
+
+  for (const row of buildCanonicalMeetingRows(db)) {
+    insertCanonicalMeeting.run(row);
+  }
+}
+
+function buildSchedulablePackageRows(db, packageMetadata) {
+  const packageRows = db.prepare(`
+    SELECT
+      p.package_id AS source_package_id,
+      p.term_code,
+      p.course_id,
+      c.course_designation,
+      c.title,
+      p.open_seats,
+      p.is_full,
+      p.has_waitlist
+    FROM packages p
+    JOIN courses c
+      ON c.term_code = p.term_code
+     AND c.course_id = p.course_id
+    ORDER BY p.package_id
+  `).all();
+
+  const meetingsByPackage = db.prepare(`
+    SELECT *
+    FROM canonical_meetings
+    ORDER BY package_id, meeting_index
+  `).all().reduce((grouped, meeting) => {
+    const rows = grouped.get(meeting.package_id) ?? [];
+    rows.push(meeting);
+    grouped.set(meeting.package_id, rows);
+    return grouped;
+  }, new Map());
+
+  return packageRows.map((row) => {
+    const meetings = meetingsByPackage.get(row.source_package_id) ?? [];
+    const classMeetings = meetings.filter((meeting) => meeting.meeting_type === 'CLASS');
+    const scheduledMeetings = classMeetings.filter(
+      (meeting) => meeting.days_mask != null && meeting.start_minute_local != null && meeting.end_minute_local != null,
+    );
+    const campusMeetings = scheduledMeetings.filter((meeting) => meeting.is_online !== 1);
+    const combinedMask = campusMeetings.reduce((mask, meeting) => mask | meeting.days_mask, 0);
+    const metadata = packageMetadata.get(row.source_package_id) ?? {
+      restriction_note: null,
+      has_temporary_restriction: 0,
+      section_bundle_label: `${row.course_designation ?? row.course_id} package`,
+    };
+
+    return {
+      source_package_id: row.source_package_id,
+      term_code: row.term_code,
+      course_id: row.course_id,
+      course_designation: row.course_designation,
+      title: row.title,
+      section_bundle_label: metadata.section_bundle_label,
+      open_seats: row.open_seats,
+      is_full: row.is_full,
+      has_waitlist: row.has_waitlist,
+      meeting_count: classMeetings.length,
+      campus_day_count: countBits(combinedMask),
+      earliest_start_minute_local:
+        scheduledMeetings.length > 0
+          ? Math.min(...scheduledMeetings.map((meeting) => meeting.start_minute_local))
+          : null,
+      latest_end_minute_local:
+        scheduledMeetings.length > 0
+          ? Math.max(...scheduledMeetings.map((meeting) => meeting.end_minute_local))
+          : null,
+      has_online_meeting: Number(classMeetings.some((meeting) => meeting.is_online === 1)),
+      has_unknown_location: Number(classMeetings.some((meeting) => meeting.is_online !== 1 && meeting.location_known !== 1)),
+      restriction_note: metadata.restriction_note,
+      has_temporary_restriction: metadata.has_temporary_restriction,
+      meeting_summary_local: summarizeSchedulableMeetings(scheduledMeetings),
+    };
+  });
+}
+
+function materializeSchedulablePackages(db, packageMetadata) {
+  const insertSchedulablePackage = db.prepare(`
+    INSERT INTO schedulable_packages (
+      source_package_id,
+      term_code,
+      course_id,
+      course_designation,
+      title,
+      section_bundle_label,
+      open_seats,
+      is_full,
+      has_waitlist,
+      meeting_count,
+      campus_day_count,
+      earliest_start_minute_local,
+      latest_end_minute_local,
+      has_online_meeting,
+      has_unknown_location,
+      restriction_note,
+      has_temporary_restriction,
+      meeting_summary_local
+    ) VALUES (
+      @source_package_id,
+      @term_code,
+      @course_id,
+      @course_designation,
+      @title,
+      @section_bundle_label,
+      @open_seats,
+      @is_full,
+      @has_waitlist,
+      @meeting_count,
+      @campus_day_count,
+      @earliest_start_minute_local,
+      @latest_end_minute_local,
+      @has_online_meeting,
+      @has_unknown_location,
+      @restriction_note,
+      @has_temporary_restriction,
+      @meeting_summary_local
+    )
+  `);
+
+  for (const row of buildSchedulablePackageRows(db, packageMetadata)) {
+    insertSchedulablePackage.run(row);
+  }
+}
+
+function materializeScheduleReadModel(db, packageMetadata) {
+  materializeCanonicalSections(db);
+  materializeCanonicalMeetings(db);
+  materializeSchedulablePackages(db, packageMetadata);
+}
+
 export function buildCourseDatabase({
   sourceCoursesPath = coursesPath,
   sourcePackageSnapshotPath = packageSnapshotPath,
@@ -654,6 +1070,7 @@ export function buildCourseDatabase({
     new Date().toISOString(),
   );
   const sourceTermCode = packageSnapshot.termCode ?? courses[0]?.termCode ?? mergedPackageRecords[0]?.termCode ?? 'unknown';
+  const packageMetadata = buildPackageMetadata(mergedPackageRecords, courseRecordsByKey);
 
   fs.mkdirSync(path.dirname(outputDbPath), { recursive: true });
 
@@ -747,6 +1164,7 @@ export function buildCourseDatabase({
       for (const row of uniqueInstructorRows) insertInstructor.run(row);
       for (const row of meetingRows) insertMeeting.run(row);
       for (const row of sectionInstructorRows) insertSectionInstructor.run(row);
+      materializeScheduleReadModel(db, packageMetadata);
       insertRefreshRun.run({
         snapshot_run_at: snapshotRunAt,
         last_refreshed_at: new Date().toISOString(),
