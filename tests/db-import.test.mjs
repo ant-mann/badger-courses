@@ -159,8 +159,8 @@ function buildScheduleReadModelFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 54000000,
-                      meetingTimeEnd: 59400000,
+                      meetingTimeStart: 75600000,
+                      meetingTimeEnd: 81000000,
                       meetingDays: 'MW',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -191,8 +191,8 @@ function buildScheduleReadModelFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 61500000,
-                      meetingTimeEnd: 65100000,
+                      meetingTimeStart: 83100000,
+                      meetingTimeEnd: 86700000,
                       meetingDays: 'R',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -254,8 +254,8 @@ function buildScheduleReadModelFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 79200000,
-                      meetingTimeEnd: 84600000,
+                      meetingTimeStart: 100800000,
+                      meetingTimeEnd: 106200000,
                       meetingDays: 'MW',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -286,8 +286,8 @@ function buildScheduleReadModelFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 41100000,
-                      meetingTimeEnd: 44700000,
+                      meetingTimeStart: 62700000,
+                      meetingTimeEnd: 66300000,
                       meetingDays: 'R',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -350,8 +350,8 @@ function buildScheduleReadModelFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 36000000,
-                      meetingTimeEnd: 40500000,
+                      meetingTimeStart: 57600000,
+                      meetingTimeEnd: 62100000,
                       meetingDays: 'TR',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -414,8 +414,8 @@ function buildScheduleReadModelFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 57000000,
-                      meetingTimeEnd: 62400000,
+                      meetingTimeStart: 78600000,
+                      meetingTimeEnd: 84000000,
                       meetingDays: 'MW',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -498,8 +498,8 @@ function buildSharedLecturePackageFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 32400000,
-                      meetingTimeEnd: 35400000,
+                      meetingTimeStart: 54000000,
+                      meetingTimeEnd: 57000000,
                       meetingDays: 'MW',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -530,8 +530,8 @@ function buildSharedLecturePackageFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 46800000,
-                      meetingTimeEnd: 49800000,
+                      meetingTimeStart: 68400000,
+                      meetingTimeEnd: 71400000,
                       meetingDays: 'T',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -585,8 +585,8 @@ function buildSharedLecturePackageFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 32400000,
-                      meetingTimeEnd: 35400000,
+                      meetingTimeStart: 54000000,
+                      meetingTimeEnd: 57000000,
                       meetingDays: 'MW',
                       startDate: 1788325200000,
                       endDate: 1796796000000,
@@ -617,8 +617,8 @@ function buildSharedLecturePackageFixture() {
                   classMeetings: [
                     {
                       meetingType: 'CLASS',
-                      meetingTimeStart: 50400000,
-                      meetingTimeEnd: 53400000,
+                      meetingTimeStart: 72000000,
+                      meetingTimeEnd: 75000000,
                       meetingDays: 'R',
                       startDate: 1788325200000,
                       endDate: 1796796000000,

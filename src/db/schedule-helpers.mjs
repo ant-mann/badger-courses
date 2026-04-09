@@ -16,6 +16,13 @@ const localDateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
+const localTimePartsFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: SCHEDULE_TIMEZONE,
+  hour: 'numeric',
+  minute: 'numeric',
+  hour12: false,
+});
+
 export function makeDaysMask(meetingDays) {
   if (typeof meetingDays !== 'string' || meetingDays.trim() === '') {
     return null;
@@ -54,7 +61,15 @@ export function meetingTimeToMinutes(value) {
     return null;
   }
 
-  return Math.trunc(value / 60000);
+  const parts = localTimePartsFormatter.formatToParts(new Date(value));
+  const hour = Number.parseInt(parts.find((part) => part.type === 'hour')?.value ?? '', 10);
+  const minute = Number.parseInt(parts.find((part) => part.type === 'minute')?.value ?? '', 10);
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    return null;
+  }
+
+  return (hour * 60) + minute;
 }
 
 export function deriveDurationMinutes(startMinutes, endMinutes) {
