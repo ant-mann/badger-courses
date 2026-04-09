@@ -1,4 +1,5 @@
 .codex
+.worktrees/
 .playwright-cli/
 .tmp-db-import-*/
 node_modules/
