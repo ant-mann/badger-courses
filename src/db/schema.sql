@@ -2,12 +2,18 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 DROP VIEW IF EXISTS online_courses_v;
+DROP VIEW IF EXISTS schedule_candidates_v;
 DROP VIEW IF EXISTS schedule_planning_v;
 DROP VIEW IF EXISTS availability_v;
 DROP VIEW IF EXISTS section_overview_v;
 DROP VIEW IF EXISTS course_overview_v;
 
 DROP TABLE IF EXISTS refresh_runs;
+DROP TABLE IF EXISTS package_transitions;
+DROP TABLE IF EXISTS schedule_conflicts;
+DROP TABLE IF EXISTS schedulable_packages;
+DROP TABLE IF EXISTS canonical_meetings;
+DROP TABLE IF EXISTS canonical_sections;
 DROP TABLE IF EXISTS section_instructors;
 DROP TABLE IF EXISTS instructors;
 DROP TABLE IF EXISTS meetings;
@@ -146,11 +152,100 @@ CREATE TABLE section_instructors (
     ON DELETE CASCADE
 );
 
+CREATE TABLE canonical_sections (
+  term_code TEXT NOT NULL,
+  subject_code TEXT,
+  catalog_number TEXT,
+  course_id TEXT NOT NULL,
+  course_designation TEXT,
+  title TEXT,
+  minimum_credits REAL,
+  maximum_credits REAL,
+  section_class_number INTEGER NOT NULL,
+  source_package_id TEXT NOT NULL,
+  source_package_last_updated INTEGER,
+  section_number TEXT,
+  section_type TEXT,
+  instruction_mode TEXT,
+  session_code TEXT,
+  open_seats INTEGER,
+  waitlist_current_size INTEGER,
+  capacity INTEGER,
+  currently_enrolled INTEGER,
+  has_open_seats INTEGER,
+  has_waitlist INTEGER,
+  is_full INTEGER,
+  PRIMARY KEY (term_code, course_id, section_class_number),
+  FOREIGN KEY (source_package_id)
+    REFERENCES packages (package_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE canonical_meetings (
+  package_id TEXT NOT NULL,
+  source_package_id TEXT NOT NULL,
+  section_class_number INTEGER NOT NULL,
+  meeting_index INTEGER NOT NULL,
+  meeting_type TEXT,
+  meeting_time_start INTEGER,
+  meeting_time_end INTEGER,
+  meeting_days TEXT,
+  start_date INTEGER,
+  end_date INTEGER,
+  exam_date INTEGER,
+  room TEXT,
+  building_code TEXT,
+  building_name TEXT,
+  street_address TEXT,
+  latitude REAL,
+  longitude REAL,
+  timezone_name TEXT NOT NULL,
+  days_mask INTEGER,
+  start_minute_local INTEGER,
+  end_minute_local INTEGER,
+  duration_minutes INTEGER,
+  is_online INTEGER NOT NULL,
+  location_known INTEGER,
+  PRIMARY KEY (package_id, section_class_number, meeting_index),
+  FOREIGN KEY (package_id)
+    REFERENCES packages (package_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (source_package_id)
+    REFERENCES packages (package_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE schedulable_packages (
+  source_package_id TEXT PRIMARY KEY,
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  course_designation TEXT,
+  title TEXT,
+  section_bundle_label TEXT NOT NULL,
+  open_seats INTEGER,
+  is_full INTEGER,
+  has_waitlist INTEGER,
+  meeting_count INTEGER NOT NULL,
+  campus_day_count INTEGER NOT NULL,
+  earliest_start_minute_local INTEGER,
+  latest_end_minute_local INTEGER,
+  has_online_meeting INTEGER NOT NULL,
+  has_unknown_location INTEGER NOT NULL,
+  restriction_note TEXT,
+  has_temporary_restriction INTEGER NOT NULL,
+  meeting_summary_local TEXT
+);
+
 CREATE INDEX idx_courses_subject ON courses(subject_code, catalog_number);
 CREATE INDEX idx_packages_course ON packages(term_code, course_id);
 CREATE INDEX idx_packages_updated ON packages(package_last_updated DESC, package_id);
 CREATE INDEX idx_sections_course ON sections(term_code, course_id, section_type);
 CREATE INDEX idx_meetings_building ON meetings(building_code);
+CREATE INDEX idx_canonical_sections_designation ON canonical_sections(course_designation, section_type, section_number);
+CREATE INDEX idx_canonical_sections_course_package ON canonical_sections(term_code, course_id, source_package_id);
+CREATE INDEX idx_canonical_meetings_package_time ON canonical_meetings(package_id, days_mask, start_minute_local, end_minute_local);
+CREATE INDEX idx_schedulable_packages_designation_open ON schedulable_packages(course_designation, has_temporary_restriction, open_seats);
+CREATE INDEX idx_schedulable_packages_designation_day_start ON schedulable_packages(course_designation, campus_day_count, earliest_start_minute_local);
 
 CREATE VIEW course_overview_v AS
 SELECT
@@ -323,3 +418,7 @@ JOIN packages p
  AND COALESCE(p.package_last_updated, -1) = fcp.freshest_package_last_updated
 WHERE COALESCE(p.online_only, 0) = 1
    OR COALESCE(p.is_asynchronous, 0) = 1;
+
+CREATE VIEW schedule_candidates_v AS
+SELECT *
+FROM schedulable_packages;

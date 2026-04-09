@@ -61,6 +61,7 @@ function buildCourseDbFixture({ courses, packageSnapshot }) {
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
   writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), courses);
@@ -74,10 +75,569 @@ function buildCourseDbFixture({ courses, packageSnapshot }) {
   const db = new Database(path.join(fixtureDataDir, 'fall-2026.sqlite'), { readonly: true });
 
   return {
+    fixtureRoot,
     db,
     cleanup() {
       db.close();
       fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    },
+  };
+}
+
+function buildScheduleReadModelFixture() {
+  return {
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '003210',
+        subjectCode: '220',
+        catalogNumber: '340',
+        courseDesignation: 'STAT 340',
+        title: 'Data Science Modeling',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '004620',
+        subjectCode: '350',
+        catalogNumber: '462',
+        courseDesignation: 'ENGL 462',
+        title: 'Writing for Digital Systems',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '005770',
+        subjectCode: '302',
+        catalogNumber: '577',
+        courseDesignation: 'COMP SCI 577',
+        title: 'Algorithms for Large Data',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '220',
+            courseId: '003210',
+          },
+          packages: [
+            {
+              id: 'stat340-main',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '003210',
+              enrollmentClassNumber: 33210,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 4,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 4,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 26,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 33211 },
+                  sectionNumber: '002',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 4,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 26,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 54000000,
+                      meetingTimeEnd: 59400000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '140',
+                      building: {
+                        buildingCode: '0140',
+                        buildingName: 'Grainger Hall',
+                        streetAddress: '975 University Ave.',
+                        latitude: 43.0727,
+                        longitude: -89.4015,
+                      },
+                    },
+                  ],
+                },
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 33212 },
+                  sectionNumber: '323',
+                  type: 'DIS',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 4,
+                    waitlistCurrentSize: 0,
+                    capacity: 20,
+                    currentlyEnrolled: 16,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 61500000,
+                      meetingTimeEnd: 65100000,
+                      meetingDays: 'R',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '231',
+                      building: {
+                        buildingCode: '0020',
+                        buildingName: 'Van Vleck Hall',
+                        streetAddress: '480 Lincoln Dr.',
+                        latitude: 43.0702,
+                        longitude: -89.4034,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              id: 'stat340-alt',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '003210',
+              enrollmentClassNumber: 33220,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 6,
+                waitlistTotal: 0,
+              },
+              enrollmentRequirementGroups: {
+                catalogRequirementGroups: [
+                  {
+                    description: 'Restriction will be removed on October 15 for all students.',
+                  },
+                ],
+                classAssociationRequirementGroups: [],
+              },
+              enrollmentStatus: {
+                openSeats: 6,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 24,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 33221 },
+                  sectionNumber: '003',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 6,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 24,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 79200000,
+                      meetingTimeEnd: 84600000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '224',
+                      building: {
+                        buildingCode: '0140',
+                        buildingName: 'Grainger Hall',
+                        streetAddress: '975 University Ave.',
+                        latitude: 43.0727,
+                        longitude: -89.4015,
+                      },
+                    },
+                  ],
+                },
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 33222 },
+                  sectionNumber: '324',
+                  type: 'DIS',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 6,
+                    waitlistCurrentSize: 0,
+                    capacity: 20,
+                    currentlyEnrolled: 14,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 41100000,
+                      meetingTimeEnd: 44700000,
+                      meetingDays: 'R',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '111',
+                      building: {
+                        buildingCode: '0231',
+                        buildingName: 'Computer Sciences',
+                        streetAddress: '1210 W Dayton St.',
+                        latitude: 43.0715,
+                        longitude: -89.4066,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '350',
+            courseId: '004620',
+          },
+          packages: [
+            {
+              id: 'engl462-main',
+              termCode: '1272',
+              subjectCode: '350',
+              courseId: '004620',
+              enrollmentClassNumber: 44620,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 5,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 5,
+                waitlistCurrentSize: 0,
+                capacity: 25,
+                currentlyEnrolled: 20,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 44621 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 5,
+                    waitlistCurrentSize: 0,
+                    capacity: 25,
+                    currentlyEnrolled: 20,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 36000000,
+                      meetingTimeEnd: 40500000,
+                      meetingDays: 'TR',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '203',
+                      building: {
+                        buildingCode: '0251',
+                        buildingName: 'Humanities Building',
+                        streetAddress: '455 N Park St.',
+                        latitude: 43.0723,
+                        longitude: -89.4012,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '302',
+            courseId: '005770',
+          },
+          packages: [
+            {
+              id: 'cs577-main',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005770',
+              enrollmentClassNumber: 55770,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 2,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 2,
+                waitlistCurrentSize: 0,
+                capacity: 20,
+                currentlyEnrolled: 18,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 55771 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 2,
+                    waitlistCurrentSize: 0,
+                    capacity: 20,
+                    currentlyEnrolled: 18,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 57000000,
+                      meetingTimeEnd: 62400000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '1240',
+                      building: {
+                        buildingCode: '0231',
+                        buildingName: 'Computer Sciences',
+                        streetAddress: '1210 W Dayton St.',
+                        latitude: 43.0715,
+                        longitude: -89.4066,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function buildSharedLecturePackageFixture() {
+  return {
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '009901',
+        subjectCode: '220',
+        catalogNumber: '555',
+        courseDesignation: 'STAT 555',
+        title: 'Shared Lecture Packages',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '220',
+            courseId: '009901',
+          },
+          packages: [
+            {
+              id: 'pkg-a',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '009901',
+              enrollmentClassNumber: 59001,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 4,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 4,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 26,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 59011 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 4,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 26,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 32400000,
+                      meetingTimeEnd: 35400000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '140',
+                      building: {
+                        buildingCode: '0140',
+                        buildingName: 'Grainger Hall',
+                        streetAddress: '975 University Ave.',
+                        latitude: 43.0727,
+                        longitude: -89.4015,
+                      },
+                    },
+                  ],
+                },
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 59012 },
+                  sectionNumber: '301',
+                  type: 'DIS',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 4,
+                    waitlistCurrentSize: 0,
+                    capacity: 20,
+                    currentlyEnrolled: 16,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 46800000,
+                      meetingTimeEnd: 49800000,
+                      meetingDays: 'T',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '231',
+                      building: {
+                        buildingCode: '0020',
+                        buildingName: 'Van Vleck Hall',
+                        streetAddress: '480 Lincoln Dr.',
+                        latitude: 43.0702,
+                        longitude: -89.4034,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              id: 'pkg-z',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '009901',
+              enrollmentClassNumber: 59002,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 5,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 5,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 25,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 59011 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 5,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 25,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 32400000,
+                      meetingTimeEnd: 35400000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '140',
+                      building: {
+                        buildingCode: '0140',
+                        buildingName: 'Grainger Hall',
+                        streetAddress: '975 University Ave.',
+                        latitude: 43.0727,
+                        longitude: -89.4015,
+                      },
+                    },
+                  ],
+                },
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 59013 },
+                  sectionNumber: '302',
+                  type: 'DIS',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 5,
+                    waitlistCurrentSize: 0,
+                    capacity: 20,
+                    currentlyEnrolled: 15,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 50400000,
+                      meetingTimeEnd: 53400000,
+                      meetingDays: 'R',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '1240',
+                      building: {
+                        buildingCode: '0231',
+                        buildingName: 'Computer Sciences',
+                        streetAddress: '1210 W Dayton St.',
+                        latitude: 43.0715,
+                        longitude: -89.4066,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
   };
 }
@@ -92,6 +652,7 @@ async function loadBuildCourseDbModule() {
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
   writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), []);
@@ -2282,6 +2843,574 @@ test('build-course-db preserves flat instructor first and last names in the norm
     ]);
   } finally {
     fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes canonical schedule tables and schedule candidates', () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
+
+  try {
+    const canonicalSectionCount = fixture.db.prepare('SELECT COUNT(*) FROM canonical_sections').pluck().get();
+    const canonicalMeetingCount = fixture.db.prepare('SELECT COUNT(*) FROM canonical_meetings').pluck().get();
+    const candidateRows = fixture.db.prepare(`
+      SELECT source_package_id, section_bundle_label, meeting_count, campus_day_count
+      FROM schedule_candidates_v
+      ORDER BY course_designation, source_package_id
+    `).all();
+
+    assert.equal(canonicalSectionCount, 6);
+    assert.equal(canonicalMeetingCount, 6);
+    assert.deepEqual(candidateRows, [
+      {
+        source_package_id: '1272:302:005770:cs577-main',
+        section_bundle_label: 'COMP SCI 577 LEC 001',
+        meeting_count: 1,
+        campus_day_count: 2,
+      },
+      {
+        source_package_id: '1272:350:004620:engl462-main',
+        section_bundle_label: 'ENGL 462 LEC 001',
+        meeting_count: 1,
+        campus_day_count: 2,
+      },
+      {
+        source_package_id: '1272:220:003210:stat340-alt',
+        section_bundle_label: 'STAT 340 LEC 003 + DIS 324',
+        meeting_count: 2,
+        campus_day_count: 3,
+      },
+      {
+        source_package_id: '1272:220:003210:stat340-main',
+        section_bundle_label: 'STAT 340 LEC 002 + DIS 323',
+        meeting_count: 2,
+        campus_day_count: 3,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes canonical/package schedule tables without global conflict tables', () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
+
+  try {
+    const canonicalMeetingCount = fixture.db.prepare('SELECT COUNT(*) FROM canonical_meetings').pluck().get();
+    const schedulablePackageCount = fixture.db.prepare('SELECT COUNT(*) FROM schedulable_packages').pluck().get();
+    const tableNames = fixture.db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type IN ('table', 'view')
+        AND name IN ('schedule_conflicts', 'package_transitions')
+      ORDER BY name
+    `).all();
+
+    assert.equal(canonicalMeetingCount, 6);
+    assert.equal(schedulablePackageCount, 4);
+    assert.deepEqual(tableNames, []);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db drops legacy schedule tables when rebuilding an existing upgraded database file', () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
+  const fixtureDbPath = path.join(fixture.fixtureRoot, 'data', 'fall-2026.sqlite');
+
+  try {
+    fixture.db.close();
+
+    const legacyDb = new Database(fixtureDbPath);
+    legacyDb.exec(`
+      CREATE TABLE schedule_conflicts (
+        left_package_id TEXT NOT NULL,
+        right_package_id TEXT NOT NULL
+      );
+      CREATE TABLE package_transitions (
+        from_package_id TEXT NOT NULL,
+        to_package_id TEXT NOT NULL
+      );
+    `);
+
+    const legacyTableNamesBeforeRebuild = legacyDb.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN ('schedule_conflicts', 'package_transitions')
+      ORDER BY name
+    `).pluck().all();
+    legacyDb.close();
+
+    execFileSync(process.execPath, [path.join(fixture.fixtureRoot, 'src', 'db', 'build-course-db.mjs')], {
+      cwd: fixture.fixtureRoot,
+      stdio: 'pipe',
+    });
+
+    const rebuiltDb = new Database(fixtureDbPath, { readonly: true });
+
+    try {
+      const legacyTableNamesAfterRebuild = rebuiltDb.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name IN ('schedule_conflicts', 'package_transitions')
+        ORDER BY name
+      `).pluck().all();
+
+      assert.deepEqual(legacyTableNamesBeforeRebuild, ['package_transitions', 'schedule_conflicts']);
+      assert.deepEqual(legacyTableNamesAfterRebuild, []);
+    } finally {
+      rebuiltDb.close();
+    }
+  } finally {
+    fs.rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('build-course-db carries restriction and meeting summary fields into schedulable packages', () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
+
+  try {
+    const schedulablePackage = fixture.db.prepare(`
+      SELECT
+        source_package_id,
+        restriction_note,
+        has_temporary_restriction,
+        meeting_summary_local,
+        earliest_start_minute_local,
+        latest_end_minute_local
+      FROM schedulable_packages
+      WHERE source_package_id = ?
+    `).get('1272:220:003210:stat340-alt');
+
+    assert.equal(
+      schedulablePackage.restriction_note.includes('Restriction will be removed on October 15 for all students.'),
+      true,
+    );
+    assert.equal(schedulablePackage.has_temporary_restriction, 1);
+    assert.equal(schedulablePackage.meeting_summary_local.includes('R 11:25 AM-12:25 PM @ Computer Sciences'), true);
+    assert.equal(schedulablePackage.earliest_start_minute_local, 685);
+    assert.equal(schedulablePackage.latest_end_minute_local, 1410);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps classroom instruction meetings with unknown location off the online path', () => {
+  const fixtureData = buildScheduleReadModelFixture();
+  fixtureData.packageSnapshot.results[1].packages[0].sections[0].classMeetings[0].room = null;
+  fixtureData.packageSnapshot.results[1].packages[0].sections[0].classMeetings[0].building = null;
+
+  const fixture = buildCourseDbFixture(fixtureData);
+
+  try {
+    const canonicalMeeting = fixture.db.prepare(`
+      SELECT is_online, location_known, building_code, room
+      FROM canonical_meetings
+      WHERE package_id = ?
+        AND section_class_number = ?
+        AND meeting_index = 0
+    `).get('1272:350:004620:engl462-main', 44621);
+    const schedulablePackage = fixture.db.prepare(`
+      SELECT has_online_meeting, has_unknown_location, campus_day_count
+      FROM schedulable_packages
+      WHERE source_package_id = ?
+    `).get('1272:350:004620:engl462-main');
+
+    assert.deepEqual(canonicalMeeting, {
+      is_online: 0,
+      location_known: 0,
+      building_code: null,
+      room: null,
+    });
+    assert.deepEqual(schedulablePackage, {
+      has_online_meeting: 0,
+      has_unknown_location: 1,
+      campus_day_count: 2,
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps shared lecture meetings attached to every schedulable package', () => {
+  const fixture = buildCourseDbFixture(buildSharedLecturePackageFixture());
+
+  try {
+    const schedulablePackages = fixture.db.prepare(`
+      SELECT source_package_id, meeting_count, meeting_summary_local
+      FROM schedulable_packages
+      WHERE course_id = ?
+      ORDER BY source_package_id
+    `).all('009901');
+    const canonicalLecturePackages = fixture.db.prepare(`
+      SELECT package_id
+      FROM canonical_meetings
+      WHERE section_class_number = ?
+      ORDER BY package_id
+    `).pluck().all(59011);
+
+    assert.deepEqual(
+      schedulablePackages.map((row) => row.source_package_id),
+      ['1272:220:009901:pkg-a', '1272:220:009901:pkg-z'],
+    );
+    assert.deepEqual(canonicalLecturePackages, [
+      '1272:220:009901:pkg-a',
+      '1272:220:009901:pkg-z',
+    ]);
+    assert.deepEqual(schedulablePackages, [
+      {
+        source_package_id: '1272:220:009901:pkg-a',
+        meeting_count: 2,
+        meeting_summary_local: 'MW 9:00 AM-9:50 AM @ Grainger Hall; T 1:00 PM-1:50 PM @ Van Vleck Hall',
+      },
+      {
+        source_package_id: '1272:220:009901:pkg-z',
+        meeting_count: 2,
+        meeting_summary_local: 'MW 9:00 AM-9:50 AM @ Grainger Hall; R 2:00 PM-2:50 PM @ Computer Sciences',
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db derives shared lecture online flags from each package-local section row', () => {
+  const fixtureData = buildSharedLecturePackageFixture();
+  fixtureData.packageSnapshot.results[0].packages[0].sections[0].instructionMode = 'Online';
+
+  const fixture = buildCourseDbFixture(fixtureData);
+
+  try {
+    const canonicalLectureMeetings = fixture.db.prepare(`
+      SELECT package_id, source_package_id, is_online
+      FROM canonical_meetings
+      WHERE section_class_number = ?
+      ORDER BY package_id
+    `).all(59011);
+    const schedulablePackages = fixture.db.prepare(`
+      SELECT source_package_id, has_online_meeting, campus_day_count
+      FROM schedulable_packages
+      WHERE course_id = ?
+      ORDER BY source_package_id
+    `).all('009901');
+
+    assert.deepEqual(canonicalLectureMeetings, [
+      {
+        package_id: '1272:220:009901:pkg-a',
+        source_package_id: '1272:220:009901:pkg-z',
+        is_online: 1,
+      },
+      {
+        package_id: '1272:220:009901:pkg-z',
+        source_package_id: '1272:220:009901:pkg-z',
+        is_online: 0,
+      },
+    ]);
+    assert.deepEqual(schedulablePackages, [
+      {
+        source_package_id: '1272:220:009901:pkg-a',
+        has_online_meeting: 1,
+        campus_day_count: 1,
+      },
+      {
+        source_package_id: '1272:220:009901:pkg-z',
+        has_online_meeting: 0,
+        campus_day_count: 3,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('schedulable_packages uses package-level availability instead of any-open section state', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '008888',
+        subjectCode: '220',
+        catalogNumber: '888',
+        courseDesignation: 'STAT 888',
+        title: 'Package Availability Repro',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '220',
+            courseId: '008888',
+          },
+          packages: [
+            {
+              id: 'package-availability',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '008888',
+              enrollmentClassNumber: 48880,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'FULL',
+                availableSeats: 0,
+                waitlistTotal: 5,
+              },
+              enrollmentStatus: {
+                openSeats: 0,
+                waitlistCurrentSize: 5,
+                capacity: 30,
+                currentlyEnrolled: 30,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 48881 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 10,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 20,
+                  },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 54000000,
+                      meetingTimeEnd: 59400000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1796796000000,
+                      room: '101',
+                      building: {
+                        buildingCode: '0140',
+                        buildingName: 'Grainger Hall',
+                        streetAddress: '975 University Ave.',
+                        latitude: 43.0727,
+                        longitude: -89.4015,
+                      },
+                    },
+                  ],
+                },
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 48882 },
+                  sectionNumber: '301',
+                  type: 'DIS',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 0,
+                    waitlistCurrentSize: 5,
+                    capacity: 15,
+                    currentlyEnrolled: 15,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const schedulablePackage = fixture.db.prepare(`
+      SELECT open_seats, is_full, has_waitlist
+      FROM schedulable_packages
+      WHERE source_package_id = ?
+    `).get('1272:220:008888:package-availability');
+
+    assert.deepEqual(schedulablePackage, {
+      open_seats: 0,
+      is_full: 1,
+      has_waitlist: 1,
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('canonical meeting materialization preserves date ranges needed for candidate-local conflict checks', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '007701',
+        subjectCode: '220',
+        catalogNumber: '701',
+        courseDesignation: 'STAT 701',
+        title: 'First Half Term',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '007702',
+        subjectCode: '220',
+        catalogNumber: '702',
+        courseDesignation: 'STAT 702',
+        title: 'Second Half Term',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '220', courseId: '007701' },
+          packages: [
+            {
+              id: 'half-a',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '007701',
+              enrollmentClassNumber: 47001,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 47011 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'A1',
+                  published: true,
+                  enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 54000000,
+                      meetingTimeEnd: 59400000,
+                      meetingDays: 'MW',
+                      startDate: 1788325200000,
+                      endDate: 1790917200000,
+                      room: '100',
+                      building: {
+                        buildingCode: '0140',
+                        buildingName: 'Grainger Hall',
+                        streetAddress: '975 University Ave.',
+                        latitude: 43.0727,
+                        longitude: -89.4015,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '220', courseId: '007702' },
+          packages: [
+            {
+              id: 'half-b',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '007702',
+              enrollmentClassNumber: 47002,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 47021 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'Classroom Instruction',
+                  sessionCode: 'B1',
+                  published: true,
+                  enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+                  classMeetings: [
+                    {
+                      meetingType: 'CLASS',
+                      meetingTimeStart: 54000000,
+                      meetingTimeEnd: 59400000,
+                      meetingDays: 'MW',
+                      startDate: 1791352800000,
+                      endDate: 1794204000000,
+                      room: '101',
+                      building: {
+                        buildingCode: '0251',
+                        buildingName: 'Humanities Building',
+                        streetAddress: '455 N Park St.',
+                        latitude: 43.0723,
+                        longitude: -89.4012,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const ranges = fixture.db.prepare(`
+      SELECT source_package_id, start_date, end_date
+      FROM canonical_meetings
+      WHERE source_package_id IN (?, ?)
+      ORDER BY source_package_id
+    `).all('1272:220:007701:half-a', '1272:220:007702:half-b');
+
+    assert.deepEqual(ranges, [
+      {
+        source_package_id: '1272:220:007701:half-a',
+        start_date: 1788325200000,
+        end_date: 1790917200000,
+      },
+      {
+        source_package_id: '1272:220:007702:half-b',
+        start_date: 1791352800000,
+        end_date: 1794204000000,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db can rebuild an existing database file after adding schedule views', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(repoRoot, '.tmp-db-rebuild-'));
+  const fixtureDbDir = path.join(fixtureRoot, 'src', 'db');
+  const fixtureDataDir = path.join(fixtureRoot, 'data');
+
+  fs.mkdirSync(fixtureDbDir, { recursive: true });
+  fs.mkdirSync(fixtureDataDir, { recursive: true });
+
+  fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
+
+  const fixtureData = buildScheduleReadModelFixture();
+  writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), fixtureData.courses);
+  writeJson(path.join(fixtureDataDir, 'fall-2026-enrollment-packages.json'), fixtureData.packageSnapshot);
+
+  try {
+    execFileSync(process.execPath, [path.join(fixtureDbDir, 'build-course-db.mjs')], {
+      cwd: fixtureRoot,
+      stdio: 'pipe',
+    });
+
+    execFileSync(process.execPath, [path.join(fixtureDbDir, 'build-course-db.mjs')], {
+      cwd: fixtureRoot,
+      stdio: 'pipe',
+    });
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 });
 

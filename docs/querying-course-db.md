@@ -3,13 +3,18 @@
 ## Start Here
 
 - Primary database: `data/fall-2026.sqlite`
-- Query the views first:
+- For AI schedule generation, use the schedule read model first:
+  - `schedule_candidates_v` for section/package selection
+  - `scripts/schedule-options.mjs` for candidate-local schedule enumeration, overlap checks, and transition-aware ranking
+  - `canonical_meetings` for candidate-local debugging or custom schedule logic
+  - Do not derive local meeting times with ad hoc timezone math; use persisted `*_minute_local` fields and `meeting_summary_local`
+- Query the analytical views first for general reporting:
   - `course_overview_v`
   - `section_overview_v`
   - `availability_v`
   - `schedule_planning_v`
   - `online_courses_v`
-- For AI-facing queries, prefer the canonical views above over raw `packages`, `sections`, or `meetings`.
+- For AI-facing non-schedule queries, prefer the canonical views above over raw `packages`, `sections`, or `meetings`.
 - Use the base tables only when a view does not expose the detail you need.
 - Raw `sections.section_class_number` values stay canonical when the source provides a real class number.
 - If every copy of a logical section omits the class number and each package contributes at most one row for that course-scoped fallback identity (`termCode` + `courseId` + `sectionNumber` + `type` + `sessionCode`), the importer writes a stable synthetic negative identifier so those missing-number copies still collapse correctly in `section_overview_v` and `course_overview_v`.
@@ -20,6 +25,8 @@
 - `online_courses_v` is course-level over package freshness, not section tie-breaks: it treats a course as online/asynchronous when any package in that course's freshest `package_last_updated` set is flagged `online_only` or `is_asynchronous`.
 - If multiple packages share the freshest timestamp, `online_courses_v` checks all of them even when `section_overview_v` breaks tied section sources down to a single package row.
 - Older dropped-only package copies can still appear in `section_overview_v` when no newer section row replaces them, but stale packages never keep a course in `online_courses_v`.
+- `schedulable_packages` is the materialized package-level source behind `schedule_candidates_v`; it already carries bundle labels, seat state, restriction notes, day counts, start/end minutes, and meeting summaries for AI schedule selection.
+- Global `schedule_conflicts` / `package_transitions` tables are intentionally not materialized. That keeps `build-course-db` dependable after each refresh; schedule overlap and transition logic should run only on the small candidate set selected for a specific search.
 
 ## Freshness
 
@@ -80,4 +87,34 @@ FROM schedule_planning_v
 WHERE course_id = '025942'
   AND section_class_number = 22285
 ORDER BY meeting_index;
+```
+
+### AI package candidates for a schedule search
+
+```sql
+SELECT *
+FROM schedule_candidates_v
+WHERE course_designation IN ('STAT 340', 'ENGL 462', 'COMP SCI 577')
+ORDER BY course_designation, campus_day_count, earliest_start_minute_local;
+```
+
+### Candidate packages for a schedule search
+
+```sql
+SELECT *
+FROM schedule_candidates_v
+WHERE course_designation IN ('STAT 340', 'ENGL 462', 'COMP SCI 577')
+ORDER BY course_designation, campus_day_count, earliest_start_minute_local;
+```
+
+### Candidate-local canonical meetings for custom schedule logic
+
+```sql
+SELECT *
+FROM canonical_meetings
+WHERE source_package_id IN (
+  '1272:220:003210:stat340-main',
+  '1272:350:004620:engl462-main'
+)
+ORDER BY source_package_id, start_date, start_minute_local;
 ```

@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node --test",
     "extract:fall-2026": "node scripts/extract-fall-2026-courses.mjs",
-    "build:course-db": "node src/db/build-course-db.mjs"
+    "build:course-db": "node src/db/build-course-db.mjs",
+    "schedule:options": "node scripts/schedule-options.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
