@@ -1,0 +1,83 @@
+# Querying the Course Database
+
+## Start Here
+
+- Primary database: `data/fall-2026.sqlite`
+- Query the views first:
+  - `course_overview_v`
+  - `section_overview_v`
+  - `availability_v`
+  - `schedule_planning_v`
+  - `online_courses_v`
+- For AI-facing queries, prefer the canonical views above over raw `packages`, `sections`, or `meetings`.
+- Use the base tables only when a view does not expose the detail you need.
+- Raw `sections.section_class_number` values stay canonical when the source provides a real class number.
+- If every copy of a logical section omits the class number and each package contributes at most one row for that course-scoped fallback identity (`termCode` + `courseId` + `sectionNumber` + `type` + `sessionCode`), the importer writes a stable synthetic negative identifier so those missing-number copies still collapse correctly in `section_overview_v` and `course_overview_v`.
+- If a package repeats the same missing-number fallback identity more than once, those duplicates are treated as ambiguous and get package-scoped synthetic negative identifiers instead. They stay separate across packages even if duplicate order happens to line up between snapshots.
+- If copies mix real and missing class numbers, the importer reuses the real class number only when there is a unique full identity match on course scope plus `sectionNumber`, `type`, and `sessionCode`. Otherwise the missing copy keeps its synthetic negative identifier and remains separate in canonical views.
+- Raw `sections`, `meetings`, and `section_instructors` still preserve per-package detail even when the canonical views collapse duplicate copies to one logical section.
+- Do not query raw `meetings` directly for schedule questions unless you intentionally want every package copy. For canonical meeting rows, use `schedule_planning_v`, which already follows the selected `source_package_id`.
+- `online_courses_v` is course-level over package freshness, not section tie-breaks: it treats a course as online/asynchronous when any package in that course's freshest `package_last_updated` set is flagged `online_only` or `is_asynchronous`.
+- If multiple packages share the freshest timestamp, `online_courses_v` checks all of them even when `section_overview_v` breaks tied section sources down to a single package row.
+- Older dropped-only package copies can still appear in `section_overview_v` when no newer section row replaces them, but stale packages never keep a course in `online_courses_v`.
+
+## Freshness
+
+- Availability is snapshot data, not live enrollment truth.
+- Check `refresh_runs` to see when the database was last rebuilt.
+
+```sql
+SELECT *
+FROM refresh_runs
+ORDER BY last_refreshed_at DESC
+LIMIT 1;
+```
+
+## Useful Queries
+
+### Open sections in a subject
+
+```sql
+SELECT *
+FROM section_overview_v
+WHERE subject_code = '232'
+  AND has_open_seats = 1
+ORDER BY catalog_number, section_number;
+```
+
+### Full package snapshots with waitlists
+
+```sql
+SELECT *
+FROM availability_v
+WHERE is_full = 1
+  AND has_waitlist = 1
+ORDER BY subject_code, catalog_number;
+```
+
+### Courses whose freshest package timestamp set includes any online-only or asynchronous package
+
+```sql
+SELECT *
+FROM online_courses_v
+ORDER BY subject_code, catalog_number, course_id;
+```
+
+### Schedule planning rows with known locations
+
+```sql
+SELECT *
+FROM schedule_planning_v
+WHERE location_known = 1
+ORDER BY subject_code, catalog_number, section_number;
+```
+
+### Canonical meeting dates and exam timing for one section
+
+```sql
+SELECT *
+FROM schedule_planning_v
+WHERE course_id = '025942'
+  AND section_class_number = 22285
+ORDER BY meeting_index;
+```

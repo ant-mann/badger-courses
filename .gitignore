@@ -1,0 +1,7 @@
+.codex
+.playwright-cli/
+.tmp-db-import-*/
+node_modules/
+*.sqlite-shm
+*.sqlite-wal
+data/fall-2026-enrollment-packages.json

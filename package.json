@@ -1,0 +1,14 @@
+{
+  "name": "madgrades-fall-2026-extractor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "extract:fall-2026": "node scripts/extract-fall-2026-courses.mjs",
+    "build:course-db": "node src/db/build-course-db.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "playwright": "^1.54.0"
+  }
+}
