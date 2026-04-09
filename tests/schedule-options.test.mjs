@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import Database from 'better-sqlite3';
 
@@ -636,6 +636,60 @@ function buildSharedLecturePackageFixture() {
   };
 }
 
+async function loadScheduleOptionsModule() {
+  const fixtureRoot = fs.mkdtempSync(path.join(repoRoot, '.tmp-schedule-options-module-'));
+  const fixtureScriptsDir = path.join(fixtureRoot, 'scripts');
+  const fixtureDbDir = path.join(fixtureRoot, 'src', 'db');
+
+  fs.mkdirSync(fixtureScriptsDir, { recursive: true });
+  fs.mkdirSync(fixtureDbDir, { recursive: true });
+
+  fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
+
+  const sourcePath = path.join(repoRoot, 'scripts', 'schedule-options.mjs');
+  const source = fs.readFileSync(sourcePath, 'utf8');
+  const instrumentedSource = source.replace(/\nmain\(\);\s*$/, '\nexport { buildSchedules, compareSchedules };\n');
+
+  if (instrumentedSource === source) {
+    throw new Error('Failed to expose schedule-options module exports for testing');
+  }
+
+  const modulePath = path.join(fixtureScriptsDir, 'schedule-options.mjs');
+  fs.writeFileSync(modulePath, instrumentedSource);
+
+  const moduleUrl = `${pathToFileURL(modulePath).href}?cacheBust=${Date.now()}`;
+  const loaded = await import(moduleUrl);
+
+  return {
+    ...loaded,
+    cleanup() {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    },
+  };
+}
+
+function makeTestCandidate(packageId, overrides = {}) {
+  return {
+    packageId,
+    courseDesignation: overrides.courseDesignation ?? packageId.split('-')[0].toUpperCase(),
+    title: overrides.title ?? packageId,
+    sectionBundleLabel: overrides.sectionBundleLabel ?? packageId,
+    openSeats: overrides.openSeats ?? 1,
+    isFull: overrides.isFull ?? 0,
+    hasWaitlist: overrides.hasWaitlist ?? 0,
+    meetingCount: overrides.meetingCount ?? 0,
+    campusDayCount: overrides.campusDayCount ?? 0,
+    earliestStartMinuteLocal: overrides.earliestStartMinuteLocal ?? null,
+    latestEndMinuteLocal: overrides.latestEndMinuteLocal ?? null,
+    hasOnlineMeeting: overrides.hasOnlineMeeting ?? 0,
+    hasUnknownLocation: overrides.hasUnknownLocation ?? 0,
+    restrictionNote: overrides.restrictionNote ?? null,
+    hasTemporaryRestriction: overrides.hasTemporaryRestriction ?? 0,
+    meetingSummaryLocal: overrides.meetingSummaryLocal ?? null,
+    meetings: overrides.meetings ?? [],
+  };
+}
+
 test('schedule-options returns only conflict-free ranked schedules', () => {
   const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
 
@@ -678,6 +732,51 @@ test('schedule-options returns only conflict-free ranked schedules', () => {
     assert.equal(typeof parsed.schedules[0].packages[0].has_temporary_restriction, 'number');
   } finally {
     fixture.cleanup();
+  }
+});
+
+test('buildSchedules still returns the best-ranked schedule when limit is 1', async () => {
+  const scheduleOptions = await loadScheduleOptionsModule();
+
+  try {
+    const schedules = scheduleOptions.buildSchedules({
+      orderedGroups: [
+        {
+          courseDesignation: 'COURSE A',
+          candidates: [
+            makeTestCandidate('a-early', {
+              courseDesignation: 'COURSE A',
+              earliestStartMinuteLocal: 480,
+              meetings: [{ days_mask: 1, start_minute_local: 480, end_minute_local: 540, is_online: 0 }],
+            }),
+            makeTestCandidate('a-best', {
+              courseDesignation: 'COURSE A',
+              earliestStartMinuteLocal: 720,
+              meetings: [{ days_mask: 1, start_minute_local: 720, end_minute_local: 780, is_online: 0 }],
+            }),
+          ],
+        },
+        {
+          courseDesignation: 'COURSE B',
+          candidates: [
+            makeTestCandidate('b-1', {
+              courseDesignation: 'COURSE B',
+              earliestStartMinuteLocal: 840,
+              meetings: [{ days_mask: 2, start_minute_local: 840, end_minute_local: 900, is_online: 0 }],
+            }),
+          ],
+        },
+      ],
+      lockedByCourse: new Map(),
+      conflicts: new Map(),
+      transitions: new Map(),
+      limit: 1,
+    });
+
+    assert.equal(schedules.length, 1);
+    assert.deepEqual(schedules[0].package_ids, ['a-best', 'b-1']);
+  } finally {
+    scheduleOptions.cleanup();
   }
 });
 

@@ -758,7 +758,7 @@ function buildCanonicalMeetingRows(db) {
       b.latitude,
       b.longitude,
       m.location_known,
-      cs.instruction_mode
+      s.instruction_mode
     FROM canonical_sections cs
     JOIN sections s
       ON s.term_code = cs.term_code

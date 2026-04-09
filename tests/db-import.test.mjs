@@ -3075,6 +3075,55 @@ test('build-course-db keeps shared lecture meetings attached to every schedulabl
   }
 });
 
+test('build-course-db derives shared lecture online flags from each package-local section row', () => {
+  const fixtureData = buildSharedLecturePackageFixture();
+  fixtureData.packageSnapshot.results[0].packages[0].sections[0].instructionMode = 'Online';
+
+  const fixture = buildCourseDbFixture(fixtureData);
+
+  try {
+    const canonicalLectureMeetings = fixture.db.prepare(`
+      SELECT package_id, source_package_id, is_online
+      FROM canonical_meetings
+      WHERE section_class_number = ?
+      ORDER BY package_id
+    `).all(59011);
+    const schedulablePackages = fixture.db.prepare(`
+      SELECT source_package_id, has_online_meeting, campus_day_count
+      FROM schedulable_packages
+      WHERE course_id = ?
+      ORDER BY source_package_id
+    `).all('009901');
+
+    assert.deepEqual(canonicalLectureMeetings, [
+      {
+        package_id: '1272:220:009901:pkg-a',
+        source_package_id: '1272:220:009901:pkg-z',
+        is_online: 1,
+      },
+      {
+        package_id: '1272:220:009901:pkg-z',
+        source_package_id: '1272:220:009901:pkg-z',
+        is_online: 0,
+      },
+    ]);
+    assert.deepEqual(schedulablePackages, [
+      {
+        source_package_id: '1272:220:009901:pkg-a',
+        has_online_meeting: 1,
+        campus_day_count: 1,
+      },
+      {
+        source_package_id: '1272:220:009901:pkg-z',
+        has_online_meeting: 0,
+        campus_day_count: 3,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('schedulable_packages uses package-level availability instead of any-open section state', () => {
   const fixture = buildCourseDbFixture({
     courses: [

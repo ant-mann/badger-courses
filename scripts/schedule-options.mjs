@@ -509,7 +509,12 @@ function buildSchedules({ orderedGroups, lockedByCourse, conflicts, transitions,
         conflict_count: 0,
         ...buildScheduleMetrics(selectedCandidates, transitions),
       });
-      return;
+      if (schedules.length > limit) {
+        schedules.sort(compareSchedules);
+        schedules.length = limit;
+      }
+
+      return false;
     }
 
     const group = orderedGroups[index];
@@ -530,6 +535,8 @@ function buildSchedules({ orderedGroups, lockedByCourse, conflicts, transitions,
       selectedPackageIds.delete(candidate.packageId);
       selectedCandidates.pop();
     }
+
+    return false;
   }
 
   if (limit === 0) {
