@@ -767,3 +767,41 @@ test('does not fabricate a course node from slash-delimited shared-number pair',
   assert.deepEqual(result.nodes, []);
   assert.deepEqual(result.edges, []);
 });
+
+test('parses single-letter spaced subject course references like E C E 340', () => {
+  const result = parsePrerequisiteText('E C E 340 or E C E 342', {
+    courseDesignation: 'E C E 500',
+    termCode: '1272',
+    courseId: '005001',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.unparsedText, null);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['E C E 340', 'E C E 342'],
+  );
+  assert.equal(result.edges.length, 2);
+});
+
+test('parses single-letter spaced subject shorthand like L I S 301 or 401', () => {
+  const result = parsePrerequisiteText('L I S 301 or 401', {
+    courseDesignation: 'L I S 640',
+    termCode: '1272',
+    courseId: '006400',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.unparsedText, null);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['L I S 301', 'L I S 401'],
+  );
+  assert.equal(result.edges.length, 2);
+});
