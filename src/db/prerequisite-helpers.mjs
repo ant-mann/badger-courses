@@ -18,6 +18,14 @@ export const NODE_TYPE = {
 
 const SUBJECT_PATTERN_SRC = '[A-Z]+(?:\\s+[A-Z])*';
 const COURSE_REFERENCE_PATTERN = new RegExp(`\\b(${SUBJECT_PATTERN_SRC})\\s+(\\d{3}[A-Z]?)\\b`, 'g');
+// Matches a bare unresolved subject (multi-letter single-token like MATH, or multi-token
+// single-letter like E C E) followed by and/or, indicating a shorthand alternative clause.
+const UNRESOLVED_SUBJECT_CONNECTIVE_PATTERN = /\b(?:[A-Z][A-Z]+|[A-Z](?:\s+[A-Z])+)(?:\s+[A-Z]+)*\s+(?:and|or)\s*$/;
+// Matches a simple "SUBJECT NUM or [SUBJECT] NUM" clause (fast path for two-course OR).
+const SIMPLE_OR_CLAUSE_PATTERN = new RegExp(
+  `^(${SUBJECT_PATTERN_SRC})\\s+(\\d{3}[A-Z]?)\\s+or\\s+((?:${SUBJECT_PATTERN_SRC})\\s+)?(\\d{3}[A-Z]?)$`,
+  'i',
+);
 let nextNodeId = 1;
 
 function createNode(node_type, normalized_value, raw_value = normalized_value) {
@@ -146,7 +154,7 @@ function isSingleRecognizedPlaceholder(text) {
 }
 
 function parseSimpleOrCourseClause(text, sourceText, offsets) {
-  const match = text.match(new RegExp(`^(${SUBJECT_PATTERN_SRC})\\s+(\\d{3}[A-Z]?)\\s+or\\s+((?:${SUBJECT_PATTERN_SRC})\\s+)?(\\d{3}[A-Z]?)$`, 'i'));
+  const match = text.match(SIMPLE_OR_CLAUSE_PATTERN);
 
   if (!match) {
     return null;
@@ -256,7 +264,7 @@ function extractCourseNodes(text, sourceText, offsets) {
       continue;
     }
 
-    if (/\b(?:[A-Z][A-Z]+|[A-Z](?:\s+[A-Z])+)(?:\s+[A-Z]+)*\s+(?:and|or)\s*$/.test(leadingText)) {
+    if (UNRESOLVED_SUBJECT_CONNECTIVE_PATTERN.test(leadingText)) {
       continue;
     }
 
