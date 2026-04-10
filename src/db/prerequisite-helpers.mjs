@@ -16,7 +16,8 @@ export const NODE_TYPE = {
   TEXT: 'TEXT',
 };
 
-const COURSE_REFERENCE_PATTERN = /\b([A-Z]+(?:\s+[A-Z])*)\s+(\d{3}[A-Z]?)\b/g;
+const SUBJECT_PATTERN_SRC = '[A-Z]+(?:\\s+[A-Z])*';
+const COURSE_REFERENCE_PATTERN = new RegExp(`\\b(${SUBJECT_PATTERN_SRC})\\s+(\\d{3}[A-Z]?)\\b`, 'g');
 let nextNodeId = 1;
 
 function createNode(node_type, normalized_value, raw_value = normalized_value) {
@@ -145,7 +146,7 @@ function isSingleRecognizedPlaceholder(text) {
 }
 
 function parseSimpleOrCourseClause(text, sourceText, offsets) {
-  const match = text.match(/^([A-Z]+(?:\s+[A-Z])*)\s+(\d{3}[A-Z]?)\s+or\s+((?:[A-Z]+(?:\s+[A-Z])*)\s+)?(\d{3}[A-Z]?)$/i);
+  const match = text.match(new RegExp(`^(${SUBJECT_PATTERN_SRC})\\s+(\\d{3}[A-Z]?)\\s+or\\s+((?:${SUBJECT_PATTERN_SRC})\\s+)?(\\d{3}[A-Z]?)$`, 'i'));
 
   if (!match) {
     return null;
