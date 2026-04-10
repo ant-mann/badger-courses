@@ -152,8 +152,12 @@ function parseSimpleOrCourseClause(text, sourceText, offsets) {
   const leftNumber = match[2].toUpperCase();
   const rightSubject = normalizeText((match[3] ?? match[1]).toUpperCase());
   const rightNumber = match[4].toUpperCase();
-  const leftRawLength = match[0].indexOf('or') - 1;
+  const operatorMatch = match[0].match(/\s+(or)\s+/i);
+  const operatorIndex = operatorMatch?.index ?? -1;
+  const leftRawLength = operatorIndex;
   const leftRaw = getSourceSlice(sourceText, offsets, 0, leftRawLength);
+  const operatorRawStart = operatorIndex + (operatorMatch?.[0].indexOf(operatorMatch[1]) ?? 0);
+  const operatorRaw = getSourceSlice(sourceText, offsets, operatorRawStart, operatorMatch?.[1].length ?? 0);
   const rightRawStart = match[0].lastIndexOf(match[4]);
   const rightRaw = getSourceSlice(sourceText, offsets, rightRawStart, match[4].length);
 
@@ -161,6 +165,7 @@ function parseSimpleOrCourseClause(text, sourceText, offsets) {
     left: `${leftSubject} ${leftNumber}`,
     right: `${rightSubject} ${rightNumber}`,
     leftRaw,
+    operatorRaw,
     rightRaw,
   };
 }
@@ -196,7 +201,7 @@ function extractCourseNodes(text, sourceText, offsets) {
     }
 
     const matchedText = getSourceSlice(sourceText, offsets, matchIndex, match[0].length);
-    const trailingText = text.slice(matchIndex + matchedText.length);
+    const trailingText = text.slice(matchIndex + match[0].length);
     if (/^\s*\//.test(trailingText)) {
       continue;
     }
@@ -258,7 +263,7 @@ export function parsePrerequisiteText(text) {
   const simpleOrCourses = parseSimpleOrCourseClause(normalizedText, sourceText, offsets);
 
   if (simpleOrCourses) {
-    const orNode = createNode(NODE_TYPE.OR, 'OR', 'or');
+    const orNode = createNode(NODE_TYPE.OR, 'OR', simpleOrCourses.operatorRaw);
     const leftCourse = createNode(NODE_TYPE.COURSE, simpleOrCourses.left, simpleOrCourses.leftRaw);
     const rightCourse = createNode(NODE_TYPE.COURSE, simpleOrCourses.right, simpleOrCourses.rightRaw);
 

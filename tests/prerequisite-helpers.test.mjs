@@ -496,6 +496,66 @@ test('does not fabricate a course node from slash-delimited shared-subject numbe
   assert.deepEqual(result.edges, []);
 });
 
+test('does not fabricate a course node when slash guard sees expanded source spacing', () => {
+  const result = parsePrerequisiteText('STAT   240/340', {
+    courseDesignation: 'STAT 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'STAT 240/340');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('does not fabricate a course node for slash-delimited full courses with expanded spacing', () => {
+  const result = parsePrerequisiteText('MATH   221/MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'MATH 221/MATH 222');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('preserves raw operator and raw course slices for uppercase OR fast path', () => {
+  const result = parsePrerequisiteText('ITALIAN 204 OR 205', {
+    courseDesignation: 'ITALIAN 230',
+    termCode: '1272',
+    courseId: '002230',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.nodes.find((node) => node.node_type === NODE_TYPE.OR)?.raw_value, 'OR');
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.raw_value),
+    ['ITALIAN 204', '205'],
+  );
+});
+
+test('preserves raw operator and raw course slices for mixed-case Or fast path', () => {
+  const result = parsePrerequisiteText('ITALIAN 204 Or 205', {
+    courseDesignation: 'ITALIAN 230',
+    termCode: '1272',
+    courseId: '002230',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.nodes.find((node) => node.node_type === NODE_TYPE.OR)?.raw_value, 'Or');
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.raw_value),
+    ['ITALIAN 204', '205'],
+  );
+});
+
 test('does not fabricate a course node from slash-delimited full-course pair', () => {
   const result = parsePrerequisiteText('MATH 221/MATH 222', {
     courseDesignation: 'MATH 500',
