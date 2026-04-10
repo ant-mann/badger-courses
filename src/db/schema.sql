@@ -287,6 +287,7 @@ CREATE TABLE schedulable_packages (
 CREATE INDEX idx_courses_subject ON courses(subject_code, catalog_number);
 CREATE INDEX idx_prerequisite_rules_course ON prerequisite_rules(term_code, course_id);
 CREATE INDEX idx_prerequisite_nodes_rule ON prerequisite_nodes(rule_id);
+CREATE INDEX idx_prerequisite_edges_child ON prerequisite_edges(rule_id, child_node_id);
 CREATE INDEX idx_packages_course ON packages(term_code, course_id);
 CREATE INDEX idx_packages_updated ON packages(package_last_updated DESC, package_id);
 CREATE INDEX idx_sections_course ON sections(term_code, course_id, section_type);
