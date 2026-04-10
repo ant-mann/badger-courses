@@ -386,3 +386,68 @@ test('does not fabricate a course node from spaced slash-delimited subject text'
   assert.deepEqual(result.nodes, []);
   assert.deepEqual(result.edges, []);
 });
+
+test('does not fabricate a tail-token course from multi-word subject text', () => {
+  const result = parsePrerequisiteText('COMP SCI 200', {
+    courseDesignation: 'COMP SCI 300',
+    termCode: '1272',
+    courseId: '003300',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'COMP SCI 200');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('does not fabricate a tail-token course inside mixed expressions', () => {
+  const result = parsePrerequisiteText('COMP SCI 200 and MATH 221', {
+    courseDesignation: 'COMP SCI 300',
+    termCode: '1272',
+    courseId: '003300',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'MATH 221'));
+  assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'SCI 200'));
+  assert.equal(result.unparsedText, 'COMP SCI 200 and [COURSE]');
+});
+
+test('does not fabricate a course node from slash-delimited shared-subject numbers', () => {
+  const result = parsePrerequisiteText('STAT 240/340', {
+    courseDesignation: 'STAT 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'STAT 240/340');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('does not fabricate a course node from slash-delimited full-course pair', () => {
+  const result = parsePrerequisiteText('MATH 221/MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'MATH 221/MATH 222');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('does not fabricate a course node from slash-delimited shared-number pair', () => {
+  const result = parsePrerequisiteText('ACCT I S 100/200', {
+    courseDesignation: 'ACCT I S 300',
+    termCode: '1272',
+    courseId: '003300',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'ACCT I S 100/200');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});

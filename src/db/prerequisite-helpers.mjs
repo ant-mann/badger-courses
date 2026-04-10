@@ -172,11 +172,21 @@ function extractCourseNodes(text) {
       continue;
     }
 
+    if (matchIndex > 0 && /[A-Z]\s+$/.test(leadingText)) {
+      continue;
+    }
+
+    const matchedText = match[0];
+    const trailingText = text.slice(matchIndex + matchedText.length);
+    if (/^\s*\//.test(trailingText)) {
+      continue;
+    }
+
     const subject = normalizeText(match[1].toUpperCase());
     const number = match[2].toUpperCase();
 
     matches.push({
-      matchedText: match[0],
+      matchedText,
       node: createNode(NODE_TYPE.COURSE, `${subject} ${number}`, match[0]),
     });
   }
