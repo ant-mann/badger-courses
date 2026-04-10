@@ -83,15 +83,16 @@ CREATE TABLE prerequisite_nodes (
 );
 
 CREATE TABLE prerequisite_edges (
+  rule_id TEXT NOT NULL,
   parent_node_id TEXT NOT NULL,
   child_node_id TEXT NOT NULL,
   sort_order INTEGER NOT NULL,
-  PRIMARY KEY (parent_node_id, child_node_id),
-  FOREIGN KEY (parent_node_id)
-    REFERENCES prerequisite_nodes (node_id)
+  PRIMARY KEY (rule_id, parent_node_id, child_node_id),
+  FOREIGN KEY (rule_id, parent_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
     ON DELETE CASCADE,
-  FOREIGN KEY (child_node_id)
-    REFERENCES prerequisite_nodes (node_id)
+  FOREIGN KEY (rule_id, child_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
     ON DELETE CASCADE
 );
 

@@ -1081,6 +1081,48 @@ test('schema creates prerequisite graph tables and indexes', () => {
         on_delete: 'CASCADE',
       },
     ]);
+
+    const prerequisiteEdgeForeignKeys = db.prepare(`
+      SELECT id, seq, "table", "from", "to", on_delete
+      FROM pragma_foreign_key_list('prerequisite_edges')
+      WHERE "table" = 'prerequisite_nodes'
+      ORDER BY id, seq
+    `).all();
+
+    assert.deepEqual(prerequisiteEdgeForeignKeys, [
+      {
+        id: 0,
+        seq: 0,
+        table: 'prerequisite_nodes',
+        from: 'rule_id',
+        to: 'rule_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 0,
+        seq: 1,
+        table: 'prerequisite_nodes',
+        from: 'child_node_id',
+        to: 'node_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 1,
+        seq: 0,
+        table: 'prerequisite_nodes',
+        from: 'rule_id',
+        to: 'rule_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 1,
+        seq: 1,
+        table: 'prerequisite_nodes',
+        from: 'parent_node_id',
+        to: 'node_id',
+        on_delete: 'CASCADE',
+      },
+    ]);
   } finally {
     db.close();
   }
