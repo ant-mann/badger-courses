@@ -643,6 +643,60 @@ test('preserves raw spacing inside parenthesized simple OR clauses', () => {
   );
 });
 
+test('does not fabricate an OR-tail course node inside grouped mixed expressions', () => {
+  const result = parsePrerequisiteText('MATH 221 and (ITALIAN 204 OR 205)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'ITALIAN 204', 'ITALIAN 205'],
+  );
+  assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'OR 205'));
+  assert.equal(result.unparsedText, '[COURSE] and ([COURSE] OR [COURSE])');
+});
+
+test('recognizes grouped shorthand courses inside standing partials', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing and (ITALIAN 204 or 205)', {
+    courseDesignation: 'ITALIAN 230',
+    termCode: '1272',
+    courseId: '002230',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['ITALIAN 204', 'ITALIAN 205'],
+  );
+  assert.equal(result.unparsedText, '[STANDING] and ([COURSE] or [COURSE])');
+});
+
+test('recognizes grouped shorthand multi-token subjects inside standing partials', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing and (ACCT I S 100 or 200)', {
+    courseDesignation: 'ACCT I S 300',
+    termCode: '1272',
+    courseId: '003300',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['ACCT I S 100', 'ACCT I S 200'],
+  );
+  assert.equal(result.unparsedText, '[STANDING] and ([COURSE] or [COURSE])');
+});
+
 test('does not emit a trailing course node for unresolved subject OR alternatives', () => {
   const result = parsePrerequisiteText('MATH or STAT 309', {
     courseDesignation: 'MATH 500',

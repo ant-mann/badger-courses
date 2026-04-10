@@ -174,6 +174,56 @@ function parseSimpleOrCourseClause(text, sourceText, offsets) {
   };
 }
 
+function extractGroupedSimpleOrCourseMatches(text, sourceText, offsets) {
+  const matches = [];
+  const groupedPattern = /\(([^()]+)\)/g;
+
+  for (const groupedMatch of text.matchAll(groupedPattern)) {
+    const groupedIndex = groupedMatch.index ?? -1;
+    if (groupedIndex < 0) {
+      continue;
+    }
+
+    const innerIndex = groupedIndex + 1;
+    const innerText = groupedMatch[1];
+    const innerSourceText = getSourceSlice(sourceText, offsets, innerIndex, innerText.length);
+    const innerOffsets = buildNormalizedTextWithOffsets(innerSourceText);
+    const simpleOrCourses = parseSimpleOrCourseClause(innerText, innerSourceText, innerOffsets);
+
+    if (!simpleOrCourses) {
+      continue;
+    }
+
+    const operatorMatch = innerText.match(/\s+(or)\s+/i);
+    const operatorIndex = operatorMatch?.index ?? -1;
+    if (operatorIndex < 0) {
+      continue;
+    }
+
+    const rightRawText = simpleOrCourses.rightRaw;
+    const rightIndex = innerText.length - normalizeText(rightRawText).length;
+
+    matches.push({
+      index: innerIndex,
+      normalizedLength: operatorIndex,
+      groupStart: innerIndex,
+      groupEnd: innerIndex + innerText.length,
+      matchedText: simpleOrCourses.leftRaw,
+      node: createNode(NODE_TYPE.COURSE, simpleOrCourses.left, simpleOrCourses.leftRaw),
+    });
+    matches.push({
+      index: innerIndex + rightIndex,
+      normalizedLength: innerText.length - rightIndex,
+      groupStart: innerIndex,
+      groupEnd: innerIndex + innerText.length,
+      matchedText: simpleOrCourses.rightRaw,
+      node: createNode(NODE_TYPE.COURSE, simpleOrCourses.right, simpleOrCourses.rightRaw),
+    });
+  }
+
+  return matches;
+}
+
 function extractStandingNodes(text, sourceText, offsets) {
   const matches = [];
   const standingPattern = /\bgraduate\/professional standing\b/gi;
@@ -284,8 +334,13 @@ export function parsePrerequisiteText(text) {
   }
 
   const standingMatches = extractStandingNodes(normalizedText, sourceText, offsets);
-  const courseMatches = extractCourseNodes(normalizedText, sourceText, offsets);
-  const recognizedMatches = [...standingMatches, ...courseMatches]
+  const groupedSimpleOrMatches = extractGroupedSimpleOrCourseMatches(normalizedText, sourceText, offsets);
+  const courseMatches = extractCourseNodes(normalizedText, sourceText, offsets)
+    .filter((courseMatch) => !groupedSimpleOrMatches.some((groupedMatch) => (
+      courseMatch.index >= groupedMatch.groupStart
+      && courseMatch.index < groupedMatch.groupEnd
+    )));
+  const recognizedMatches = [...standingMatches, ...groupedSimpleOrMatches, ...courseMatches]
     .sort((left, right) => left.index - right.index);
 
   if (recognizedMatches.length === 0) {
