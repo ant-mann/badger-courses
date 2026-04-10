@@ -990,6 +990,32 @@ test('summarizeAvailability marks waitlisted or full rows correctly', async () =
   });
 });
 
+test('makePrerequisiteRuleRow maps a parsed prerequisite rule into one prerequisite_rules row', async () => {
+  const { makePrerequisiteRuleRow } = await loadHelpers();
+
+  const row = makePrerequisiteRuleRow({
+    ruleId: 'rule:1272:005770',
+    termCode: '1272',
+    courseId: '005770',
+    rawText: 'COMP SCI 400 and (MATH 222 or MATH 276)',
+    parseStatus: 'parsed',
+    parseConfidence: 0.94,
+    rootNodeId: 'node:root',
+    unparsedText: null,
+  });
+
+  assert.deepEqual(row, {
+    rule_id: 'rule:1272:005770',
+    term_code: '1272',
+    course_id: '005770',
+    raw_text: 'COMP SCI 400 and (MATH 222 or MATH 276)',
+    parse_status: 'parsed',
+    parse_confidence: 0.94,
+    root_node_id: 'node:root',
+    unparsed_text: null,
+  });
+});
+
 test('course_overview_v uses the newest canonical section row for availability', () => {
   const db = createSchemaDb();
 

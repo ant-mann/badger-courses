@@ -429,3 +429,37 @@ export function makeBuildingRows(packages) {
 
   return [...byCode.values()].map(({ _source, ...building }) => building);
 }
+
+export function makePrerequisiteRuleRow(rule) {
+  return {
+    rule_id: rule.ruleId,
+    term_code: rule.termCode,
+    course_id: rule.courseId,
+    raw_text: rule.rawText,
+    parse_status: rule.parseStatus,
+    parse_confidence: rule.parseConfidence,
+    root_node_id: rule.rootNodeId ?? null,
+    unparsed_text: rule.unparsedText ?? null,
+  };
+}
+
+export function makePrerequisiteNodeRows(nodes = []) {
+  return nodes.map((node) => ({
+    node_id: node.node_id,
+    rule_id: node.rule_id,
+    node_type: node.node_type,
+    value: node.value ?? null,
+    normalized_value: node.normalized_value ?? null,
+    position_start: node.position_start ?? null,
+    position_end: node.position_end ?? null,
+  }));
+}
+
+export function makePrerequisiteEdgeRows(edges = []) {
+  return edges.map((edge) => ({
+    rule_id: edge.rule_id,
+    parent_node_id: edge.parent_node_id,
+    child_node_id: edge.child_node_id,
+    sort_order: edge.sort_order,
+  }));
+}
