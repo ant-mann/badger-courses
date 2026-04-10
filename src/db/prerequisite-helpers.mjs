@@ -45,6 +45,30 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function formatStructuralRemainder(text) {
+  const normalized = normalizeText(text);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const relationOnlyText = normalizeText(text.replace(/[(),]/g, ' '));
+
+  if (/^(?:and|or)(?:\s+(?:and|or))*$/i.test(relationOnlyText)) {
+    return relationOnlyText.toLowerCase();
+  }
+
+  if (/^,+$/.test(normalized.replace(/\s+/g, ''))) {
+    return ',';
+  }
+
+  if (/^[()\s]+$/.test(normalized) && normalized.includes('(') && normalized.includes(')')) {
+    return '( )';
+  }
+
+  return null;
+}
+
 function parseSimpleOrCourseClause(text) {
   const match = text.match(/^([A-Z][A-Z]+(?:\s+[A-Z])*)\s+(\d{3}[A-Z]?)\s+or\s+((?:[A-Z][A-Z]+(?:\s+[A-Z])*)\s+)?(\d{3}[A-Z]?)$/i);
 
@@ -100,7 +124,7 @@ function buildUnparsedText(text, recognizedSpans) {
     remainder = remainder.replace(new RegExp(escapeRegExp(span), 'i'), ' ');
   }
 
-  const relationOnlyText = normalizeText(remainder.replace(/[(),]/g, ' '));
+  const structuralRemainder = formatStructuralRemainder(remainder);
 
   remainder = remainder
     .replace(/[()]/g, ' ')
@@ -111,8 +135,8 @@ function buildUnparsedText(text, recognizedSpans) {
 
   const normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));
 
-  if (!normalized && /^(?:and|or)$/i.test(relationOnlyText)) {
-    return relationOnlyText.toLowerCase();
+  if (!normalized && structuralRemainder) {
+    return structuralRemainder;
   }
 
   return normalized || null;

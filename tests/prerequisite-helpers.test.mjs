@@ -89,3 +89,46 @@ test('keeps unresolved relation text for course-only partial cases', () => {
   );
   assert.equal(result.unparsedText, 'and');
 });
+
+test('keeps unresolved repeated OR text for multi-course partial cases', () => {
+  const result = parsePrerequisiteText('MATH 221 or MATH 222 or MATH 223', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'MATH 222', 'MATH 223'],
+  );
+  assert.equal(result.unparsedText, 'or or');
+});
+
+test('keeps unresolved separator text for standing comma course partial cases', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing, LAW 742', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.equal(result.unparsedText, ',');
+});
+
+test('keeps unresolved grouping text for standing parenthetical course partial cases', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing (LAW 742)', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.equal(result.unparsedText, '( )');
+});
