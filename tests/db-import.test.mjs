@@ -1016,6 +1016,76 @@ test('makePrerequisiteRuleRow maps a parsed prerequisite rule into one prerequis
   });
 });
 
+test('makePrerequisiteNodeRows maps parser nodes into prerequisite_nodes rows', async () => {
+  const { makePrerequisiteNodeRows } = await loadHelpers();
+
+  const rows = makePrerequisiteNodeRows(
+    [
+      {
+        id: 'node:root',
+        node_type: 'and',
+        raw_value: null,
+        normalized_value: null,
+      },
+      {
+        id: 'node:course:1',
+        node_type: 'course',
+        raw_value: 'COMP SCI 400',
+        normalized_value: 'comp sci 400',
+      },
+    ],
+    'rule:1272:005770',
+  );
+
+  assert.deepEqual(rows, [
+    {
+      node_id: 'node:root',
+      rule_id: 'rule:1272:005770',
+      node_type: 'and',
+      value: null,
+      normalized_value: null,
+      position_start: null,
+      position_end: null,
+    },
+    {
+      node_id: 'node:course:1',
+      rule_id: 'rule:1272:005770',
+      node_type: 'course',
+      value: 'COMP SCI 400',
+      normalized_value: 'comp sci 400',
+      position_start: null,
+      position_end: null,
+    },
+  ]);
+});
+
+test('makePrerequisiteEdgeRows maps parser edges into prerequisite_edges rows', async () => {
+  const { makePrerequisiteEdgeRows } = await loadHelpers();
+
+  const rows = makePrerequisiteEdgeRows(
+    [
+      { source: 'node:root', target: 'node:course:1' },
+      { source: 'node:root', target: 'node:course:2' },
+    ],
+    'rule:1272:005770',
+  );
+
+  assert.deepEqual(rows, [
+    {
+      rule_id: 'rule:1272:005770',
+      parent_node_id: 'node:root',
+      child_node_id: 'node:course:1',
+      sort_order: 0,
+    },
+    {
+      rule_id: 'rule:1272:005770',
+      parent_node_id: 'node:root',
+      child_node_id: 'node:course:2',
+      sort_order: 1,
+    },
+  ]);
+});
+
 test('course_overview_v uses the newest canonical section row for availability', () => {
   const db = createSchemaDb();
 

@@ -443,23 +443,23 @@ export function makePrerequisiteRuleRow(rule) {
   };
 }
 
-export function makePrerequisiteNodeRows(nodes = []) {
+export function makePrerequisiteNodeRows(nodes = [], ruleId) {
   return nodes.map((node) => ({
-    node_id: node.node_id,
-    rule_id: node.rule_id,
+    node_id: node.id,
+    rule_id: ruleId,
     node_type: node.node_type,
-    value: node.value ?? null,
+    value: node.raw_value ?? null,
     normalized_value: node.normalized_value ?? null,
-    position_start: node.position_start ?? null,
-    position_end: node.position_end ?? null,
+    position_start: null,
+    position_end: null,
   }));
 }
 
-export function makePrerequisiteEdgeRows(edges = []) {
-  return edges.map((edge) => ({
-    rule_id: edge.rule_id,
-    parent_node_id: edge.parent_node_id,
-    child_node_id: edge.child_node_id,
-    sort_order: edge.sort_order,
+export function makePrerequisiteEdgeRows(edges = [], ruleId) {
+  return edges.map((edge, index) => ({
+    rule_id: ruleId,
+    parent_node_id: edge.source,
+    child_node_id: edge.target,
+    sort_order: index,
   }));
 }
