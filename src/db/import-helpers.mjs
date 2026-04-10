@@ -429,3 +429,42 @@ export function makeBuildingRows(packages) {
 
   return [...byCode.values()].map(({ _source, ...building }) => building);
 }
+
+export function makePersistedPrerequisiteNodeId(ruleId, nodeId) {
+  if (ruleId == null || nodeId == null) return null;
+  return `${ruleId}:${nodeId}`;
+}
+
+export function makePrerequisiteRuleRow(rule) {
+  return {
+    rule_id: rule.ruleId,
+    term_code: rule.termCode,
+    course_id: rule.courseId,
+    raw_text: rule.rawText,
+    parse_status: rule.parseStatus,
+    parse_confidence: rule.parseConfidence,
+    root_node_id: null,
+    unparsed_text: rule.unparsedText ?? null,
+  };
+}
+
+export function makePrerequisiteNodeRows(nodes = [], ruleId) {
+  return nodes.map((node) => ({
+    node_id: makePersistedPrerequisiteNodeId(ruleId, node.id),
+    rule_id: ruleId,
+    node_type: node.node_type,
+    value: node.raw_value ?? null,
+    normalized_value: node.normalized_value ?? null,
+    position_start: null,
+    position_end: null,
+  }));
+}
+
+export function makePrerequisiteEdgeRows(edges = [], ruleId) {
+  return edges.map((edge, index) => ({
+    rule_id: ruleId,
+    parent_node_id: makePersistedPrerequisiteNodeId(ruleId, edge.source),
+    child_node_id: makePersistedPrerequisiteNodeId(ruleId, edge.target),
+    sort_order: index,
+  }));
+}

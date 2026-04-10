@@ -2,6 +2,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 DROP VIEW IF EXISTS online_courses_v;
+DROP VIEW IF EXISTS prerequisite_rule_overview_v;
 DROP VIEW IF EXISTS schedule_candidates_v;
 DROP VIEW IF EXISTS schedule_planning_v;
 DROP VIEW IF EXISTS availability_v;
@@ -9,6 +10,9 @@ DROP VIEW IF EXISTS section_overview_v;
 DROP VIEW IF EXISTS course_overview_v;
 
 DROP TABLE IF EXISTS refresh_runs;
+DROP TABLE IF EXISTS prerequisite_edges;
+DROP TABLE IF EXISTS prerequisite_nodes;
+DROP TABLE IF EXISTS prerequisite_rules;
 DROP TABLE IF EXISTS package_transitions;
 DROP TABLE IF EXISTS schedule_conflicts;
 DROP TABLE IF EXISTS schedulable_packages;
@@ -46,6 +50,51 @@ CREATE TABLE courses (
   currently_taught INTEGER,
   last_taught TEXT,
   PRIMARY KEY (term_code, course_id)
+);
+
+CREATE TABLE prerequisite_rules (
+  rule_id TEXT PRIMARY KEY,
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  raw_text TEXT NOT NULL,
+  parse_status TEXT NOT NULL,
+  parse_confidence REAL NOT NULL,
+  root_node_id TEXT,
+  unparsed_text TEXT,
+  FOREIGN KEY (term_code, course_id)
+    REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (rule_id, root_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE prerequisite_nodes (
+  node_id TEXT PRIMARY KEY,
+  rule_id TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  value TEXT,
+  normalized_value TEXT,
+  position_start INTEGER,
+  position_end INTEGER,
+  UNIQUE (rule_id, node_id),
+  FOREIGN KEY (rule_id)
+    REFERENCES prerequisite_rules (rule_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE prerequisite_edges (
+  rule_id TEXT NOT NULL,
+  parent_node_id TEXT NOT NULL,
+  child_node_id TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (rule_id, parent_node_id, child_node_id),
+  FOREIGN KEY (rule_id, parent_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (rule_id, child_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE packages (
@@ -237,6 +286,9 @@ CREATE TABLE schedulable_packages (
 );
 
 CREATE INDEX idx_courses_subject ON courses(subject_code, catalog_number);
+CREATE INDEX idx_prerequisite_rules_course ON prerequisite_rules(term_code, course_id);
+CREATE INDEX idx_prerequisite_nodes_rule ON prerequisite_nodes(rule_id);
+CREATE INDEX idx_prerequisite_edges_child ON prerequisite_edges(rule_id, child_node_id);
 CREATE INDEX idx_packages_course ON packages(term_code, course_id);
 CREATE INDEX idx_packages_updated ON packages(package_last_updated DESC, package_id);
 CREATE INDEX idx_sections_course ON sections(term_code, course_id, section_type);
@@ -267,6 +319,23 @@ LEFT JOIN section_overview_v so
 GROUP BY
   c.term_code, c.subject_code, c.catalog_number, c.course_id,
   c.course_designation, c.title, c.minimum_credits, c.maximum_credits;
+
+CREATE VIEW prerequisite_rule_overview_v AS
+SELECT
+  pr.term_code,
+  c.subject_code,
+  c.catalog_number,
+  pr.course_id,
+  c.course_designation,
+  c.title,
+  pr.rule_id,
+  pr.parse_status,
+  pr.parse_confidence,
+  pr.raw_text,
+  pr.unparsed_text
+FROM prerequisite_rules pr
+JOIN courses c
+  ON c.term_code = pr.term_code AND c.course_id = pr.course_id;
 
 CREATE VIEW section_overview_v AS
 WITH ranked_section_sources AS (
