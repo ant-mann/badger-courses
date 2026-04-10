@@ -100,6 +100,8 @@ function buildUnparsedText(text, recognizedSpans) {
     remainder = remainder.replace(new RegExp(escapeRegExp(span), 'i'), ' ');
   }
 
+  const relationOnlyText = normalizeText(remainder.replace(/[(),]/g, ' '));
+
   remainder = remainder
     .replace(/[()]/g, ' ')
     .replace(/\s*,\s*/g, ', ')
@@ -108,6 +110,11 @@ function buildUnparsedText(text, recognizedSpans) {
     .replace(/(^[\s,]+|[\s,]+$)/g, ' ');
 
   const normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));
+
+  if (!normalized && /^(?:and|or)$/i.test(relationOnlyText)) {
+    return relationOnlyText.toLowerCase();
+  }
+
   return normalized || null;
 }
 

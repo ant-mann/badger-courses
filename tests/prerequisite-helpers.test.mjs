@@ -70,5 +70,22 @@ test('does not mark disconnected recognized nodes as fully parsed', () => {
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, null);
+  assert.equal(result.unparsedText, 'and');
+});
+
+test('keeps unresolved relation text for course-only partial cases', () => {
+  const result = parsePrerequisiteText('MATH 221 and MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'MATH 222'],
+  );
+  assert.equal(result.unparsedText, 'and');
 });
