@@ -63,8 +63,8 @@ CREATE TABLE prerequisite_rules (
   FOREIGN KEY (term_code, course_id)
     REFERENCES courses (term_code, course_id)
     ON DELETE CASCADE,
-  FOREIGN KEY (root_node_id)
-    REFERENCES prerequisite_nodes (node_id)
+  FOREIGN KEY (rule_id, root_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
     ON DELETE CASCADE
 );
 
@@ -76,6 +76,7 @@ CREATE TABLE prerequisite_nodes (
   normalized_value TEXT,
   position_start INTEGER,
   position_end INTEGER,
+  UNIQUE (rule_id, node_id),
   FOREIGN KEY (rule_id)
     REFERENCES prerequisite_rules (rule_id)
     ON DELETE CASCADE

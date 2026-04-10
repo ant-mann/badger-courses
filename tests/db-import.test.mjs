@@ -1055,6 +1055,32 @@ test('schema creates prerequisite graph tables and indexes', () => {
       'idx_prerequisite_nodes_rule',
       'idx_prerequisite_rules_course',
     ]);
+
+    const prerequisiteNodeForeignKey = db.prepare(`
+      SELECT id, seq, "table", "from", "to", on_delete
+      FROM pragma_foreign_key_list('prerequisite_rules')
+      WHERE "table" = 'prerequisite_nodes'
+      ORDER BY id, seq
+    `).all();
+
+    assert.deepEqual(prerequisiteNodeForeignKey, [
+      {
+        id: 0,
+        seq: 0,
+        table: 'prerequisite_nodes',
+        from: 'rule_id',
+        to: 'rule_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 0,
+        seq: 1,
+        table: 'prerequisite_nodes',
+        from: 'root_node_id',
+        to: 'node_id',
+        on_delete: 'CASCADE',
+      },
+    ]);
   } finally {
     db.close();
   }
