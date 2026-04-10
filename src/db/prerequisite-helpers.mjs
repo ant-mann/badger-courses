@@ -102,7 +102,6 @@ function buildUnparsedText(text, recognizedSpans) {
 
   remainder = remainder
     .replace(/[()]/g, ' ')
-    .replace(/\b(and|or)\b/gi, ' ')
     .replace(/\s*,\s*/g, ', ')
     .replace(/(^[\s,]+|[\s,]+$)/g, ' ');
 
@@ -150,7 +149,7 @@ export function parsePrerequisiteText(text) {
   );
 
   return createResult(
-    unparsedText ? PARSE_STATUS.PARTIAL : PARSE_STATUS.PARSED,
+    PARSE_STATUS.PARTIAL,
     unparsedText,
     nodes,
     [],

@@ -53,5 +53,19 @@ test('keeps mixed prerequisite text as partial when some clauses remain unresolv
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'ACCT I S 620'));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.match(result.unparsedText, /Accounting and Business Analysis MSB/i);
   assert.match(result.unparsedText, /Business Exchange program/i);
+});
+
+test('does not mark disconnected recognized nodes as fully parsed', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing and LAW 742', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.equal(result.unparsedText, 'and');
 });
