@@ -111,7 +111,14 @@ function stripOneOuterParenthesisPair(text) {
     }
   }
 
-  return depth === 0 ? normalizeText(normalized.slice(1, -1)) : null;
+  if (depth !== 0) {
+    return null;
+  }
+
+  return {
+    normalizedInnerText: normalizeText(normalized.slice(1, -1)),
+    rawInnerText: text.slice(text.indexOf('(') + 1, text.lastIndexOf(')')),
+  };
 }
 
 function reapplyOuterParentheses(result) {
@@ -248,9 +255,9 @@ export function parsePrerequisiteText(text) {
     return createResult(PARSE_STATUS.UNPARSED, normalizedText);
   }
 
-  const unwrappedText = stripOneOuterParenthesisPair(normalizedText);
+  const unwrappedText = stripOneOuterParenthesisPair(sourceText);
   if (unwrappedText) {
-    const innerResult = parsePrerequisiteText(unwrappedText);
+    const innerResult = parsePrerequisiteText(unwrappedText.rawInnerText);
 
     if (innerResult.parseStatus === PARSE_STATUS.PARSED) {
       return innerResult;

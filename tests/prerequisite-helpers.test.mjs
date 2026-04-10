@@ -586,6 +586,41 @@ test('preserves full rhs raw slice when simple OR fast path has an explicit subj
   );
 });
 
+test('preserves raw spacing for a parenthesized lone course leaf', () => {
+  const result = parsePrerequisiteText('(MATH   221)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.raw_value),
+    ['MATH   221'],
+  );
+});
+
+test('preserves raw spacing inside parenthesized simple OR clauses', () => {
+  const result = parsePrerequisiteText('(ITALIAN 204 or FRENCH   205)', {
+    courseDesignation: 'ITALIAN 230',
+    termCode: '1272',
+    courseId: '002230',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => ({ normalized: node.normalized_value, raw: node.raw_value })),
+    [
+      { normalized: 'ITALIAN 204', raw: 'ITALIAN 204' },
+      { normalized: 'FRENCH 205', raw: 'FRENCH   205' },
+    ],
+  );
+});
+
 test('does not fabricate a course node from slash-delimited full-course pair', () => {
   const result = parsePrerequisiteText('MATH 221/MATH 222', {
     courseDesignation: 'MATH 500',
