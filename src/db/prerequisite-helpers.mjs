@@ -83,6 +83,13 @@ function stripOneOuterParenthesisPair(text) {
   return depth === 0 ? normalizeText(normalized.slice(1, -1)) : null;
 }
 
+function reapplyOuterParentheses(result) {
+  return {
+    ...result,
+    unparsedText: result.unparsedText ? `(${result.unparsedText})` : null,
+  };
+}
+
 function formatStructuralRemainder(text) {
   const normalized = normalizeText(text);
 
@@ -199,7 +206,13 @@ export function parsePrerequisiteText(text) {
 
   const unwrappedText = stripOneOuterParenthesisPair(normalizedText);
   if (unwrappedText) {
-    return parsePrerequisiteText(unwrappedText);
+    const innerResult = parsePrerequisiteText(unwrappedText);
+
+    if (innerResult.parseStatus === PARSE_STATUS.PARSED) {
+      return innerResult;
+    }
+
+    return reapplyOuterParentheses(innerResult);
   }
 
   const simpleOrCourses = parseSimpleOrCourseClause(normalizedText);

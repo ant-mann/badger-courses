@@ -310,3 +310,15 @@ test('keeps unresolved adjacency text for adjacent course partial cases', () => 
   );
   assert.equal(result.unparsedText, '[COURSE] [COURSE]');
 });
+
+test('preserves outer grouping for parenthesized partial skeletons', () => {
+  const result = parsePrerequisiteText('(MATH 221 and consent of instructor)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'MATH 221'));
+  assert.equal(result.unparsedText, '([COURSE] and consent of instructor)');
+});
