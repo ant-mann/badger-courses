@@ -107,6 +107,22 @@ function formatStructuralRemainder(text) {
   return null;
 }
 
+function getPlaceholderForNode(node) {
+  if (node.node_type === NODE_TYPE.COURSE) {
+    return '[COURSE]';
+  }
+
+  if (node.node_type === NODE_TYPE.STANDING) {
+    return '[STANDING]';
+  }
+
+  return '[TEXT]';
+}
+
+function isSingleRecognizedPlaceholder(text) {
+  return /^(?:\[COURSE\]|\[STANDING\])$/.test(text);
+}
+
 function parseSimpleOrCourseClause(text) {
   const match = text.match(/^([A-Z][A-Z]+(?:\s+[A-Z])*)\s+(\d{3}[A-Z]?)\s+or\s+((?:[A-Z][A-Z]+(?:\s+[A-Z])*)\s+)?(\d{3}[A-Z]?)$/i);
 
@@ -155,51 +171,18 @@ function extractCourseNodes(text) {
   return matches;
 }
 
-function buildUnparsedText(text, recognizedSpans) {
-  let remainder = text;
+function buildUnparsedText(text, recognizedMatches) {
+  let skeleton = text;
 
-  for (const span of recognizedSpans) {
-    remainder = remainder.replace(new RegExp(escapeRegExp(span), 'i'), ' ');
+  for (const match of recognizedMatches) {
+    skeleton = skeleton.replace(
+      new RegExp(escapeRegExp(match.matchedText), 'i'),
+      getPlaceholderForNode(match.node),
+    );
   }
 
-  const connectiveAwareRemainder = remainder.replace(/[()]/g, ' ');
-  const leadingConnectiveNormalizedMatch = connectiveAwareRemainder.match(/^\s*((?:and|or)\b(?:\s+(?:and|or)\b)*)\s+(.+\S)\s*$/i);
-  const trailingConnectiveNormalizedMatch = connectiveAwareRemainder.match(/^\s*(.+\S)\s+((?:and|or)\b(?:\s+(?:and|or)\b)*)\s*$/i);
-  const preservedPrefix = leadingConnectiveNormalizedMatch
-    && /^[A-Za-z0-9]/.test(leadingConnectiveNormalizedMatch[2].trim())
-    ? pickNearestConnective(leadingConnectiveNormalizedMatch[1], 'prefix')
-    : null;
-  const preservedSuffix = trailingConnectiveNormalizedMatch
-    && /[A-Za-z0-9]$/.test(trailingConnectiveNormalizedMatch[1].trim())
-    ? pickNearestConnective(trailingConnectiveNormalizedMatch[2], 'suffix')
-    : null;
-
-  const structuralRemainder = formatStructuralRemainder(remainder);
-
-  remainder = remainder
-    .replace(/[()]/g, ' ')
-    .replace(/\s*,\s*/g, ', ')
-    .replace(/^(?:\s|,)*(?:(?:and|or)\b(?:\s+(?:and|or)\b)*)?(?:\s|,)+/i, '')
-    .replace(/(?:\s|,)+(?:and|or)\b(?:\s+(?:and|or)\b)*(?:\s|,)*$/i, '')
-    .replace(/(^[\s,]+|[\s,]+$)/g, ' ');
-
-  let normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));
-
-  if (normalized) {
-    if (preservedPrefix && !preservedSuffix && !normalized.toLowerCase().startsWith(`${preservedPrefix} `)) {
-      normalized = `${preservedPrefix} ${normalized}`;
-    }
-
-    if (preservedSuffix && !normalized.toLowerCase().endsWith(` ${preservedSuffix}`)) {
-      normalized = `${normalized} ${preservedSuffix}`;
-    }
-  }
-
-  if (!normalized && structuralRemainder) {
-    return structuralRemainder;
-  }
-
-  return normalized || null;
+  const normalized = normalizeText(skeleton.replace(/\s*,\s*/g, ', '));
+  return normalized === text ? null : normalized;
 }
 
 export function parsePrerequisiteText(text) {
@@ -243,15 +226,11 @@ export function parsePrerequisiteText(text) {
   const nodes = recognizedMatches.map((match) => match.node);
   const unparsedText = buildUnparsedText(
     normalizedText,
-    recognizedMatches.map((match) => match.matchedText),
+    recognizedMatches,
   );
 
-  if (recognizedMatches.length === 1 && !unparsedText) {
+  if (recognizedMatches.length === 1 && (!unparsedText || isSingleRecognizedPlaceholder(unparsedText))) {
     return createResult(PARSE_STATUS.PARSED, null, nodes, []);
-  }
-
-  if (recognizedMatches.length > 1 && !unparsedText) {
-    return createResult(PARSE_STATUS.PARTIAL, normalizedText, nodes, []);
   }
 
   return createResult(

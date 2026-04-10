@@ -55,9 +55,10 @@ test('keeps mixed prerequisite text as partial when some clauses remain unresolv
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
   assert.deepEqual(result.edges, []);
   assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
-  assert.match(result.unparsedText, /Accounting and Business Analysis MSB/i);
-  assert.match(result.unparsedText, /Business Exchange program/i);
-  assert.doesNotMatch(result.unparsedText, /^and\s+or\b/i);
+  assert.equal(
+    result.unparsedText,
+    '[STANDING] and ([COURSE] or [COURSE]), declared in Business: Accounting and Business Analysis MSB, or declared in graduate Business Exchange program',
+  );
 });
 
 test('does not mark disconnected recognized nodes as fully parsed', () => {
@@ -70,7 +71,7 @@ test('does not mark disconnected recognized nodes as fully parsed', () => {
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, 'and');
+  assert.equal(result.unparsedText, '[STANDING] and [COURSE]');
 });
 
 test('keeps unresolved relation text for course-only partial cases', () => {
@@ -87,7 +88,7 @@ test('keeps unresolved relation text for course-only partial cases', () => {
       .map((node) => node.normalized_value),
     ['MATH 221', 'MATH 222'],
   );
-  assert.equal(result.unparsedText, 'and');
+  assert.equal(result.unparsedText, '[COURSE] and [COURSE]');
 });
 
 test('keeps unresolved repeated OR text for multi-course partial cases', () => {
@@ -104,7 +105,7 @@ test('keeps unresolved repeated OR text for multi-course partial cases', () => {
       .map((node) => node.normalized_value),
     ['MATH 221', 'MATH 222', 'MATH 223'],
   );
-  assert.equal(result.unparsedText, 'or or');
+  assert.equal(result.unparsedText, '[COURSE] or [COURSE] or [COURSE]');
 });
 
 test('keeps unresolved separator text for standing comma course partial cases', () => {
@@ -117,7 +118,7 @@ test('keeps unresolved separator text for standing comma course partial cases', 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, ',');
+  assert.equal(result.unparsedText, '[STANDING], [COURSE]');
 });
 
 test('keeps unresolved grouping text for standing parenthetical course partial cases', () => {
@@ -130,7 +131,7 @@ test('keeps unresolved grouping text for standing parenthetical course partial c
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, '( )');
+  assert.equal(result.unparsedText, '[STANDING] ([COURSE])');
 });
 
 test('keeps connective text when opaque text precedes a recognized course', () => {
@@ -147,7 +148,7 @@ test('keeps connective text when opaque text precedes a recognized course', () =
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
-  assert.equal(result.unparsedText, 'Declared in program X or');
+  assert.equal(result.unparsedText, 'Declared in program X or [COURSE]');
 });
 
 test('keeps connective text when opaque text follows a recognized course', () => {
@@ -164,7 +165,7 @@ test('keeps connective text when opaque text follows a recognized course', () =>
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
-  assert.equal(result.unparsedText, 'and consent of instructor');
+  assert.equal(result.unparsedText, '[COURSE] and consent of instructor');
 });
 
 test('treats a lone recognized course as a fully parsed leaf', () => {
@@ -199,7 +200,7 @@ test('keeps connective text for trailing parenthesized opaque partials', () => {
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
-  assert.equal(result.unparsedText, 'and placement test');
+  assert.equal(result.unparsedText, '[COURSE] and (placement test)');
 });
 
 test('keeps connective text for leading parenthesized opaque partials', () => {
@@ -216,7 +217,7 @@ test('keeps connective text for leading parenthesized opaque partials', () => {
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
-  assert.equal(result.unparsedText, 'placement test or');
+  assert.equal(result.unparsedText, '(placement test) or [COURSE]');
 });
 
 test('avoids combining incompatible connectives in mixed partial leftovers', () => {
@@ -229,8 +230,7 @@ test('avoids combining incompatible connectives in mixed partial leftovers', () 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, 'or consent of instructor');
-  assert.doesNotMatch(result.unparsedText, /^and\s+or\b/i);
+  assert.equal(result.unparsedText, '[STANDING] and ([COURSE] or consent of instructor)');
 });
 
 test('treats a parenthesized lone course as a parsed leaf', () => {
@@ -291,7 +291,7 @@ test('keeps unresolved adjacency text for standing plus course partial cases', (
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, 'Graduate/professional standing LAW 742');
+  assert.equal(result.unparsedText, '[STANDING] [COURSE]');
 });
 
 test('keeps unresolved adjacency text for adjacent course partial cases', () => {
@@ -308,5 +308,5 @@ test('keeps unresolved adjacency text for adjacent course partial cases', () => 
       .map((node) => node.normalized_value),
     ['MATH 221', 'LAW 742'],
   );
-  assert.equal(result.unparsedText, 'MATH 221 LAW 742');
+  assert.equal(result.unparsedText, '[COURSE] [COURSE]');
 });
