@@ -103,6 +103,8 @@ function buildUnparsedText(text, recognizedSpans) {
   remainder = remainder
     .replace(/[()]/g, ' ')
     .replace(/\s*,\s*/g, ', ')
+    .replace(/^(?:\s|,)*(?:(?:and|or)\b(?:\s+(?:and|or)\b)*)?(?:\s|,)+/i, '')
+    .replace(/(?:\s|,)+(?:and|or)\b(?:\s+(?:and|or)\b)*(?:\s|,)*$/i, '')
     .replace(/(^[\s,]+|[\s,]+$)/g, ' ');
 
   const normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));

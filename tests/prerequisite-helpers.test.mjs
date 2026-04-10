@@ -53,8 +53,11 @@ test('keeps mixed prerequisite text as partial when some clauses remain unresolv
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'ACCT I S 620'));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.deepEqual(result.edges, []);
+  assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
   assert.match(result.unparsedText, /Accounting and Business Analysis MSB/i);
   assert.match(result.unparsedText, /Business Exchange program/i);
+  assert.doesNotMatch(result.unparsedText, /^and\s+or\b/i);
 });
 
 test('does not mark disconnected recognized nodes as fully parsed', () => {
@@ -67,5 +70,5 @@ test('does not mark disconnected recognized nodes as fully parsed', () => {
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
-  assert.equal(result.unparsedText, 'and');
+  assert.equal(result.unparsedText, null);
 });
