@@ -434,6 +434,55 @@ test('does not fabricate a tail-token course inside mixed expressions', () => {
   assert.equal(result.unparsedText, 'COMP SCI 200 and [COURSE]');
 });
 
+test('replaces placeholders at accepted match spans instead of repeated substring text', () => {
+  const result = parsePrerequisiteText('COMP SCI 200 and SCI 200', {
+    courseDesignation: 'COMP SCI 300',
+    termCode: '1272',
+    courseId: '003300',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['SCI 200'],
+  );
+  assert.equal(result.unparsedText, 'COMP SCI 200 and [COURSE]');
+});
+
+test('preserves raw spacing for a lone recognized course', () => {
+  const result = parsePrerequisiteText('MATH   221', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.raw_value),
+    ['MATH   221'],
+  );
+});
+
+test('preserves raw spacing in the simple OR fast path', () => {
+  const result = parsePrerequisiteText('ITALIAN   204 or 205', {
+    courseDesignation: 'ITALIAN 230',
+    termCode: '1272',
+    courseId: '002230',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.raw_value),
+    ['ITALIAN   204', '205'],
+  );
+});
+
 test('does not fabricate a course node from slash-delimited shared-subject numbers', () => {
   const result = parsePrerequisiteText('STAT 240/340', {
     courseDesignation: 'STAT 500',

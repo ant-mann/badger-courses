@@ -41,6 +41,51 @@ function normalizeText(text) {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+function buildNormalizedTextWithOffsets(sourceText) {
+  let normalizedText = '';
+  const sourceStarts = [];
+  const sourceEnds = [];
+  let index = 0;
+
+  while (index < sourceText.length && /\s/.test(sourceText[index])) {
+    index += 1;
+  }
+
+  while (index < sourceText.length) {
+    const segmentStart = index;
+    while (index < sourceText.length && !/\s/.test(sourceText[index])) {
+      index += 1;
+    }
+
+    const segment = sourceText.slice(segmentStart, index);
+    for (let segmentIndex = 0; segmentIndex < segment.length; segmentIndex += 1) {
+      normalizedText += segment[segmentIndex];
+      sourceStarts.push(segmentStart + segmentIndex);
+      sourceEnds.push(segmentStart + segmentIndex + 1);
+    }
+
+    const whitespaceStart = index;
+    while (index < sourceText.length && /\s/.test(sourceText[index])) {
+      index += 1;
+    }
+
+    if (index < sourceText.length) {
+      normalizedText += ' ';
+      sourceStarts.push(whitespaceStart);
+      sourceEnds.push(index);
+    }
+  }
+
+  return { normalizedText, sourceStarts, sourceEnds };
+}
+
+function getSourceSlice(sourceText, offsets, normalizedIndex, normalizedLength) {
+  const sourceStart = offsets.sourceStarts[normalizedIndex];
+  const endOffsetIndex = normalizedIndex + normalizedLength - 1;
+  const sourceEnd = offsets.sourceEnds[endOffsetIndex];
+  return sourceText.slice(sourceStart, sourceEnd);
+}
+
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -96,7 +141,7 @@ function isSingleRecognizedPlaceholder(text) {
   return /^(?:\[COURSE\]|\[STANDING\])$/.test(text);
 }
 
-function parseSimpleOrCourseClause(text) {
+function parseSimpleOrCourseClause(text, sourceText, offsets) {
   const match = text.match(/^([A-Z][A-Z]+(?:\s+[A-Z])*)\s+(\d{3}[A-Z]?)\s+or\s+((?:[A-Z][A-Z]+(?:\s+[A-Z])*)\s+)?(\d{3}[A-Z]?)$/i);
 
   if (!match) {
@@ -107,31 +152,36 @@ function parseSimpleOrCourseClause(text) {
   const leftNumber = match[2].toUpperCase();
   const rightSubject = normalizeText((match[3] ?? match[1]).toUpperCase());
   const rightNumber = match[4].toUpperCase();
+  const leftRawLength = match[0].indexOf('or') - 1;
+  const leftRaw = getSourceSlice(sourceText, offsets, 0, leftRawLength);
+  const rightRawStart = match[0].lastIndexOf(match[4]);
+  const rightRaw = getSourceSlice(sourceText, offsets, rightRawStart, match[4].length);
 
   return {
     left: `${leftSubject} ${leftNumber}`,
     right: `${rightSubject} ${rightNumber}`,
-    leftRaw: `${match[1]} ${match[2]}`,
-    rightRaw: `${match[3] ?? ''}${match[4]}`.trim(),
+    leftRaw,
+    rightRaw,
   };
 }
 
-function extractStandingNodes(text) {
+function extractStandingNodes(text, sourceText, offsets) {
   const matches = [];
   const standingPattern = /\bgraduate\/professional standing\b/gi;
 
   for (const standingMatch of text.matchAll(standingPattern)) {
+    const matchedText = getSourceSlice(sourceText, offsets, standingMatch.index ?? -1, standingMatch[0].length);
     matches.push({
       index: standingMatch.index ?? -1,
-      matchedText: standingMatch[0],
-      node: createNode(NODE_TYPE.STANDING, 'Graduate/professional standing', standingMatch[0]),
+      matchedText,
+      node: createNode(NODE_TYPE.STANDING, 'Graduate/professional standing', matchedText),
     });
   }
 
   return matches;
 }
 
-function extractCourseNodes(text) {
+function extractCourseNodes(text, sourceText, offsets) {
   const matches = [];
 
   for (const match of text.matchAll(COURSE_REFERENCE_PATTERN)) {
@@ -145,7 +195,7 @@ function extractCourseNodes(text) {
       continue;
     }
 
-    const matchedText = match[0];
+    const matchedText = getSourceSlice(sourceText, offsets, matchIndex, match[0].length);
     const trailingText = text.slice(matchIndex + matchedText.length);
     if (/^\s*\//.test(trailingText)) {
       continue;
@@ -157,7 +207,7 @@ function extractCourseNodes(text) {
     matches.push({
       index: matchIndex,
       matchedText,
-      node: createNode(NODE_TYPE.COURSE, `${subject} ${number}`, match[0]),
+      node: createNode(NODE_TYPE.COURSE, `${subject} ${number}`, matchedText),
     });
   }
 
@@ -165,14 +215,16 @@ function extractCourseNodes(text) {
 }
 
 function buildUnparsedText(text, recognizedMatches) {
-  let skeleton = text;
+  let skeleton = '';
+  let cursor = 0;
 
   for (const match of recognizedMatches) {
-    skeleton = skeleton.replace(
-      new RegExp(escapeRegExp(match.matchedText), 'i'),
-      getPlaceholderForNode(match.node),
-    );
+    skeleton += text.slice(cursor, match.index);
+    skeleton += getPlaceholderForNode(match.node);
+    cursor = match.index + match.matchedText.length;
   }
+
+  skeleton += text.slice(cursor);
 
   const normalized = normalizeText(skeleton.replace(/\s*,\s*/g, ', '));
   return normalized === text ? null : normalized;
@@ -180,7 +232,9 @@ function buildUnparsedText(text, recognizedMatches) {
 
 export function parsePrerequisiteText(text) {
   nextNodeId = 1;
-  const normalizedText = normalizeText(text ?? '');
+  const sourceText = text ?? '';
+  const offsets = buildNormalizedTextWithOffsets(sourceText);
+  const normalizedText = offsets.normalizedText;
 
   if (!normalizedText) {
     return createResult(PARSE_STATUS.UNPARSED, null);
@@ -201,7 +255,7 @@ export function parsePrerequisiteText(text) {
     return reapplyOuterParentheses(innerResult);
   }
 
-  const simpleOrCourses = parseSimpleOrCourseClause(normalizedText);
+  const simpleOrCourses = parseSimpleOrCourseClause(normalizedText, sourceText, offsets);
 
   if (simpleOrCourses) {
     const orNode = createNode(NODE_TYPE.OR, 'OR', 'or');
@@ -214,8 +268,8 @@ export function parsePrerequisiteText(text) {
     ]);
   }
 
-  const standingMatches = extractStandingNodes(normalizedText);
-  const courseMatches = extractCourseNodes(normalizedText);
+  const standingMatches = extractStandingNodes(normalizedText, sourceText, offsets);
+  const courseMatches = extractCourseNodes(normalizedText, sourceText, offsets);
   const recognizedMatches = [...standingMatches, ...courseMatches]
     .sort((left, right) => left.index - right.index);
 
