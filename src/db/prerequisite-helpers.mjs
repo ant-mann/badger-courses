@@ -124,13 +124,18 @@ function buildUnparsedText(text, recognizedSpans) {
     remainder = remainder.replace(new RegExp(escapeRegExp(span), 'i'), ' ');
   }
 
+  const connectiveAwareRemainder = remainder.replace(/[()]/g, ' ');
   const leadingConnectiveMatch = remainder.match(/^\s*((?:and|or)\b(?:\s+(?:and|or)\b)*)\s+(.+\S)\s*$/i);
   const trailingConnectiveMatch = remainder.match(/^\s*(.+\S)\s+((?:and|or)\b(?:\s+(?:and|or)\b)*)\s*$/i);
-  const preservedPrefix = leadingConnectiveMatch && /^[A-Za-z0-9]/.test(leadingConnectiveMatch[2].trim())
-    ? normalizeText(leadingConnectiveMatch[1]).toLowerCase()
+  const leadingConnectiveNormalizedMatch = connectiveAwareRemainder.match(/^\s*((?:and|or)\b(?:\s+(?:and|or)\b)*)\s+(.+\S)\s*$/i);
+  const trailingConnectiveNormalizedMatch = connectiveAwareRemainder.match(/^\s*(.+\S)\s+((?:and|or)\b(?:\s+(?:and|or)\b)*)\s*$/i);
+  const preservedPrefix = (leadingConnectiveNormalizedMatch || leadingConnectiveMatch)
+    && /^[A-Za-z0-9]/.test((leadingConnectiveNormalizedMatch || leadingConnectiveMatch)[2].trim())
+    ? normalizeText((leadingConnectiveNormalizedMatch || leadingConnectiveMatch)[1]).toLowerCase()
     : null;
-  const preservedSuffix = trailingConnectiveMatch && /[A-Za-z0-9]$/.test(trailingConnectiveMatch[1].trim())
-    ? normalizeText(trailingConnectiveMatch[2]).toLowerCase()
+  const preservedSuffix = (trailingConnectiveNormalizedMatch || trailingConnectiveMatch)
+    && /[A-Za-z0-9]$/.test((trailingConnectiveNormalizedMatch || trailingConnectiveMatch)[1].trim())
+    ? normalizeText((trailingConnectiveNormalizedMatch || trailingConnectiveMatch)[2]).toLowerCase()
     : null;
 
   const structuralRemainder = formatStructuralRemainder(remainder);

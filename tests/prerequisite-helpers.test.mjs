@@ -184,3 +184,37 @@ test('treats a lone recognized course as a fully parsed leaf', () => {
   assert.equal(result.unparsedText, null);
   assert.deepEqual(result.edges, []);
 });
+
+test('keeps connective text for trailing parenthesized opaque partials', () => {
+  const result = parsePrerequisiteText('MATH 221 and (placement test)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221'],
+  );
+  assert.equal(result.unparsedText, 'and placement test');
+});
+
+test('keeps connective text for leading parenthesized opaque partials', () => {
+  const result = parsePrerequisiteText('(placement test) or MATH 221', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221'],
+  );
+  assert.equal(result.unparsedText, 'placement test or');
+});
