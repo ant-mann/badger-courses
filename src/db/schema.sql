@@ -2,6 +2,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 DROP VIEW IF EXISTS online_courses_v;
+DROP VIEW IF EXISTS prerequisite_rule_overview_v;
 DROP VIEW IF EXISTS schedule_candidates_v;
 DROP VIEW IF EXISTS schedule_planning_v;
 DROP VIEW IF EXISTS availability_v;
@@ -318,6 +319,23 @@ LEFT JOIN section_overview_v so
 GROUP BY
   c.term_code, c.subject_code, c.catalog_number, c.course_id,
   c.course_designation, c.title, c.minimum_credits, c.maximum_credits;
+
+CREATE VIEW prerequisite_rule_overview_v AS
+SELECT
+  pr.term_code,
+  c.subject_code,
+  c.catalog_number,
+  pr.course_id,
+  c.course_designation,
+  c.title,
+  pr.rule_id,
+  pr.parse_status,
+  pr.parse_confidence,
+  pr.raw_text,
+  pr.unparsed_text
+FROM prerequisite_rules pr
+JOIN courses c
+  ON c.term_code = pr.term_code AND c.course_id = pr.course_id;
 
 CREATE VIEW section_overview_v AS
 WITH ranked_section_sources AS (

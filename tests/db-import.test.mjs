@@ -62,6 +62,7 @@ function buildCourseDbFixture({ courses, packageSnapshot }) {
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
@@ -653,6 +654,7 @@ async function loadBuildCourseDbModule() {
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
@@ -992,7 +994,7 @@ test('summarizeAvailability marks waitlisted or full rows correctly', async () =
 });
 
 test('makePrerequisiteRuleRow maps a parsed prerequisite rule into one prerequisite_rules row', async () => {
-  const { makePrerequisiteRuleRow } = await loadHelpers();
+  const { makePrerequisiteRuleRow, makePersistedPrerequisiteNodeId } = await loadHelpers();
   const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
   const parsed = parsePrerequisiteText('MATH 222 or 276');
 
@@ -1014,9 +1016,14 @@ test('makePrerequisiteRuleRow maps a parsed prerequisite rule into one prerequis
     raw_text: 'MATH 222 or 276',
     parse_status: 'parsed',
     parse_confidence: 0.94,
-    root_node_id: 'rule:1272:005770:node-1',
+    root_node_id: null,
     unparsed_text: null,
   });
+
+  assert.equal(
+    makePersistedPrerequisiteNodeId('rule:1272:005770', parsed.nodes[0]?.id),
+    'rule:1272:005770:node-1',
+  );
 });
 
 test('makePrerequisiteNodeRows maps parser nodes into prerequisite_nodes rows', async () => {
@@ -1198,6 +1205,7 @@ test('prerequisite helper rows from separate parser results coexist without node
 test('prerequisite helper rows insert cleanly through the schema when root_node_id is set after nodes exist', async () => {
   const {
     makeCourseRow,
+    makePersistedPrerequisiteNodeId,
     makePrerequisiteRuleRow,
     makePrerequisiteNodeRows,
     makePrerequisiteEdgeRows,
@@ -1245,7 +1253,7 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
         @rule_id, @term_code, @course_id, @raw_text, @parse_status,
         @parse_confidence, @root_node_id, @unparsed_text
       )
-    `).run({ ...ruleRow, root_node_id: null });
+    `).run(ruleRow);
 
     const insertNode = db.prepare(`
       INSERT INTO prerequisite_nodes (
@@ -1274,7 +1282,7 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
       UPDATE prerequisite_rules
       SET root_node_id = ?
       WHERE rule_id = ?
-    `).run(ruleRow.root_node_id, ruleRow.rule_id);
+    `).run(makePersistedPrerequisiteNodeId(ruleRow.rule_id, parsed.nodes[0]?.id ?? null), ruleRow.rule_id);
 
     const persistedRule = db.prepare(`
       SELECT rule_id, term_code, course_id, root_node_id, parse_status
@@ -1483,6 +1491,294 @@ test('schema creates prerequisite graph tables and indexes', () => {
     ]);
   } finally {
     db.close();
+  }
+});
+
+test('build-course-db materializes prerequisite graph rows for parsed and partial prerequisite text', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005770',
+          subjectCode: '302',
+          catalogNumber: '577',
+          courseDesignation: 'COMP SCI 577',
+          title: 'Algorithms for Large Data',
+        }),
+        enrollmentPrerequisites: 'MATH 222 or 276',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005771',
+          subjectCode: '302',
+          catalogNumber: '578',
+          courseDesignation: 'COMP SCI 578',
+          title: 'Mixed Requirement Course',
+        }),
+        enrollmentPrerequisites: 'MATH 222 and graduate/professional standing',
+      },
+      makeCourse({
+        termCode: '1272',
+        courseId: '005772',
+        subjectCode: '302',
+        catalogNumber: '579',
+        courseDesignation: 'COMP SCI 579',
+        title: 'No Prereq Course',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005770' },
+          packages: [
+            {
+              id: 'cs577-prereq',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005770',
+              enrollmentClassNumber: 55770,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 2, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 2, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 18 },
+              sections: [],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005771' },
+          packages: [
+            {
+              id: 'cs578-prereq',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005771',
+              enrollmentClassNumber: 55771,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 3, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 3, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 17 },
+              sections: [],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005772' },
+          packages: [
+            {
+              id: 'cs579-prereq',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005772',
+              enrollmentClassNumber: 55772,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 4, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 4, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 16 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const rules = fixture.db.prepare(`
+      SELECT course_id, parse_status, parse_confidence, raw_text, root_node_id, unparsed_text
+      FROM prerequisite_rules
+      ORDER BY course_id
+    `).all();
+    const parsedNodes = fixture.db.prepare(`
+      SELECT node_type, value, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:005770');
+    const partialNodes = fixture.db.prepare(`
+      SELECT node_type, value, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:005771');
+    const parsedEdges = fixture.db.prepare(`
+      SELECT parent_node_id, child_node_id, sort_order
+      FROM prerequisite_edges
+      WHERE rule_id = ?
+      ORDER BY sort_order
+    `).all('rule:1272:005770');
+    const overviewRows = fixture.db.prepare(`
+      SELECT
+        term_code,
+        subject_code,
+        catalog_number,
+        course_id,
+        course_designation,
+        title,
+        rule_id,
+        parse_status,
+        parse_confidence,
+        raw_text,
+        unparsed_text
+      FROM prerequisite_rule_overview_v
+      ORDER BY course_id
+    `).all();
+
+    assert.deepEqual(rules, [
+      {
+        course_id: '005770',
+        parse_status: 'parsed',
+        parse_confidence: 1,
+        raw_text: 'MATH 222 or 276',
+        root_node_id: 'rule:1272:005770:node-1',
+        unparsed_text: null,
+      },
+      {
+        course_id: '005771',
+        parse_status: 'partial',
+        parse_confidence: 0.5,
+        raw_text: 'MATH 222 and graduate/professional standing',
+        root_node_id: null,
+        unparsed_text: '[COURSE] and [STANDING]',
+      },
+    ]);
+    assert.deepEqual(parsedNodes, [
+      { node_type: 'OR', value: 'or', normalized_value: 'OR' },
+      { node_type: 'COURSE', value: 'MATH 222', normalized_value: 'MATH 222' },
+      { node_type: 'COURSE', value: '276', normalized_value: 'MATH 276' },
+    ]);
+    assert.deepEqual(
+      [...partialNodes].sort((left, right) => left.node_type.localeCompare(right.node_type)),
+      [
+        { node_type: 'COURSE', value: 'MATH 222', normalized_value: 'MATH 222' },
+        {
+          node_type: 'STANDING',
+          value: 'graduate/professional standing',
+          normalized_value: 'Graduate/professional standing',
+        },
+      ],
+    );
+    assert.deepEqual(parsedEdges, [
+      {
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-2',
+        sort_order: 0,
+      },
+      {
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-3',
+        sort_order: 1,
+      },
+    ]);
+    assert.deepEqual(overviewRows, [
+      {
+        term_code: '1272',
+        subject_code: '302',
+        catalog_number: '577',
+        course_id: '005770',
+        course_designation: 'COMP SCI 577',
+        title: 'Algorithms for Large Data',
+        rule_id: 'rule:1272:005770',
+        parse_status: 'parsed',
+        parse_confidence: 1,
+        raw_text: 'MATH 222 or 276',
+        unparsed_text: null,
+      },
+      {
+        term_code: '1272',
+        subject_code: '302',
+        catalog_number: '578',
+        course_id: '005771',
+        course_designation: 'COMP SCI 578',
+        title: 'Mixed Requirement Course',
+        rule_id: 'rule:1272:005771',
+        parse_status: 'partial',
+        parse_confidence: 0.5,
+        raw_text: 'MATH 222 and graduate/professional standing',
+        unparsed_text: '[COURSE] and [STANDING]',
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db preserves placeholder-shaped unparsed text for mixed real prerequisite clauses', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '007724',
+          subjectCode: '232',
+          catalogNumber: '724',
+          courseDesignation: 'ACCT I S 724',
+          title: 'Accounting Analytics Seminar',
+        }),
+        enrollmentPrerequisites:
+          'Graduate/professional standing and (ACCT I S 620 or LAW 742), declared in Business: Accounting and Business Analysis MSB, or declared in graduate Business Exchange program',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '232', courseId: '007724' },
+          packages: [
+            {
+              id: 'acct724-prereq',
+              termCode: '1272',
+              subjectCode: '232',
+              courseId: '007724',
+              enrollmentClassNumber: 77240,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const rule = fixture.db.prepare(`
+      SELECT parse_status, parse_confidence, unparsed_text
+      FROM prerequisite_rules
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '007724');
+    const nodes = fixture.db.prepare(`
+      SELECT node_type, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:007724');
+
+    assert.deepEqual(rule, {
+      parse_status: 'partial',
+      parse_confidence: 0.5,
+      unparsed_text:
+        '[STANDING] and ([COURSE] or [COURSE]), declared in Business: Accounting and Business Analysis MSB, or declared in graduate Business Exchange program',
+    });
+    assert.deepEqual(
+      nodes.map((node) => node.node_type),
+      ['STANDING', 'COURSE', 'COURSE'],
+    );
+    assert.deepEqual(
+      nodes.filter((node) => node.node_type === 'COURSE').map((node) => node.normalized_value).sort(),
+      ['ACCT I S 620', 'LAW 742'],
+    );
+  } finally {
+    fixture.cleanup();
   }
 });
 
@@ -3853,6 +4149,7 @@ test('build-course-db can rebuild an existing database file after adding schedul
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 

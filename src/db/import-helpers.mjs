@@ -430,7 +430,7 @@ export function makeBuildingRows(packages) {
   return [...byCode.values()].map(({ _source, ...building }) => building);
 }
 
-function makePersistedPrerequisiteNodeId(ruleId, nodeId) {
+export function makePersistedPrerequisiteNodeId(ruleId, nodeId) {
   if (ruleId == null || nodeId == null) return null;
   return `${ruleId}:${nodeId}`;
 }
@@ -443,7 +443,7 @@ export function makePrerequisiteRuleRow(rule) {
     raw_text: rule.rawText,
     parse_status: rule.parseStatus,
     parse_confidence: rule.parseConfidence,
-    root_node_id: makePersistedPrerequisiteNodeId(rule.ruleId, rule.rootNodeId),
+    root_node_id: null,
     unparsed_text: rule.unparsedText ?? null,
   };
 }

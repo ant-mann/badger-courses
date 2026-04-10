@@ -11,10 +11,15 @@ import {
   makeInstructorRows,
   makeMeetingRows,
   makeInstructorKey,
+  makePersistedPrerequisiteNodeId,
   makePackageRow,
+  makePrerequisiteEdgeRows,
+  makePrerequisiteNodeRows,
+  makePrerequisiteRuleRow,
   mergeInstructorRecords,
   makeSectionRows,
 } from './import-helpers.mjs';
+import { PARSE_STATUS, parsePrerequisiteText } from './prerequisite-helpers.mjs';
 import {
   SCHEDULE_TIMEZONE,
   countBits,
@@ -36,6 +41,55 @@ const coursesPath = path.join(repoRoot, 'data', 'fall-2026-courses.json');
 const packageSnapshotPath = path.join(repoRoot, 'data', 'fall-2026-enrollment-packages.json');
 const dbPath = path.join(repoRoot, 'data', 'fall-2026.sqlite');
 const schemaPath = path.join(__dirname, 'schema.sql');
+
+function getPrerequisiteParseConfidence(parseStatus) {
+  if (parseStatus === PARSE_STATUS.PARSED) return 1;
+  if (parseStatus === PARSE_STATUS.PARTIAL) return 0.5;
+  return 0;
+}
+
+function buildPrerequisiteRows(courseRows) {
+  const rules = [];
+  const nodes = [];
+  const edges = [];
+  const rootUpdates = [];
+
+  for (const courseRow of courseRows) {
+    const rawText = courseRow.enrollment_prerequisites?.trim();
+    if (!rawText) continue;
+
+    const parsed = parsePrerequisiteText(rawText);
+    const ruleId = `rule:${courseRow.term_code}:${courseRow.course_id}`;
+    const rootNodeId =
+      parsed.parseStatus === PARSE_STATUS.PARSED && parsed.nodes.length > 0
+        ? parsed.nodes[0].id
+        : null;
+
+    rules.push(
+      makePrerequisiteRuleRow({
+        ruleId,
+        termCode: courseRow.term_code,
+        courseId: courseRow.course_id,
+        rawText,
+        parseStatus: parsed.parseStatus,
+        parseConfidence: getPrerequisiteParseConfidence(parsed.parseStatus),
+        rootNodeId,
+        unparsedText: parsed.unparsedText,
+      }),
+    );
+    nodes.push(...makePrerequisiteNodeRows(parsed.nodes, ruleId));
+    edges.push(...makePrerequisiteEdgeRows(parsed.edges, ruleId));
+
+    if (rootNodeId) {
+      rootUpdates.push({
+        rule_id: ruleId,
+        root_node_id: makePersistedPrerequisiteNodeId(ruleId, rootNodeId),
+      });
+    }
+  }
+
+  return { rules, nodes, edges, rootUpdates };
+}
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -1071,6 +1125,7 @@ export function buildCourseDatabase({
   );
   const sourceTermCode = packageSnapshot.termCode ?? courses[0]?.termCode ?? mergedPackageRecords[0]?.termCode ?? 'unknown';
   const packageMetadata = buildPackageMetadata(mergedPackageRecords, courseRecordsByKey);
+  const prerequisiteRows = buildPrerequisiteRows(courseRows);
 
   fs.mkdirSync(path.dirname(outputDbPath), { recursive: true });
 
@@ -1155,9 +1210,41 @@ export function buildCourseDatabase({
       @snapshot_run_at, @last_refreshed_at, @source_term_code, @snapshot_kind
     )
     `);
+    const insertPrerequisiteRule = db.prepare(`
+    INSERT INTO prerequisite_rules (
+      rule_id, term_code, course_id, raw_text, parse_status,
+      parse_confidence, root_node_id, unparsed_text
+    ) VALUES (
+      @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+      @parse_confidence, @root_node_id, @unparsed_text
+    )
+    `);
+    const insertPrerequisiteNode = db.prepare(`
+    INSERT INTO prerequisite_nodes (
+      node_id, rule_id, node_type, value, normalized_value, position_start, position_end
+    ) VALUES (
+      @node_id, @rule_id, @node_type, @value, @normalized_value, @position_start, @position_end
+    )
+    `);
+    const insertPrerequisiteEdge = db.prepare(`
+    INSERT INTO prerequisite_edges (
+      rule_id, parent_node_id, child_node_id, sort_order
+    ) VALUES (
+      @rule_id, @parent_node_id, @child_node_id, @sort_order
+    )
+    `);
+    const updatePrerequisiteRuleRoot = db.prepare(`
+    UPDATE prerequisite_rules
+    SET root_node_id = @root_node_id
+    WHERE rule_id = @rule_id
+    `);
 
     const insertAll = db.transaction(() => {
       for (const row of courseRows) insertCourse.run(row);
+      for (const row of prerequisiteRows.rules) insertPrerequisiteRule.run(row);
+      for (const row of prerequisiteRows.nodes) insertPrerequisiteNode.run(row);
+      for (const row of prerequisiteRows.edges) insertPrerequisiteEdge.run(row);
+      for (const row of prerequisiteRows.rootUpdates) updatePrerequisiteRuleRoot.run(row);
       for (const row of packageRows) insertPackage.run(row);
       for (const row of sectionRows) insertSection.run(row);
       for (const row of buildingRows) insertBuilding.run(row);
