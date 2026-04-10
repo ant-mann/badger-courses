@@ -621,6 +621,32 @@ test('preserves raw spacing inside parenthesized simple OR clauses', () => {
   );
 });
 
+test('does not emit a trailing course node for unresolved subject OR alternatives', () => {
+  const result = parsePrerequisiteText('MATH or STAT 309', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'MATH or STAT 309');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('does not emit a trailing course node for unresolved subject AND alternatives', () => {
+  const result = parsePrerequisiteText('MATH and STAT 309', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'MATH and STAT 309');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
 test('does not fabricate a course node from slash-delimited full-course pair', () => {
   const result = parsePrerequisiteText('MATH 221/MATH 222', {
     courseDesignation: 'MATH 500',

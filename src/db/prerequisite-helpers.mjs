@@ -205,6 +205,10 @@ function extractCourseNodes(text, sourceText, offsets) {
       continue;
     }
 
+    if (/\b[A-Z][A-Z]+(?:\s+[A-Z]+)*\s+(?:and|or)\s*$/.test(leadingText)) {
+      continue;
+    }
+
     const matchedText = getSourceSlice(sourceText, offsets, matchIndex, match[0].length);
     const trailingText = text.slice(matchIndex + match[0].length);
     if (/^\s*\//.test(trailingText)) {
