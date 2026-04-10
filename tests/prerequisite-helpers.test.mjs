@@ -23,6 +23,12 @@ test('parses simple OR course prerequisite into a graph', () => {
       .map((node) => node.normalized_value),
     ['ITALIAN 204', 'ITALIAN 205'],
   );
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.raw_value),
+    ['ITALIAN 204', '205'],
+  );
   assert.equal(result.edges.length, 2);
 });
 
@@ -72,6 +78,21 @@ test('does not mark disconnected recognized nodes as fully parsed', () => {
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
   assert.equal(result.unparsedText, '[STANDING] and [COURSE]');
+});
+
+test('keeps partial nodes in source order', () => {
+  const result = parsePrerequisiteText('LAW 742 and Graduate/professional standing', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.unparsedText, '[COURSE] and [STANDING]');
+  assert.deepEqual(
+    result.nodes.map((node) => node.node_type),
+    [NODE_TYPE.COURSE, NODE_TYPE.STANDING],
+  );
 });
 
 test('keeps unresolved relation text for course-only partial cases', () => {

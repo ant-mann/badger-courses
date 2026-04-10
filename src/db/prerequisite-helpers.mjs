@@ -45,16 +45,6 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function pickNearestConnective(connectives, side) {
-  const parts = normalizeText(connectives).toLowerCase().split(' ');
-
-  if (parts.length === 0) {
-    return null;
-  }
-
-  return side === 'prefix' ? parts.at(-1) : parts[0];
-}
-
 function stripOneOuterParenthesisPair(text) {
   const normalized = normalizeText(text);
 
@@ -90,30 +80,6 @@ function reapplyOuterParentheses(result) {
   };
 }
 
-function formatStructuralRemainder(text) {
-  const normalized = normalizeText(text);
-
-  if (!normalized) {
-    return null;
-  }
-
-  const relationOnlyText = normalizeText(text.replace(/[(),]/g, ' '));
-
-  if (/^(?:and|or)(?:\s+(?:and|or))*$/i.test(relationOnlyText)) {
-    return relationOnlyText.toLowerCase();
-  }
-
-  if (/^,+$/.test(normalized.replace(/\s+/g, ''))) {
-    return ',';
-  }
-
-  if (/^[()\s]+$/.test(normalized) && normalized.includes('(') && normalized.includes(')')) {
-    return '( )';
-  }
-
-  return null;
-}
-
 function getPlaceholderForNode(node) {
   if (node.node_type === NODE_TYPE.COURSE) {
     return '[COURSE]';
@@ -145,6 +111,8 @@ function parseSimpleOrCourseClause(text) {
   return {
     left: `${leftSubject} ${leftNumber}`,
     right: `${rightSubject} ${rightNumber}`,
+    leftRaw: `${match[1]} ${match[2]}`,
+    rightRaw: `${match[3] ?? ''}${match[4]}`.trim(),
   };
 }
 
@@ -154,6 +122,7 @@ function extractStandingNodes(text) {
 
   for (const standingMatch of text.matchAll(standingPattern)) {
     matches.push({
+      index: standingMatch.index ?? -1,
       matchedText: standingMatch[0],
       node: createNode(NODE_TYPE.STANDING, 'Graduate/professional standing', standingMatch[0]),
     });
@@ -186,6 +155,7 @@ function extractCourseNodes(text) {
     const number = match[2].toUpperCase();
 
     matches.push({
+      index: matchIndex,
       matchedText,
       node: createNode(NODE_TYPE.COURSE, `${subject} ${number}`, match[0]),
     });
@@ -235,8 +205,8 @@ export function parsePrerequisiteText(text) {
 
   if (simpleOrCourses) {
     const orNode = createNode(NODE_TYPE.OR, 'OR', 'or');
-    const leftCourse = createNode(NODE_TYPE.COURSE, simpleOrCourses.left, simpleOrCourses.left);
-    const rightCourse = createNode(NODE_TYPE.COURSE, simpleOrCourses.right, simpleOrCourses.right);
+    const leftCourse = createNode(NODE_TYPE.COURSE, simpleOrCourses.left, simpleOrCourses.leftRaw);
+    const rightCourse = createNode(NODE_TYPE.COURSE, simpleOrCourses.right, simpleOrCourses.rightRaw);
 
     return createResult(PARSE_STATUS.PARSED, null, [orNode, leftCourse, rightCourse], [
       { source: orNode.id, target: leftCourse.id },
@@ -246,7 +216,8 @@ export function parsePrerequisiteText(text) {
 
   const standingMatches = extractStandingNodes(normalizedText);
   const courseMatches = extractCourseNodes(normalizedText);
-  const recognizedMatches = [...standingMatches, ...courseMatches];
+  const recognizedMatches = [...standingMatches, ...courseMatches]
+    .sort((left, right) => left.index - right.index);
 
   if (recognizedMatches.length === 0) {
     return createResult(PARSE_STATUS.UNPARSED, normalizedText);
