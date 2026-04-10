@@ -430,6 +430,11 @@ export function makeBuildingRows(packages) {
   return [...byCode.values()].map(({ _source, ...building }) => building);
 }
 
+function makePersistedPrerequisiteNodeId(ruleId, nodeId) {
+  if (ruleId == null || nodeId == null) return null;
+  return `${ruleId}:${nodeId}`;
+}
+
 export function makePrerequisiteRuleRow(rule) {
   return {
     rule_id: rule.ruleId,
@@ -438,14 +443,14 @@ export function makePrerequisiteRuleRow(rule) {
     raw_text: rule.rawText,
     parse_status: rule.parseStatus,
     parse_confidence: rule.parseConfidence,
-    root_node_id: rule.rootNodeId ?? null,
+    root_node_id: makePersistedPrerequisiteNodeId(rule.ruleId, rule.rootNodeId),
     unparsed_text: rule.unparsedText ?? null,
   };
 }
 
 export function makePrerequisiteNodeRows(nodes = [], ruleId) {
   return nodes.map((node) => ({
-    node_id: node.id,
+    node_id: makePersistedPrerequisiteNodeId(ruleId, node.id),
     rule_id: ruleId,
     node_type: node.node_type,
     value: node.raw_value ?? null,
@@ -458,8 +463,8 @@ export function makePrerequisiteNodeRows(nodes = [], ruleId) {
 export function makePrerequisiteEdgeRows(edges = [], ruleId) {
   return edges.map((edge, index) => ({
     rule_id: ruleId,
-    parent_node_id: edge.source,
-    child_node_id: edge.target,
+    parent_node_id: makePersistedPrerequisiteNodeId(ruleId, edge.source),
+    child_node_id: makePersistedPrerequisiteNodeId(ruleId, edge.target),
     sort_order: index,
   }));
 }

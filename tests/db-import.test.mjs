@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Database from 'better-sqlite3';
 
 const loadHelpers = () => import('../src/db/import-helpers.mjs');
+const loadPrerequisiteHelpers = () => import('../src/db/prerequisite-helpers.mjs');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.join(__dirname, '..');
@@ -992,67 +993,64 @@ test('summarizeAvailability marks waitlisted or full rows correctly', async () =
 
 test('makePrerequisiteRuleRow maps a parsed prerequisite rule into one prerequisite_rules row', async () => {
   const { makePrerequisiteRuleRow } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const parsed = parsePrerequisiteText('MATH 222 or 276');
 
   const row = makePrerequisiteRuleRow({
     ruleId: 'rule:1272:005770',
     termCode: '1272',
     courseId: '005770',
-    rawText: 'COMP SCI 400 and (MATH 222 or MATH 276)',
-    parseStatus: 'parsed',
+    rawText: 'MATH 222 or 276',
+    parseStatus: parsed.parseStatus,
     parseConfidence: 0.94,
-    rootNodeId: 'node:root',
-    unparsedText: null,
+    rootNodeId: parsed.nodes[0]?.id,
+    unparsedText: parsed.unparsedText,
   });
 
   assert.deepEqual(row, {
     rule_id: 'rule:1272:005770',
     term_code: '1272',
     course_id: '005770',
-    raw_text: 'COMP SCI 400 and (MATH 222 or MATH 276)',
+    raw_text: 'MATH 222 or 276',
     parse_status: 'parsed',
     parse_confidence: 0.94,
-    root_node_id: 'node:root',
+    root_node_id: 'rule:1272:005770:node-1',
     unparsed_text: null,
   });
 });
 
 test('makePrerequisiteNodeRows maps parser nodes into prerequisite_nodes rows', async () => {
   const { makePrerequisiteNodeRows } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const parsed = parsePrerequisiteText('MATH 222 or 276');
 
-  const rows = makePrerequisiteNodeRows(
-    [
-      {
-        id: 'node:root',
-        node_type: 'and',
-        raw_value: null,
-        normalized_value: null,
-      },
-      {
-        id: 'node:course:1',
-        node_type: 'course',
-        raw_value: 'COMP SCI 400',
-        normalized_value: 'comp sci 400',
-      },
-    ],
-    'rule:1272:005770',
-  );
+  const rows = makePrerequisiteNodeRows(parsed.nodes, 'rule:1272:005770');
 
   assert.deepEqual(rows, [
     {
-      node_id: 'node:root',
+      node_id: 'rule:1272:005770:node-1',
       rule_id: 'rule:1272:005770',
-      node_type: 'and',
-      value: null,
-      normalized_value: null,
+      node_type: 'OR',
+      value: 'or',
+      normalized_value: 'OR',
       position_start: null,
       position_end: null,
     },
     {
-      node_id: 'node:course:1',
+      node_id: 'rule:1272:005770:node-2',
       rule_id: 'rule:1272:005770',
-      node_type: 'course',
-      value: 'COMP SCI 400',
-      normalized_value: 'comp sci 400',
+      node_type: 'COURSE',
+      value: 'MATH 222',
+      normalized_value: 'MATH 222',
+      position_start: null,
+      position_end: null,
+    },
+    {
+      node_id: 'rule:1272:005770:node-3',
+      rule_id: 'rule:1272:005770',
+      node_type: 'COURSE',
+      value: '276',
+      normalized_value: 'MATH 276',
       position_start: null,
       position_end: null,
     },
@@ -1061,29 +1059,140 @@ test('makePrerequisiteNodeRows maps parser nodes into prerequisite_nodes rows', 
 
 test('makePrerequisiteEdgeRows maps parser edges into prerequisite_edges rows', async () => {
   const { makePrerequisiteEdgeRows } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const parsed = parsePrerequisiteText('MATH 222 or 276');
 
-  const rows = makePrerequisiteEdgeRows(
-    [
-      { source: 'node:root', target: 'node:course:1' },
-      { source: 'node:root', target: 'node:course:2' },
-    ],
-    'rule:1272:005770',
-  );
+  const rows = makePrerequisiteEdgeRows(parsed.edges, 'rule:1272:005770');
 
   assert.deepEqual(rows, [
     {
       rule_id: 'rule:1272:005770',
-      parent_node_id: 'node:root',
-      child_node_id: 'node:course:1',
+      parent_node_id: 'rule:1272:005770:node-1',
+      child_node_id: 'rule:1272:005770:node-2',
       sort_order: 0,
     },
     {
       rule_id: 'rule:1272:005770',
-      parent_node_id: 'node:root',
-      child_node_id: 'node:course:2',
+      parent_node_id: 'rule:1272:005770:node-1',
+      child_node_id: 'rule:1272:005770:node-3',
       sort_order: 1,
     },
   ]);
+});
+
+test('prerequisite helper rows from separate parser results coexist without node id collisions', async () => {
+  const {
+    makeCourseRow,
+    makePrerequisiteRuleRow,
+    makePrerequisiteNodeRows,
+    makePrerequisiteEdgeRows,
+  } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const db = createSchemaDb();
+
+  try {
+    const insertCourse = db.prepare(`
+      INSERT INTO courses (
+        term_code, course_id, subject_code, subject_short_description, subject_description,
+        catalog_number, course_designation, title, description, minimum_credits,
+        maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+      ) VALUES (
+        @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+        @catalog_number, @course_designation, @title, @description, @minimum_credits,
+        @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+      )
+    `);
+    const insertRule = db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `);
+    const insertNode = db.prepare(`
+      INSERT INTO prerequisite_nodes (
+        node_id, rule_id, node_type, value, normalized_value, position_start, position_end
+      ) VALUES (
+        @node_id, @rule_id, @node_type, @value, @normalized_value, @position_start, @position_end
+      )
+    `);
+    const insertEdge = db.prepare(`
+      INSERT INTO prerequisite_edges (
+        rule_id, parent_node_id, child_node_id, sort_order
+      ) VALUES (
+        @rule_id, @parent_node_id, @child_node_id, @sort_order
+      )
+    `);
+
+    const firstParsed = parsePrerequisiteText('MATH 222 or 276');
+    const secondParsed = parsePrerequisiteText('MATH 222 or 276');
+    const firstRule = makePrerequisiteRuleRow({
+      ruleId: 'rule:1272:005770',
+      termCode: '1272',
+      courseId: '005770',
+      rawText: 'MATH 222 or 276',
+      parseStatus: firstParsed.parseStatus,
+      parseConfidence: 0.95,
+      rootNodeId: firstParsed.nodes[0]?.id,
+      unparsedText: firstParsed.unparsedText,
+    });
+    const secondRule = makePrerequisiteRuleRow({
+      ruleId: 'rule:1272:005771',
+      termCode: '1272',
+      courseId: '005771',
+      rawText: 'MATH 222 or 276',
+      parseStatus: secondParsed.parseStatus,
+      parseConfidence: 0.95,
+      rootNodeId: secondParsed.nodes[0]?.id,
+      unparsedText: secondParsed.unparsedText,
+    });
+
+    insertCourse.run(makeCourseRow({ termCode: '1272', courseId: '005770', currentlyTaught: true }));
+    insertCourse.run(makeCourseRow({ termCode: '1272', courseId: '005771', currentlyTaught: true }));
+    insertRule.run({ ...firstRule, root_node_id: null });
+    insertRule.run({ ...secondRule, root_node_id: null });
+
+    for (const row of makePrerequisiteNodeRows(firstParsed.nodes, firstRule.rule_id)) {
+      insertNode.run(row);
+    }
+    for (const row of makePrerequisiteNodeRows(secondParsed.nodes, secondRule.rule_id)) {
+      insertNode.run(row);
+    }
+    for (const row of makePrerequisiteEdgeRows(firstParsed.edges, firstRule.rule_id)) {
+      insertEdge.run(row);
+    }
+    for (const row of makePrerequisiteEdgeRows(secondParsed.edges, secondRule.rule_id)) {
+      insertEdge.run(row);
+    }
+
+    db.prepare('UPDATE prerequisite_rules SET root_node_id = ? WHERE rule_id = ?').run(
+      firstRule.root_node_id,
+      firstRule.rule_id,
+    );
+    db.prepare('UPDATE prerequisite_rules SET root_node_id = ? WHERE rule_id = ?').run(
+      secondRule.root_node_id,
+      secondRule.rule_id,
+    );
+
+    const persistedNodeIds = db.prepare(`
+      SELECT node_id
+      FROM prerequisite_nodes
+      ORDER BY rule_id, node_id
+    `).pluck().all();
+
+    assert.deepEqual(persistedNodeIds, [
+      'rule:1272:005770:node-1',
+      'rule:1272:005770:node-2',
+      'rule:1272:005770:node-3',
+      'rule:1272:005771:node-1',
+      'rule:1272:005771:node-2',
+      'rule:1272:005771:node-3',
+    ]);
+  } finally {
+    db.close();
+  }
 });
 
 test('prerequisite helper rows insert cleanly through the schema when root_node_id is set after nodes exist', async () => {
@@ -1093,9 +1202,11 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
     makePrerequisiteNodeRows,
     makePrerequisiteEdgeRows,
   } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
   const db = createSchemaDb();
 
   try {
+    const parsed = parsePrerequisiteText('MATH 222 or 276');
     const courseRow = makeCourseRow({
       termCode: '1272',
       courseId: '005770',
@@ -1105,42 +1216,14 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
       ruleId: 'rule:1272:005770',
       termCode: '1272',
       courseId: '005770',
-      rawText: 'COMP SCI 400 and MATH 222',
-      parseStatus: 'parsed',
+      rawText: 'MATH 222 or 276',
+      parseStatus: parsed.parseStatus,
       parseConfidence: 0.91,
-      rootNodeId: null,
-      unparsedText: null,
+      rootNodeId: parsed.nodes[0]?.id ?? null,
+      unparsedText: parsed.unparsedText,
     });
-    const nodeRows = makePrerequisiteNodeRows(
-      [
-        {
-          id: 'node:root',
-          node_type: 'and',
-          raw_value: null,
-          normalized_value: null,
-        },
-        {
-          id: 'node:course:1',
-          node_type: 'course',
-          raw_value: 'COMP SCI 400',
-          normalized_value: 'comp sci 400',
-        },
-        {
-          id: 'node:course:2',
-          node_type: 'course',
-          raw_value: 'MATH 222',
-          normalized_value: 'math 222',
-        },
-      ],
-      ruleRow.rule_id,
-    );
-    const edgeRows = makePrerequisiteEdgeRows(
-      [
-        { source: 'node:root', target: 'node:course:1' },
-        { source: 'node:root', target: 'node:course:2' },
-      ],
-      ruleRow.rule_id,
-    );
+    const nodeRows = makePrerequisiteNodeRows(parsed.nodes, ruleRow.rule_id);
+    const edgeRows = makePrerequisiteEdgeRows(parsed.edges, ruleRow.rule_id);
 
     db.prepare(`
       INSERT INTO courses (
@@ -1162,7 +1245,7 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
         @rule_id, @term_code, @course_id, @raw_text, @parse_status,
         @parse_confidence, @root_node_id, @unparsed_text
       )
-    `).run(ruleRow);
+    `).run({ ...ruleRow, root_node_id: null });
 
     const insertNode = db.prepare(`
       INSERT INTO prerequisite_nodes (
@@ -1191,7 +1274,7 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
       UPDATE prerequisite_rules
       SET root_node_id = ?
       WHERE rule_id = ?
-    `).run('node:root', ruleRow.rule_id);
+    `).run(ruleRow.root_node_id, ruleRow.rule_id);
 
     const persistedRule = db.prepare(`
       SELECT rule_id, term_code, course_id, root_node_id, parse_status
@@ -1215,43 +1298,43 @@ test('prerequisite helper rows insert cleanly through the schema when root_node_
       rule_id: 'rule:1272:005770',
       term_code: '1272',
       course_id: '005770',
-      root_node_id: 'node:root',
+      root_node_id: 'rule:1272:005770:node-1',
       parse_status: 'parsed',
     });
     assert.deepEqual(persistedNodes, [
       {
-        node_id: 'node:course:1',
+        node_id: 'rule:1272:005770:node-1',
         rule_id: 'rule:1272:005770',
-        node_type: 'course',
-        value: 'COMP SCI 400',
-        normalized_value: 'comp sci 400',
+        node_type: 'OR',
+        value: 'or',
+        normalized_value: 'OR',
       },
       {
-        node_id: 'node:course:2',
+        node_id: 'rule:1272:005770:node-2',
         rule_id: 'rule:1272:005770',
-        node_type: 'course',
+        node_type: 'COURSE',
         value: 'MATH 222',
-        normalized_value: 'math 222',
+        normalized_value: 'MATH 222',
       },
       {
-        node_id: 'node:root',
+        node_id: 'rule:1272:005770:node-3',
         rule_id: 'rule:1272:005770',
-        node_type: 'and',
-        value: null,
-        normalized_value: null,
+        node_type: 'COURSE',
+        value: '276',
+        normalized_value: 'MATH 276',
       },
     ]);
     assert.deepEqual(persistedEdges, [
       {
         rule_id: 'rule:1272:005770',
-        parent_node_id: 'node:root',
-        child_node_id: 'node:course:1',
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-2',
         sort_order: 0,
       },
       {
         rule_id: 'rule:1272:005770',
-        parent_node_id: 'node:root',
-        child_node_id: 'node:course:2',
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-3',
         sort_order: 1,
       },
     ]);
