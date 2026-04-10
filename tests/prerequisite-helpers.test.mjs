@@ -32,6 +32,28 @@ test('parses simple OR course prerequisite into a graph', () => {
   assert.equal(result.edges.length, 2);
 });
 
+test('parses simple OR shorthand for multi-token subjects', () => {
+  const result = parsePrerequisiteText('ACCT I S 100 or 200', {
+    courseDesignation: 'ACCT I S 300',
+    termCode: '1272',
+    courseId: '003300',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.unparsedText, null);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => ({ normalized: node.normalized_value, raw: node.raw_value })),
+    [
+      { normalized: 'ACCT I S 100', raw: 'ACCT I S 100' },
+      { normalized: 'ACCT I S 200', raw: '200' },
+    ],
+  );
+  assert.equal(result.edges.length, 2);
+});
+
 test('marks consent-only prerequisite as opaque', () => {
   const result = parsePrerequisiteText('Consent of instructor', {
     courseDesignation: 'SLAVIC 560',
@@ -644,6 +666,25 @@ test('does not emit a trailing course node for unresolved subject AND alternativ
   assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
   assert.equal(result.unparsedText, 'MATH and STAT 309');
   assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('keeps unresolved subject alternatives opaque while recognizing independent full courses', () => {
+  const result = parsePrerequisiteText('MATH or STAT 309 or LAW 200', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.unparsedText, 'MATH or STAT 309 or [COURSE]');
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['LAW 200'],
+  );
+  assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'STAT 309'));
   assert.deepEqual(result.edges, []);
 });
 
