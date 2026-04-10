@@ -150,9 +150,9 @@ function parseSimpleOrCourseClause(text) {
 
 function extractStandingNodes(text) {
   const matches = [];
-  const standingMatch = text.match(/\bgraduate\/professional standing\b/i);
+  const standingPattern = /\bgraduate\/professional standing\b/gi;
 
-  if (standingMatch) {
+  for (const standingMatch of text.matchAll(standingPattern)) {
     matches.push({
       matchedText: standingMatch[0],
       node: createNode(NODE_TYPE.STANDING, 'Graduate/professional standing', standingMatch[0]),
@@ -167,7 +167,8 @@ function extractCourseNodes(text) {
 
   for (const match of text.matchAll(COURSE_REFERENCE_PATTERN)) {
     const matchIndex = match.index ?? -1;
-    if (matchIndex > 0 && text[matchIndex - 1] === '/') {
+    const leadingText = matchIndex > 0 ? text.slice(0, matchIndex) : '';
+    if (/\/\s*$/.test(leadingText)) {
       continue;
     }
 

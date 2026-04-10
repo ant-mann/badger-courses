@@ -361,3 +361,28 @@ test('keeps other recognized clauses without fabricating slash-delimited course 
   assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'STAT 309'));
   assert.equal(result.unparsedText, '[STANDING] and MATH/STAT 309');
 });
+
+test('recognizes repeated standing clauses consistently', () => {
+  const result = parsePrerequisiteText('graduate/professional standing or graduate/professional standing', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 2);
+  assert.equal(result.unparsedText, '[STANDING] or [STANDING]');
+});
+
+test('does not fabricate a course node from spaced slash-delimited subject text', () => {
+  const result = parsePrerequisiteText('MATH / STAT 309', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'MATH / STAT 309');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
