@@ -166,6 +166,11 @@ function extractCourseNodes(text) {
   const matches = [];
 
   for (const match of text.matchAll(COURSE_REFERENCE_PATTERN)) {
+    const matchIndex = match.index ?? -1;
+    if (matchIndex > 0 && text[matchIndex - 1] === '/') {
+      continue;
+    }
+
     const subject = normalizeText(match[1].toUpperCase());
     const number = match[2].toUpperCase();
 

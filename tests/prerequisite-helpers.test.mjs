@@ -322,3 +322,42 @@ test('preserves outer grouping for parenthesized partial skeletons', () => {
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'MATH 221'));
   assert.equal(result.unparsedText, '([COURSE] and consent of instructor)');
 });
+
+test('does not fabricate a course node from slash-delimited dual subject text', () => {
+  const result = parsePrerequisiteText('MATH/STAT 309', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'MATH/STAT 309');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('does not fabricate a course node from slash-delimited long subject text', () => {
+  const result = parsePrerequisiteText('BIOLOGY/ZOOLOGY 151', {
+    courseDesignation: 'ZOOLOGY 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'BIOLOGY/ZOOLOGY 151');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
+test('keeps other recognized clauses without fabricating slash-delimited course nodes', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing and MATH/STAT 309', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'STAT 309'));
+  assert.equal(result.unparsedText, '[STANDING] and MATH/STAT 309');
+});
