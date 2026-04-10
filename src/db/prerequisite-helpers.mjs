@@ -86,10 +86,6 @@ function getSourceSlice(sourceText, offsets, normalizedIndex, normalizedLength) 
   return sourceText.slice(sourceStart, sourceEnd);
 }
 
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function stripOneOuterParenthesisPair(text) {
   const normalized = normalizeText(text);
 
@@ -158,8 +154,9 @@ function parseSimpleOrCourseClause(text, sourceText, offsets) {
   const leftRaw = getSourceSlice(sourceText, offsets, 0, leftRawLength);
   const operatorRawStart = operatorIndex + (operatorMatch?.[0].indexOf(operatorMatch[1]) ?? 0);
   const operatorRaw = getSourceSlice(sourceText, offsets, operatorRawStart, operatorMatch?.[1].length ?? 0);
-  const rightRawStart = match[0].lastIndexOf(match[4]);
-  const rightRaw = getSourceSlice(sourceText, offsets, rightRawStart, match[4].length);
+  const rightRawText = match[3] ? `${match[3]}${match[4]}` : match[4];
+  const rightRawStart = match[0].length - rightRawText.length;
+  const rightRaw = getSourceSlice(sourceText, offsets, rightRawStart, rightRawText.length);
 
   return {
     left: `${leftSubject} ${leftNumber}`,
@@ -178,6 +175,7 @@ function extractStandingNodes(text, sourceText, offsets) {
     const matchedText = getSourceSlice(sourceText, offsets, standingMatch.index ?? -1, standingMatch[0].length);
     matches.push({
       index: standingMatch.index ?? -1,
+      normalizedLength: standingMatch[0].length,
       matchedText,
       node: createNode(NODE_TYPE.STANDING, 'Graduate/professional standing', matchedText),
     });
@@ -211,6 +209,7 @@ function extractCourseNodes(text, sourceText, offsets) {
 
     matches.push({
       index: matchIndex,
+      normalizedLength: match[0].length,
       matchedText,
       node: createNode(NODE_TYPE.COURSE, `${subject} ${number}`, matchedText),
     });
@@ -226,7 +225,7 @@ function buildUnparsedText(text, recognizedMatches) {
   for (const match of recognizedMatches) {
     skeleton += text.slice(cursor, match.index);
     skeleton += getPlaceholderForNode(match.node);
-    cursor = match.index + match.matchedText.length;
+    cursor = match.index + match.normalizedLength;
   }
 
   skeleton += text.slice(cursor);
