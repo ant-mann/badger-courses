@@ -218,3 +218,17 @@ test('keeps connective text for leading parenthesized opaque partials', () => {
   );
   assert.equal(result.unparsedText, 'placement test or');
 });
+
+test('avoids combining incompatible connectives in mixed partial leftovers', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing and (LAW 742 or consent of instructor)', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.equal(result.unparsedText, 'or consent of instructor');
+  assert.doesNotMatch(result.unparsedText, /^and\s+or\b/i);
+});

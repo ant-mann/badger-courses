@@ -45,6 +45,16 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function pickNearestConnective(connectives, side) {
+  const parts = normalizeText(connectives).toLowerCase().split(' ');
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return side === 'prefix' ? parts.at(-1) : parts[0];
+}
+
 function formatStructuralRemainder(text) {
   const normalized = normalizeText(text);
 
@@ -125,17 +135,15 @@ function buildUnparsedText(text, recognizedSpans) {
   }
 
   const connectiveAwareRemainder = remainder.replace(/[()]/g, ' ');
-  const leadingConnectiveMatch = remainder.match(/^\s*((?:and|or)\b(?:\s+(?:and|or)\b)*)\s+(.+\S)\s*$/i);
-  const trailingConnectiveMatch = remainder.match(/^\s*(.+\S)\s+((?:and|or)\b(?:\s+(?:and|or)\b)*)\s*$/i);
   const leadingConnectiveNormalizedMatch = connectiveAwareRemainder.match(/^\s*((?:and|or)\b(?:\s+(?:and|or)\b)*)\s+(.+\S)\s*$/i);
   const trailingConnectiveNormalizedMatch = connectiveAwareRemainder.match(/^\s*(.+\S)\s+((?:and|or)\b(?:\s+(?:and|or)\b)*)\s*$/i);
-  const preservedPrefix = (leadingConnectiveNormalizedMatch || leadingConnectiveMatch)
-    && /^[A-Za-z0-9]/.test((leadingConnectiveNormalizedMatch || leadingConnectiveMatch)[2].trim())
-    ? normalizeText((leadingConnectiveNormalizedMatch || leadingConnectiveMatch)[1]).toLowerCase()
+  const preservedPrefix = leadingConnectiveNormalizedMatch
+    && /^[A-Za-z0-9]/.test(leadingConnectiveNormalizedMatch[2].trim())
+    ? pickNearestConnective(leadingConnectiveNormalizedMatch[1], 'prefix')
     : null;
-  const preservedSuffix = (trailingConnectiveNormalizedMatch || trailingConnectiveMatch)
-    && /[A-Za-z0-9]$/.test((trailingConnectiveNormalizedMatch || trailingConnectiveMatch)[1].trim())
-    ? normalizeText((trailingConnectiveNormalizedMatch || trailingConnectiveMatch)[2]).toLowerCase()
+  const preservedSuffix = trailingConnectiveNormalizedMatch
+    && /[A-Za-z0-9]$/.test(trailingConnectiveNormalizedMatch[1].trim())
+    ? pickNearestConnective(trailingConnectiveNormalizedMatch[2], 'suffix')
     : null;
 
   const structuralRemainder = formatStructuralRemainder(remainder);
@@ -150,7 +158,7 @@ function buildUnparsedText(text, recognizedSpans) {
   let normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));
 
   if (normalized) {
-    if (preservedPrefix && !normalized.toLowerCase().startsWith(`${preservedPrefix} `)) {
+    if (preservedPrefix && !preservedSuffix && !normalized.toLowerCase().startsWith(`${preservedPrefix} `)) {
       normalized = `${preservedPrefix} ${normalized}`;
     }
 
