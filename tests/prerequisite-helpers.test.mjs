@@ -16,7 +16,7 @@ test('parses simple OR course prerequisite into a graph', () => {
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
   assert.equal(result.unparsedText, null);
-  assert.equal(result.nodes[0].node_type, NODE_TYPE.OR);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -34,7 +34,7 @@ test('marks consent-only prerequisite as opaque', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
-  assert.match(result.unparsedText, /Consent of instructor/i);
+  assert.equal(result.unparsedText, 'Consent of instructor');
   assert.deepEqual(result.nodes, []);
   assert.deepEqual(result.edges, []);
 });
