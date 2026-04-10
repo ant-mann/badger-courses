@@ -1025,6 +1025,28 @@ test('course_overview_v uses the newest canonical section row for availability',
   }
 });
 
+test('schema creates prerequisite graph tables', () => {
+  const db = createSchemaDb();
+
+  try {
+    const tableNames = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN ('prerequisite_rules', 'prerequisite_nodes', 'prerequisite_edges')
+      ORDER BY name
+    `).pluck().all();
+
+    assert.deepEqual(tableNames, [
+      'prerequisite_edges',
+      'prerequisite_nodes',
+      'prerequisite_rules',
+    ]);
+  } finally {
+    db.close();
+  }
+});
+
 test('build-course-db collapses the same missing-class-number section across packages into one canonical section', () => {
   const fixture = buildCourseDbFixture({
     courses: [
