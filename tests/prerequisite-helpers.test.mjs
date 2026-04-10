@@ -232,3 +232,81 @@ test('avoids combining incompatible connectives in mixed partial leftovers', () 
   assert.equal(result.unparsedText, 'or consent of instructor');
   assert.doesNotMatch(result.unparsedText, /^and\s+or\b/i);
 });
+
+test('treats a parenthesized lone course as a parsed leaf', () => {
+  const result = parsePrerequisiteText('(MATH 221)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221'],
+  );
+  assert.equal(result.unparsedText, null);
+});
+
+test('treats parenthesized standing as a parsed leaf', () => {
+  const result = parsePrerequisiteText('(Graduate/professional standing)', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.equal(result.unparsedText, null);
+});
+
+test('parses simple OR courses through one outer grouping layer', () => {
+  const result = parsePrerequisiteText('(ITALIAN 204 or 205)', {
+    courseDesignation: 'ITALIAN 230',
+    termCode: '1272',
+    courseId: '002230',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.unparsedText, null);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.OR));
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['ITALIAN 204', 'ITALIAN 205'],
+  );
+  assert.equal(result.edges.length, 2);
+});
+
+test('keeps unresolved adjacency text for standing plus course partial cases', () => {
+  const result = parsePrerequisiteText('Graduate/professional standing LAW 742', {
+    courseDesignation: 'ACCT I S 724',
+    termCode: '1272',
+    courseId: '007724',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
+  assert.equal(result.unparsedText, 'Graduate/professional standing LAW 742');
+});
+
+test('keeps unresolved adjacency text for adjacent course partial cases', () => {
+  const result = parsePrerequisiteText('MATH 221 LAW 742', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'LAW 742'],
+  );
+  assert.equal(result.unparsedText, 'MATH 221 LAW 742');
+});

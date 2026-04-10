@@ -55,6 +55,34 @@ function pickNearestConnective(connectives, side) {
   return side === 'prefix' ? parts.at(-1) : parts[0];
 }
 
+function stripOneOuterParenthesisPair(text) {
+  const normalized = normalizeText(text);
+
+  if (!normalized.startsWith('(') || !normalized.endsWith(')')) {
+    return null;
+  }
+
+  let depth = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+
+    if (char === '(') {
+      depth += 1;
+    } else if (char === ')') {
+      depth -= 1;
+      if (depth === 0 && index < normalized.length - 1) {
+        return null;
+      }
+    }
+
+    if (depth < 0) {
+      return null;
+    }
+  }
+
+  return depth === 0 ? normalizeText(normalized.slice(1, -1)) : null;
+}
+
 function formatStructuralRemainder(text) {
   const normalized = normalizeText(text);
 
@@ -186,6 +214,11 @@ export function parsePrerequisiteText(text) {
     return createResult(PARSE_STATUS.UNPARSED, normalizedText);
   }
 
+  const unwrappedText = stripOneOuterParenthesisPair(normalizedText);
+  if (unwrappedText) {
+    return parsePrerequisiteText(unwrappedText);
+  }
+
   const simpleOrCourses = parseSimpleOrCourseClause(normalizedText);
 
   if (simpleOrCourses) {
@@ -215,6 +248,10 @@ export function parsePrerequisiteText(text) {
 
   if (recognizedMatches.length === 1 && !unparsedText) {
     return createResult(PARSE_STATUS.PARSED, null, nodes, []);
+  }
+
+  if (recognizedMatches.length > 1 && !unparsedText) {
+    return createResult(PARSE_STATUS.PARTIAL, normalizedText, nodes, []);
   }
 
   return createResult(
