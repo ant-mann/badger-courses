@@ -124,6 +124,15 @@ function buildUnparsedText(text, recognizedSpans) {
     remainder = remainder.replace(new RegExp(escapeRegExp(span), 'i'), ' ');
   }
 
+  const leadingConnectiveMatch = remainder.match(/^\s*((?:and|or)\b(?:\s+(?:and|or)\b)*)\s+(.+\S)\s*$/i);
+  const trailingConnectiveMatch = remainder.match(/^\s*(.+\S)\s+((?:and|or)\b(?:\s+(?:and|or)\b)*)\s*$/i);
+  const preservedPrefix = leadingConnectiveMatch && /^[A-Za-z0-9]/.test(leadingConnectiveMatch[2].trim())
+    ? normalizeText(leadingConnectiveMatch[1]).toLowerCase()
+    : null;
+  const preservedSuffix = trailingConnectiveMatch && /[A-Za-z0-9]$/.test(trailingConnectiveMatch[1].trim())
+    ? normalizeText(trailingConnectiveMatch[2]).toLowerCase()
+    : null;
+
   const structuralRemainder = formatStructuralRemainder(remainder);
 
   remainder = remainder
@@ -133,7 +142,17 @@ function buildUnparsedText(text, recognizedSpans) {
     .replace(/(?:\s|,)+(?:and|or)\b(?:\s+(?:and|or)\b)*(?:\s|,)*$/i, '')
     .replace(/(^[\s,]+|[\s,]+$)/g, ' ');
 
-  const normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));
+  let normalized = normalizeText(remainder.replace(/\s*,\s*/g, ', '));
+
+  if (normalized) {
+    if (preservedPrefix && !normalized.toLowerCase().startsWith(`${preservedPrefix} `)) {
+      normalized = `${preservedPrefix} ${normalized}`;
+    }
+
+    if (preservedSuffix && !normalized.toLowerCase().endsWith(` ${preservedSuffix}`)) {
+      normalized = `${normalized} ${preservedSuffix}`;
+    }
+  }
 
   if (!normalized && structuralRemainder) {
     return structuralRemainder;
@@ -180,6 +199,10 @@ export function parsePrerequisiteText(text) {
     normalizedText,
     recognizedMatches.map((match) => match.matchedText),
   );
+
+  if (recognizedMatches.length === 1 && !unparsedText) {
+    return createResult(PARSE_STATUS.PARSED, null, nodes, []);
+  }
 
   return createResult(
     PARSE_STATUS.PARTIAL,

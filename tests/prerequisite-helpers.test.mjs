@@ -132,3 +132,55 @@ test('keeps unresolved grouping text for standing parenthetical course partial c
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'LAW 742'));
   assert.equal(result.unparsedText, '( )');
 });
+
+test('keeps connective text when opaque text precedes a recognized course', () => {
+  const result = parsePrerequisiteText('Declared in program X or MATH 221', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221'],
+  );
+  assert.equal(result.unparsedText, 'Declared in program X or');
+});
+
+test('keeps connective text when opaque text follows a recognized course', () => {
+  const result = parsePrerequisiteText('MATH 221 and consent of instructor', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221'],
+  );
+  assert.equal(result.unparsedText, 'and consent of instructor');
+});
+
+test('treats a lone recognized course as a fully parsed leaf', () => {
+  const result = parsePrerequisiteText('MATH 221', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221'],
+  );
+  assert.equal(result.unparsedText, null);
+  assert.deepEqual(result.edges, []);
+});
