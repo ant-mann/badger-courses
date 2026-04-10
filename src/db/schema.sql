@@ -62,6 +62,9 @@ CREATE TABLE prerequisite_rules (
   unparsed_text TEXT,
   FOREIGN KEY (term_code, course_id)
     REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (root_node_id)
+    REFERENCES prerequisite_nodes (node_id)
     ON DELETE CASCADE
 );
 

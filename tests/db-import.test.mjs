@@ -1025,7 +1025,7 @@ test('course_overview_v uses the newest canonical section row for availability',
   }
 });
 
-test('schema creates prerequisite graph tables', () => {
+test('schema creates prerequisite graph tables and indexes', () => {
   const db = createSchemaDb();
 
   try {
@@ -1041,6 +1041,19 @@ test('schema creates prerequisite graph tables', () => {
       'prerequisite_edges',
       'prerequisite_nodes',
       'prerequisite_rules',
+    ]);
+
+    const indexNames = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'index'
+        AND name IN ('idx_prerequisite_rules_course', 'idx_prerequisite_nodes_rule')
+      ORDER BY name
+    `).pluck().all();
+
+    assert.deepEqual(indexNames, [
+      'idx_prerequisite_nodes_rule',
+      'idx_prerequisite_rules_course',
     ]);
   } finally {
     db.close();
