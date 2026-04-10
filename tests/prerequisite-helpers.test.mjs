@@ -710,6 +710,19 @@ test('does not emit a trailing course node for unresolved subject OR alternative
   assert.deepEqual(result.edges, []);
 });
 
+test('does not emit a trailing course node for single-letter spaced subject OR alternatives', () => {
+  const result = parsePrerequisiteText('E C E or MATH 221', {
+    courseDesignation: 'E C E 500',
+    termCode: '1272',
+    courseId: '005001',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.unparsedText, 'E C E or MATH 221');
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+});
+
 test('does not emit a trailing course node for unresolved subject AND alternatives', () => {
   const result = parsePrerequisiteText('MATH and STAT 309', {
     courseDesignation: 'MATH 500',
