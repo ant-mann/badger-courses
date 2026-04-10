@@ -23,6 +23,8 @@ Version one should cover:
   - college-wide degree requirements
   - L&S breadth and related degree rules
 
+The current explore page exposes roughly `332` undergraduate program links. The extractor should be designed for the full catalog rather than a small hand-picked subset.
+
 Version one should not attempt to fully solve:
 
 - transfer-course equivalencies from other institutions
@@ -169,6 +171,16 @@ Optional sections like `Honors in the Major` should not be merged into the base 
 
 The extractor should use the UW Guide HTML pages directly.
 
+The Guide pages are server-rendered and fetchable without a browser session, so the extractor should prefer a plain HTTP + HTML parsing stack over Playwright. For consistency with the current repo, the implementation should stay in ESM `.mjs` files and use lightweight HTML parsing in Node.
+
+Recommended runtime shape:
+
+- `node` with ESM `.mjs`
+- built-in `fetch` for HTTP requests
+- a lightweight HTML parser such as `cheerio`
+
+Playwright is not required for version one unless the site behavior changes and direct HTML fetching stops being reliable.
+
 ### Pass 1: Collect Programs
 
 From the explore page, collect:
@@ -177,6 +189,8 @@ From the explore page, collect:
 - program URL
 - visible credential cues such as `BA`, `BS`, or `Certificate`
 - any lightweight metadata that can be derived from the URL path
+
+This pass should use `https://guide.wisc.edu/explore-majors/` as the canonical program index.
 
 ### Pass 2: Extract Program Details
 
@@ -192,6 +206,24 @@ For each program page, extract:
   - `University Degree Requirements`
 
 The extractor should use heading boundaries to segment the page into sections and then normalize each section independently.
+
+### Shared Requirement Sources
+
+The extractor should pin shared requirements to specific Guide sources instead of treating them as generic prose.
+
+Canonical shared source pages for early phases:
+
+- university-wide undergraduate degree and general education requirements:
+  - `https://guide.wisc.edu/undergraduate/#requirementsforundergraduatestudytext`
+- future AP/IB/CLEP equivalency layer:
+  - `https://guide.wisc.edu/undergraduate/#AdvancedPlacementInternationalBaccalaureate`
+
+College-wide rules should come from the relevant program pages when the Guide embeds them directly in `Requirements`. For example, many L&S program pages include their own shared sections such as:
+
+- `College of Letters & Science Degree Requirements: Bachelor of Arts (BA)`
+- `College of Letters & Science Degree Requirements: Bachelor of Science (BS)`
+
+The extractor should preserve these sections as shared requirements and may deduplicate them later by source label plus normalized text hash.
 
 ## Parsing Strategy
 
@@ -219,6 +251,19 @@ For those cases, prefer:
 - attaching extracted course references when possible
 - setting `manual_review_needed: true`
 - emitting a warning into `normalization_warnings`
+
+## Politeness, Throttling, and Resilience
+
+Although the Guide is publicly accessible, the extractor should behave politely because it will fetch a few hundred pages in one run.
+
+Recommended safeguards:
+
+- sequential fetching by default
+- a small delay between requests
+- retry with backoff for transient failures such as `429`, `500`, `502`, `503`, and `504`
+- clear progress logging so interrupted runs are diagnosable
+
+The implementation does not need aggressive concurrency in version one.
 
 ## Course Normalization
 
@@ -262,6 +307,8 @@ The extractor should write one planner-oriented JSON snapshot, for example:
 
 The output should be easy to inspect and stable enough for downstream matching logic.
 
+The snapshot may be fairly large. A full-catalog JSON file with raw source sections could plausibly land in the `10–20 MB` range. The implementation should treat the snapshot as a generated artifact and avoid assuming it should always be committed to git by default.
+
 ## Error Handling
 
 - fail when the explore page cannot be parsed into program links
@@ -288,3 +335,17 @@ After this design is approved, the implementation plan should focus on a narrow 
 2. parse a small sample of representative programs
 3. prove the `requirement_groups` schema against majors and certificates
 4. expand to the full catalog once the sample output is trustworthy
+
+Recommended sample programs:
+
+- `Accounting, Certificate`
+- `Computer Sciences, Certificate`
+- `African American Studies, BA`
+- `Biomedical Engineering, BS`
+
+These samples intentionally cover:
+
+- a simpler certificate with explicit credit and GPA rules
+- a certificate with exclusions and elective buckets
+- an L&S major with shared college requirements and grouped major rules
+- an engineering major with dense category tables and larger requirement structure
