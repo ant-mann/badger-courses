@@ -10,6 +10,7 @@
   - Do not derive local meeting times with ad hoc timezone math; use persisted `*_minute_local` fields and `meeting_summary_local`
 - Query the analytical views first for general reporting:
   - `course_overview_v`
+  - `course_cross_listing_overview_v` for alias-to-canonical cross-list lookups
   - `section_overview_v`
   - `availability_v`
   - `schedule_planning_v`
@@ -140,3 +141,22 @@ Interpretation:
 - each inner array in `course_groups_json` is a one-of course set
 - the outer array means one set from each group is required
 - `escape_clauses_json` lists non-course alternatives that may satisfy or bypass the course-group path
+
+### Resolve a cross-listed alias back to the canonical course row
+
+```sql
+SELECT canonical_course_designation, alias_course_designation, course_id, is_primary
+FROM course_cross_listing_overview_v
+WHERE alias_course_designation = 'COMP SCI 240';
+```
+
+Use the returned `course_id` as the canonical key for follow-up overview queries. Some designations are reused across distinct course ids in the source dataset, so an alias lookup can return more than one row.
+
+### See all aliases on the canonical course row
+
+```sql
+SELECT course_designation, cross_list_designations_json, cross_list_count
+FROM course_overview_v
+WHERE term_code = '1272'
+  AND course_id = '011630';
+```

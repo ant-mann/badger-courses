@@ -30,6 +30,7 @@ function makeCourse({
   subjectCode,
   catalogNumber,
   courseDesignation,
+  fullCourseDesignation,
   title,
 }) {
   return {
@@ -37,6 +38,7 @@ function makeCourse({
     courseId,
     catalogNumber,
     courseDesignation,
+    fullCourseDesignation: fullCourseDesignation ?? null,
     title,
     description: `${title} description`,
     minimumCredits: 3,
@@ -645,6 +647,67 @@ function buildSharedLecturePackageFixture() {
   };
 }
 
+function buildCrossListedCourseFixture() {
+  return {
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '011630',
+        subjectCode: '302',
+        catalogNumber: '240',
+        courseDesignation: 'COMP SCI 240',
+        fullCourseDesignation: 'Computer Sciences 240',
+        title: 'Introduction to Discrete Mathematics',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '011630',
+        subjectCode: '640',
+        catalogNumber: '240',
+        courseDesignation: 'MATH 240',
+        fullCourseDesignation: 'Mathematics 240',
+        title: 'Introduction to Discrete Mathematics',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '302',
+            courseId: '011630',
+          },
+          packages: [
+            {
+              id: 'cs240-main',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '011630',
+              enrollmentClassNumber: 42400,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 8,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 8,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 22,
+              },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 async function loadBuildCourseDbModule() {
   const fixtureRoot = fs.mkdtempSync(path.join(repoRoot, '.tmp-db-module-'));
   const fixtureDbDir = path.join(fixtureRoot, 'src', 'db');
@@ -892,6 +955,224 @@ test('makeCourseRow flattens a course record into one course table row', async (
   assert.equal(row.course_id, '002983');
   assert.equal(row.subject_code, '232');
   assert.equal(row.title, 'Introductory Financial Accounting');
+});
+
+test('makeCourseCrossListingRows emits one unique alias row and marks the canonical designation as primary', async () => {
+  const { makeCourseCrossListingRows, makeCourseRow } = await loadHelpers();
+  const primaryCourse = {
+    ...makeCourse({
+      termCode: '1272',
+      courseId: '011630',
+      subjectCode: '302',
+      catalogNumber: '240',
+      courseDesignation: 'COMP SCI 240',
+      title: 'Introduction to Discrete Mathematics',
+    }),
+    fullCourseDesignation: 'Computer Sciences 240',
+  };
+  const duplicatePrimaryCourse = { ...primaryCourse };
+  const aliasCourse = {
+    ...makeCourse({
+      termCode: '1272',
+      courseId: '011630',
+      subjectCode: '640',
+      catalogNumber: '240',
+      courseDesignation: 'MATH 240',
+      title: 'Introduction to Discrete Mathematics',
+    }),
+    fullCourseDesignation: 'Mathematics 240',
+  };
+
+  const rows = makeCourseCrossListingRows(
+    [primaryCourse, duplicatePrimaryCourse, aliasCourse],
+    makeCourseRow(primaryCourse),
+  );
+
+  assert.deepEqual(rows, [
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'COMP SCI 240',
+      full_course_designation: 'Computer Sciences 240',
+      subject_code: '302',
+      catalog_number: '240',
+      is_primary: 1,
+    },
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'MATH 240',
+      full_course_designation: 'Mathematics 240',
+      subject_code: '640',
+      catalog_number: '240',
+      is_primary: 0,
+    },
+  ]);
+});
+
+test('makeCourseCrossListingRows normalizes whitespace when matching the primary designation', async () => {
+  const { makeCourseCrossListingRows, makeCourseRow } = await loadHelpers();
+  const canonicalCourse = makeCourse({
+    termCode: '1272',
+    courseId: '011630',
+    subjectCode: '302',
+    catalogNumber: '240',
+    courseDesignation: 'COMP SCI 240',
+    title: 'Introduction to Discrete Mathematics',
+  });
+
+  const rows = makeCourseCrossListingRows(
+    [
+      {
+        ...canonicalCourse,
+        courseDesignation: '  COMP   SCI 240  ',
+        fullCourseDesignation: 'Computer Sciences 240',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: '240',
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Mathematics 240',
+      },
+    ],
+    makeCourseRow(canonicalCourse),
+  );
+
+  assert.equal(rows.filter((row) => row.is_primary === 1).length, 1);
+  assert.deepEqual(rows[0], {
+    term_code: '1272',
+    course_id: '011630',
+    course_designation: 'COMP SCI 240',
+    full_course_designation: 'Computer Sciences 240',
+    subject_code: '302',
+    catalog_number: '240',
+    is_primary: 1,
+  });
+});
+
+test('makeCourseCrossListingRows falls back to the first alias as primary when the canonical designation is blank', async () => {
+  const { makeCourseCrossListingRows } = await loadHelpers();
+
+  const rows = makeCourseCrossListingRows(
+    [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: '240',
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Mathematics 240',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '302',
+          catalogNumber: '240',
+          courseDesignation: 'COMP SCI 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Computer Sciences 240',
+      },
+    ],
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: '   ',
+    },
+  );
+
+  assert.equal(rows.filter((row) => row.is_primary === 1).length, 1);
+  assert.deepEqual(rows, [
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'MATH 240',
+      full_course_designation: 'Mathematics 240',
+      subject_code: '640',
+      catalog_number: '240',
+      is_primary: 1,
+    },
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'COMP SCI 240',
+      full_course_designation: 'Computer Sciences 240',
+      subject_code: '302',
+      catalog_number: '240',
+      is_primary: 0,
+    },
+  ]);
+});
+
+test('makeCourseCrossListingRows enriches duplicate alias rows with later metadata', async () => {
+  const { makeCourseCrossListingRows, makeCourseRow } = await loadHelpers();
+  const canonicalCourse = makeCourse({
+    termCode: '1272',
+    courseId: '011630',
+    subjectCode: '302',
+    catalogNumber: '240',
+    courseDesignation: 'COMP SCI 240',
+    title: 'Introduction to Discrete Mathematics',
+  });
+
+  const rows = makeCourseCrossListingRows(
+    [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: null,
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: null,
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: '240',
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Mathematics 240',
+      },
+      canonicalCourse,
+    ],
+    makeCourseRow(canonicalCourse),
+  );
+
+  assert.deepEqual(rows, [
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'MATH 240',
+      full_course_designation: 'Mathematics 240',
+      subject_code: '640',
+      catalog_number: '240',
+      is_primary: 0,
+    },
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'COMP SCI 240',
+      full_course_designation: null,
+      subject_code: '302',
+      catalog_number: '240',
+      is_primary: 1,
+    },
+  ]);
 });
 
 test('makePackageRow exposes availability flags for package-level queries', async () => {
@@ -1656,6 +1937,66 @@ test('schema requires valid JSON in prerequisite summary columns', () => {
   }
 });
 
+test('course_cross_listings enforces boolean primary flags and one primary alias per course', () => {
+  const db = createSchemaDb();
+
+  try {
+    db.prepare(`
+      INSERT INTO courses (
+        term_code, course_id, subject_code, subject_short_description, subject_description,
+        catalog_number, course_designation, title, description, minimum_credits,
+        maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+      ) VALUES (
+        @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+        @catalog_number, @course_designation, @title, @description, @minimum_credits,
+        @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+      )
+    `).run({
+      term_code: '1272',
+      course_id: '011630',
+      subject_code: '302',
+      subject_short_description: 'COMP SCI',
+      subject_description: 'COMPUTER SCIENCES',
+      catalog_number: '240',
+      course_designation: 'COMP SCI 240',
+      title: 'Introduction to Discrete Mathematics',
+      description: null,
+      minimum_credits: 3,
+      maximum_credits: 3,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: '1264',
+    });
+
+    const insertCrossListing = db.prepare(`
+      INSERT INTO course_cross_listings (
+        term_code, course_id, course_designation, full_course_designation,
+        subject_code, catalog_number, is_primary
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertCrossListing.run('1272', '011630', 'COMP SCI 240', 'COMP SCI 240', '302', '240', 1);
+
+    assert.throws(
+      () => {
+        insertCrossListing.run('1272', '011630', 'MATH 240', 'MATH 240', '640', '240', 2);
+      },
+      /CHECK|constraint/i,
+    );
+
+    assert.throws(
+      () => {
+        insertCrossListing.run('1272', '011630', 'MATH 240', 'MATH 240', '640', '240', 1);
+      },
+      /UNIQUE|constraint/i,
+    );
+
+    insertCrossListing.run('1272', '011630', 'MATH 240', 'MATH 240', '640', '240', 0);
+  } finally {
+    db.close();
+  }
+});
+
 test('build-course-db materializes prerequisite graph rows for parsed and partial prerequisite text', () => {
   const fixture = buildCourseDbFixture({
     courses: [
@@ -2046,6 +2387,256 @@ test('build-course-db materializes AI-friendly prerequisite course summaries for
     assert.deepEqual(JSON.parse(overviewRow.escape_clauses_json), [
       'graduate/professional standing',
       'member of engineering guest students',
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes cross-listed aliases for shared course ids', () => {
+  const fixture = buildCourseDbFixture(buildCrossListedCourseFixture());
+
+  try {
+    const canonicalCourseRows = fixture.db.prepare(`
+      SELECT course_designation, subject_code, catalog_number
+      FROM courses
+      WHERE term_code = ? AND course_id = ?
+    `).all('1272', '011630');
+    const crossListings = fixture.db.prepare(`
+      SELECT course_designation, full_course_designation, subject_code, catalog_number, is_primary
+      FROM course_cross_listings
+      WHERE term_code = ? AND course_id = ?
+      ORDER BY course_designation
+    `).all('1272', '011630');
+    const aliasLookup = fixture.db.prepare(`
+      SELECT canonical_course_designation, alias_course_designation, course_id, is_primary
+      FROM course_cross_listing_overview_v
+      WHERE alias_course_designation = ?
+    `).get('MATH 240');
+    const overviewRow = fixture.db.prepare(`
+      SELECT course_designation, cross_list_count, cross_list_designations_json
+      FROM course_overview_v
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '011630');
+
+    assert.deepEqual(crossListings, [
+      {
+        course_designation: 'COMP SCI 240',
+        full_course_designation: 'Computer Sciences 240',
+        subject_code: '302',
+        catalog_number: '240',
+        is_primary: 1,
+      },
+      {
+        course_designation: 'MATH 240',
+        full_course_designation: 'Mathematics 240',
+        subject_code: '640',
+        catalog_number: '240',
+        is_primary: 0,
+      },
+    ]);
+    assert.equal(canonicalCourseRows.length, 1);
+    assert.deepEqual(canonicalCourseRows[0], {
+      course_designation: 'COMP SCI 240',
+      subject_code: '302',
+      catalog_number: '240',
+    });
+    assert.deepEqual(aliasLookup, {
+      canonical_course_designation: 'COMP SCI 240',
+      alias_course_designation: 'MATH 240',
+      course_id: '011630',
+      is_primary: 0,
+    });
+    assert.equal(overviewRow.course_designation, 'COMP SCI 240');
+    assert.equal(overviewRow.cross_list_count, 2);
+    assert.deepEqual(JSON.parse(overviewRow.cross_list_designations_json), [
+      'COMP SCI 240',
+      'MATH 240',
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes package-only alias metadata for an existing canonical course group', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '011630',
+        subjectCode: '302',
+        catalogNumber: '240',
+        courseDesignation: 'COMP SCI 240',
+        title: 'Introduction to Discrete Mathematics',
+        fullCourseDesignation: 'Computer Sciences 240',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '640',
+            courseId: '011630',
+            catalogNumber: '240',
+            courseDesignation: 'MATH 240',
+            fullCourseDesignation: 'Mathematics 240',
+            title: 'Introduction to Discrete Mathematics',
+          },
+          packages: [
+            {
+              id: 'math240-main',
+              termCode: '1272',
+              subjectCode: '640',
+              courseId: '011630',
+              catalogNumber: '240',
+              courseDesignation: 'MATH 240',
+              fullCourseDesignation: 'Mathematics 240',
+              title: 'Introduction to Discrete Mathematics',
+              enrollmentClassNumber: 42401,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 8,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 8,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 22,
+              },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const crossListings = fixture.db.prepare(`
+      SELECT course_designation, full_course_designation, subject_code, catalog_number, is_primary
+      FROM course_cross_listings
+      WHERE term_code = ? AND course_id = ?
+      ORDER BY course_designation
+    `).all('1272', '011630');
+
+    assert.deepEqual(crossListings, [
+      {
+        course_designation: 'COMP SCI 240',
+        full_course_designation: 'Computer Sciences 240',
+        subject_code: '302',
+        catalog_number: '240',
+        is_primary: 1,
+      },
+      {
+        course_designation: 'MATH 240',
+        full_course_designation: 'Mathematics 240',
+        subject_code: '640',
+        catalog_number: '240',
+        is_primary: 0,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps singleton courses canonical while still exposing one alias designation', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '003210',
+        subjectCode: '220',
+        catalogNumber: '340',
+        courseDesignation: 'STAT 340',
+        fullCourseDesignation: 'Statistics 340',
+        title: 'Data Science Modeling',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [],
+    },
+  });
+
+  try {
+    const aliasCount = fixture.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM course_cross_listings
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003210');
+    const overviewRow = fixture.db.prepare(`
+      SELECT course_designation, cross_list_count, cross_list_designations_json
+      FROM course_overview_v
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003210');
+
+    assert.equal(aliasCount.count, 1);
+    assert.equal(overviewRow.course_designation, 'STAT 340');
+    assert.equal(overviewRow.cross_list_count, 1);
+    assert.deepEqual(JSON.parse(overviewRow.cross_list_designations_json), ['STAT 340']);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db allows repeated alias designations across distinct course ids', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '026791',
+        subjectCode: '106',
+        catalogNumber: '270',
+        courseDesignation: 'AFROAMER 270',
+        fullCourseDesignation: 'AFRICAN AMERICAN STUDIES 270',
+        title: 'Selected Topics in African American Studies',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '026791.5',
+        subjectCode: '106',
+        catalogNumber: '270',
+        courseDesignation: 'AFROAMER 270',
+        fullCourseDesignation: 'AFRICAN AMERICAN STUDIES 270',
+        title: 'Sports, War, & Black Masc.',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [],
+    },
+  });
+
+  try {
+    const aliasRows = fixture.db.prepare(`
+      SELECT course_id, canonical_course_designation, alias_course_designation, is_primary, title
+      FROM course_cross_listing_overview_v
+      WHERE alias_course_designation = ?
+      ORDER BY course_id
+    `).all('AFROAMER 270');
+
+    assert.deepEqual(aliasRows, [
+      {
+        course_id: '026791',
+        canonical_course_designation: 'AFROAMER 270',
+        alias_course_designation: 'AFROAMER 270',
+        is_primary: 1,
+        title: 'Selected Topics in African American Studies',
+      },
+      {
+        course_id: '026791.5',
+        canonical_course_designation: 'AFROAMER 270',
+        alias_course_designation: 'AFROAMER 270',
+        is_primary: 1,
+        title: 'Sports, War, & Black Masc.',
+      },
     ]);
   } finally {
     fixture.cleanup();

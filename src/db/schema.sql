@@ -8,6 +8,7 @@ DROP VIEW IF EXISTS schedule_candidates_v;
 DROP VIEW IF EXISTS schedule_planning_v;
 DROP VIEW IF EXISTS availability_v;
 DROP VIEW IF EXISTS section_overview_v;
+DROP VIEW IF EXISTS course_cross_listing_overview_v;
 DROP VIEW IF EXISTS course_overview_v;
 
 DROP TABLE IF EXISTS refresh_runs;
@@ -25,6 +26,7 @@ DROP TABLE IF EXISTS instructors;
 DROP TABLE IF EXISTS meetings;
 DROP TABLE IF EXISTS sections;
 DROP TABLE IF EXISTS packages;
+DROP TABLE IF EXISTS course_cross_listings;
 DROP TABLE IF EXISTS courses;
 DROP TABLE IF EXISTS buildings;
 
@@ -52,6 +54,21 @@ CREATE TABLE courses (
   currently_taught INTEGER,
   last_taught TEXT,
   PRIMARY KEY (term_code, course_id)
+);
+
+CREATE TABLE course_cross_listings (
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  course_designation TEXT NOT NULL,
+  full_course_designation TEXT,
+  subject_code TEXT,
+  catalog_number TEXT,
+  is_primary INTEGER NOT NULL,
+  CHECK (is_primary IN (0, 1)),
+  PRIMARY KEY (term_code, course_id, course_designation),
+  FOREIGN KEY (term_code, course_id)
+    REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE prerequisite_rules (
@@ -308,6 +325,11 @@ CREATE TABLE schedulable_packages (
 );
 
 CREATE INDEX idx_courses_subject ON courses(subject_code, catalog_number);
+CREATE INDEX idx_course_cross_listings_course ON course_cross_listings(term_code, course_id);
+CREATE INDEX idx_course_cross_listings_designation ON course_cross_listings(term_code, course_designation);
+CREATE UNIQUE INDEX idx_course_cross_listings_one_primary_per_course
+  ON course_cross_listings(term_code, course_id)
+  WHERE is_primary = 1;
 CREATE INDEX idx_prerequisite_rules_course ON prerequisite_rules(term_code, course_id);
 CREATE INDEX idx_prerequisite_nodes_rule ON prerequisite_nodes(rule_id);
 CREATE INDEX idx_prerequisite_edges_child ON prerequisite_edges(rule_id, child_node_id);
@@ -322,7 +344,35 @@ CREATE INDEX idx_canonical_meetings_package_time ON canonical_meetings(package_i
 CREATE INDEX idx_schedulable_packages_designation_open ON schedulable_packages(course_designation, has_temporary_restriction, open_seats);
 CREATE INDEX idx_schedulable_packages_designation_day_start ON schedulable_packages(course_designation, campus_day_count, earliest_start_minute_local);
 
+CREATE VIEW course_cross_listing_overview_v AS
+SELECT
+  ccl.term_code,
+  ccl.course_id,
+  c.course_designation AS canonical_course_designation,
+  ccl.course_designation AS alias_course_designation,
+  ccl.full_course_designation,
+  ccl.subject_code,
+  ccl.catalog_number,
+  c.title,
+  ccl.is_primary
+FROM course_cross_listings ccl
+JOIN courses c
+  ON c.term_code = ccl.term_code AND c.course_id = ccl.course_id;
+
 CREATE VIEW course_overview_v AS
+WITH cross_list_agg AS (
+  SELECT
+    term_code,
+    course_id,
+    json_group_array(course_designation) AS cross_list_designations_json,
+    COUNT(*) AS cross_list_count
+  FROM (
+    SELECT term_code, course_id, course_designation
+    FROM course_cross_listings
+    ORDER BY course_designation
+  ) ordered_cross_listings
+  GROUP BY term_code, course_id
+)
 SELECT
   c.term_code,
   c.subject_code,
@@ -332,6 +382,8 @@ SELECT
   c.title,
   c.minimum_credits,
   c.maximum_credits,
+  COALESCE(cla.cross_list_designations_json, json_array(c.course_designation)) AS cross_list_designations_json,
+  COALESCE(cla.cross_list_count, 1) AS cross_list_count,
   COUNT(DISTINCT so.section_class_number) AS section_count,
   MAX(so.has_open_seats) AS has_any_open_seats,
   MAX(so.has_waitlist) AS has_any_waitlist,
@@ -339,9 +391,12 @@ SELECT
 FROM courses c
 LEFT JOIN section_overview_v so
   ON so.term_code = c.term_code AND so.course_id = c.course_id
+LEFT JOIN cross_list_agg cla
+  ON cla.term_code = c.term_code AND cla.course_id = c.course_id
 GROUP BY
   c.term_code, c.subject_code, c.catalog_number, c.course_id,
-  c.course_designation, c.title, c.minimum_credits, c.maximum_credits;
+  c.course_designation, c.title, c.minimum_credits, c.maximum_credits,
+  cla.cross_list_designations_json, cla.cross_list_count;
 
 CREATE VIEW prerequisite_rule_overview_v AS
 SELECT
