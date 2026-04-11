@@ -14,6 +14,9 @@
   - `availability_v`
   - `schedule_planning_v`
   - `online_courses_v`
+- For prerequisite queries:
+  - `prerequisite_rule_overview_v` for rule-level parse inspection
+  - `prerequisite_course_summary_overview_v` for AI-friendly prerequisite course groups plus escape clauses
 - For AI-facing non-schedule queries, prefer the canonical views above over raw `packages`, `sections`, or `meetings`.
 - Use the base tables only when a view does not expose the detail you need.
 - Raw `sections.section_class_number` values stay canonical when the source provides a real class number.
@@ -118,3 +121,22 @@ WHERE source_package_id IN (
 )
 ORDER BY source_package_id, start_date, start_minute_local;
 ```
+
+### AI-friendly prerequisite summary for one course
+
+```sql
+SELECT
+  course_designation,
+  summary_status,
+  course_groups_json,
+  escape_clauses_json,
+  raw_text,
+  unparsed_text
+FROM prerequisite_course_summary_overview_v
+WHERE course_designation = 'COMP SCI 577';
+```
+
+Interpretation:
+- each inner array in `course_groups_json` is a one-of course set
+- the outer array means one set from each group is required
+- `escape_clauses_json` lists non-course alternatives that may satisfy or bypass the course-group path

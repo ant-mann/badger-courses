@@ -2,6 +2,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 DROP VIEW IF EXISTS online_courses_v;
+DROP VIEW IF EXISTS prerequisite_course_summary_overview_v;
 DROP VIEW IF EXISTS prerequisite_rule_overview_v;
 DROP VIEW IF EXISTS schedule_candidates_v;
 DROP VIEW IF EXISTS schedule_planning_v;
@@ -10,6 +11,7 @@ DROP VIEW IF EXISTS section_overview_v;
 DROP VIEW IF EXISTS course_overview_v;
 
 DROP TABLE IF EXISTS refresh_runs;
+DROP TABLE IF EXISTS prerequisite_course_summaries;
 DROP TABLE IF EXISTS prerequisite_edges;
 DROP TABLE IF EXISTS prerequisite_nodes;
 DROP TABLE IF EXISTS prerequisite_rules;
@@ -69,6 +71,9 @@ CREATE TABLE prerequisite_rules (
     ON DELETE CASCADE
 );
 
+CREATE UNIQUE INDEX idx_prerequisite_rules_rule_course
+  ON prerequisite_rules(rule_id, term_code, course_id);
+
 CREATE TABLE prerequisite_nodes (
   node_id TEXT PRIMARY KEY,
   rule_id TEXT NOT NULL,
@@ -94,6 +99,23 @@ CREATE TABLE prerequisite_edges (
     ON DELETE CASCADE,
   FOREIGN KEY (rule_id, child_node_id)
     REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE prerequisite_course_summaries (
+  rule_id TEXT PRIMARY KEY,
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  summary_status TEXT NOT NULL,
+  course_groups_json TEXT NOT NULL,
+  escape_clauses_json TEXT NOT NULL,
+  CHECK (json_valid(course_groups_json)),
+  CHECK (json_valid(escape_clauses_json)),
+  FOREIGN KEY (term_code, course_id)
+    REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (rule_id, term_code, course_id)
+    REFERENCES prerequisite_rules (rule_id, term_code, course_id)
     ON DELETE CASCADE
 );
 
@@ -289,6 +311,7 @@ CREATE INDEX idx_courses_subject ON courses(subject_code, catalog_number);
 CREATE INDEX idx_prerequisite_rules_course ON prerequisite_rules(term_code, course_id);
 CREATE INDEX idx_prerequisite_nodes_rule ON prerequisite_nodes(rule_id);
 CREATE INDEX idx_prerequisite_edges_child ON prerequisite_edges(rule_id, child_node_id);
+CREATE INDEX idx_prerequisite_course_summaries_course ON prerequisite_course_summaries(term_code, course_id);
 CREATE INDEX idx_packages_course ON packages(term_code, course_id);
 CREATE INDEX idx_packages_updated ON packages(package_last_updated DESC, package_id);
 CREATE INDEX idx_sections_course ON sections(term_code, course_id, section_type);
@@ -336,6 +359,30 @@ SELECT
 FROM prerequisite_rules pr
 JOIN courses c
   ON c.term_code = pr.term_code AND c.course_id = pr.course_id;
+
+CREATE VIEW prerequisite_course_summary_overview_v AS
+SELECT
+  pcs.term_code,
+  c.subject_code,
+  c.catalog_number,
+  pcs.course_id,
+  c.course_designation,
+  c.title,
+  pcs.rule_id,
+  pr.parse_status,
+  pr.parse_confidence,
+  pcs.summary_status,
+  pcs.course_groups_json,
+  pcs.escape_clauses_json,
+  pr.raw_text,
+  pr.unparsed_text
+FROM prerequisite_course_summaries pcs
+JOIN courses c
+  ON c.term_code = pcs.term_code AND c.course_id = pcs.course_id
+JOIN prerequisite_rules pr
+  ON pr.rule_id = pcs.rule_id
+ AND pr.term_code = pcs.term_code
+ AND pr.course_id = pcs.course_id;
 
 CREATE VIEW section_overview_v AS
 WITH ranked_section_sources AS (
