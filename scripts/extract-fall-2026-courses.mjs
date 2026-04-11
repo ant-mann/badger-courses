@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 import {
@@ -17,9 +19,26 @@ const COURSES_PATH = new URL('../data/fall-2026-courses.json', import.meta.url);
 const PACKAGES_PATH = new URL('../data/fall-2026-enrollment-packages.json', import.meta.url);
 const includePackages = process.argv.includes('--include-packages');
 const runHeadless = process.argv.includes('--headless');
+const __filename = fileURLToPath(import.meta.url);
+
+const HEADLESS_DESKTOP_CONTEXT = {
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+  viewport: { width: 1280, height: 720 },
+  locale: 'en-US',
+  timezoneId: 'America/Chicago',
+  extraHTTPHeaders: {
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+  },
+};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function makeExtractionContextOptions({ headless }) {
+  return headless ? HEADLESS_DESKTOP_CONTEXT : {};
 }
 
 async function fetchJson(page, endpoint, options = {}) {
@@ -41,7 +60,9 @@ async function fetchJson(page, endpoint, options = {}) {
   try {
     json = JSON.parse(response.text);
   } catch (error) {
-    throw new Error(`Expected JSON from ${endpoint} but could not parse the response`);
+    throw new Error(
+      `Expected JSON from ${endpoint} but got status ${response.status}: ${response.text.slice(0, 240)}`,
+    );
   }
 
   return {
@@ -91,7 +112,18 @@ async function fetchEnrollmentPackages(page, course) {
 
 async function main() {
   const browser = await chromium.launch({ headless: runHeadless });
-  const page = await browser.newPage();
+  const context = await browser.newContext(makeExtractionContextOptions({ headless: runHeadless }));
+
+  if (runHeadless) {
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+      window.chrome = window.chrome || { runtime: {} };
+    });
+  }
+
+  const page = await context.newPage();
 
   try {
     console.log(`Opening ${SEARCH_URL}`);
@@ -163,8 +195,11 @@ async function main() {
       `Wrote ${packageResults.length} package-detail entries to ${PACKAGES_PATH.pathname} (${packageFailures.length} failures)`,
     );
   } finally {
+    await context.close();
     await browser.close();
   }
 }
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  await main();
+}
