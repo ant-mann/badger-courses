@@ -1,0 +1,416 @@
+import { NODE_TYPE, PARSE_STATUS } from './prerequisite-helpers.mjs';
+
+function stripOuterParentheses(text) {
+  let candidate = text.trim();
+
+  while (candidate.startsWith('(') && candidate.endsWith(')')) {
+    let depth = 0;
+    let wrapsEntireText = true;
+
+    for (let index = 0; index < candidate.length; index += 1) {
+      const char = candidate[index];
+
+      if (char === '(') {
+        depth += 1;
+      } else if (char === ')') {
+        depth -= 1;
+        if (depth === 0 && index < candidate.length - 1) {
+          wrapsEntireText = false;
+          break;
+        }
+      }
+
+      if (depth < 0) {
+        wrapsEntireText = false;
+        break;
+      }
+    }
+
+    if (!wrapsEntireText || depth !== 0) {
+      break;
+    }
+
+    candidate = candidate.slice(1, -1).trim();
+  }
+
+  return candidate;
+}
+
+function splitTopLevel(text, operator) {
+  const parts = [];
+  const lowerText = text.toLowerCase();
+  const separator = operator.toLowerCase();
+  let depth = 0;
+  let cursor = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (char === '(') {
+      depth += 1;
+      continue;
+    }
+
+    if (char === ')') {
+      depth -= 1;
+      continue;
+    }
+
+    const startsSeparator = depth === 0 && lowerText.startsWith(separator, index);
+    const beforeChar = index === 0 ? '' : lowerText[index - 1];
+    const afterChar = lowerText[index + separator.length] ?? '';
+    const hasWordBoundaryBefore = beforeChar === '' || /[\s()]/.test(beforeChar);
+    const hasWordBoundaryAfter = afterChar === '' || /[\s()]/.test(afterChar);
+
+    if (startsSeparator && hasWordBoundaryBefore && hasWordBoundaryAfter) {
+      parts.push(text.slice(cursor, index).trim());
+      cursor = index + separator.length;
+      index = cursor - 1;
+    }
+  }
+
+  parts.push(text.slice(cursor).trim());
+  return parts.filter(Boolean);
+}
+
+function normalizeEscapeClauseText(text) {
+  return text.trim().replace(/[\s,;:.]+$/g, '');
+}
+
+function looksCourseBearingClause(text) {
+  const normalized = text.trim();
+  return /\b[A-Z][A-Z/& ]+\s+\d{3}[A-Z]?\b/.test(normalized)
+    || /^\d{3}[A-Z]?(?:\s*,\s*\d{3}[A-Z]?)*(?:\s*,?\s*(?:or|and)\s+\d{3}[A-Z]?)?$/.test(normalized);
+}
+
+function isCoursePlaceholderListClause(text) {
+  return /^\[COURSE\](?:\/\[COURSE\])*(?:,\s*\[COURSE\](?:\/\[COURSE\])*)*(?:,\s*(?:or|and)\s*\[COURSE\](?:\/\[COURSE\])*|\s+(?:or|and)\s+\[COURSE\](?:\/\[COURSE\])*)?$/i.test(text);
+}
+
+function hasSingleUnresolvedSlashClause(text) {
+  const normalized = text.trim();
+  return /^[A-Z][A-Z/& ]*\/[A-Z][A-Z/& ]+\s+\d{3}[A-Z]?$/i.test(normalized);
+}
+
+function isAliasLikeParentheticalNote(text) {
+  const normalized = text.trim();
+  return /^\[COURSE\]\s+before\b/i.test(normalized)
+    || /^\d{3}[A-Z]?\s+prior\s+to\b/i.test(normalized)
+    || /\bequivalent\b/i.test(normalized);
+}
+
+function summarizeParsedCourseGraph(parsedRule) {
+  const courseNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE);
+
+  if (courseNodes.length === 1 && parsedRule.edges.length === 0) {
+    return [courseNodes.map((node) => node.normalized_value)];
+  }
+
+  const orNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.OR);
+  if (orNodes.length !== 1 || courseNodes.length === 0 || parsedRule.edges.length !== courseNodes.length) {
+    return null;
+  }
+
+  const rootId = orNodes[0].id;
+  const childIds = new Set(courseNodes.map((node) => node.id));
+  const isFlatOrGraph = parsedRule.edges.every((edge) => edge.source === rootId && childIds.has(edge.target));
+
+  return isFlatOrGraph ? [courseNodes.map((node) => node.normalized_value)] : null;
+}
+
+function summarizeGroupedCoursePath(parsedRule) {
+  if (parsedRule.parseStatus !== PARSE_STATUS.PARTIAL || !parsedRule.unparsedText) {
+    return null;
+  }
+
+  const courseNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE);
+  if (courseNodes.length === 0) {
+    return null;
+  }
+
+  const topLevelOrClauses = splitTopLevel(parsedRule.unparsedText, 'or');
+  const courseClauseIndex = topLevelOrClauses.findIndex((clause) => clause.includes('[COURSE]'));
+  if (courseClauseIndex < 0) {
+    return null;
+  }
+
+  const siblingClauses = topLevelOrClauses.filter((_, index) => index !== courseClauseIndex);
+  if (siblingClauses.some((clause) => clause.includes('[COURSE]'))) {
+    return null;
+  }
+
+  const courseSkeleton = stripOuterParentheses(topLevelOrClauses[courseClauseIndex]);
+  const hasExplicitGrouping = courseSkeleton !== topLevelOrClauses[courseClauseIndex] || /\bor\b/i.test(courseSkeleton);
+  if (!hasExplicitGrouping) {
+    return null;
+  }
+
+  const groupClauses = splitTopLevel(courseSkeleton, 'and');
+
+  if (groupClauses.length === 0) {
+    return null;
+  }
+
+  const courseGroups = [];
+  let courseIndex = 0;
+
+  for (const groupClause of groupClauses) {
+    const optionClauses = splitTopLevel(stripOuterParentheses(groupClause), 'or');
+    if (optionClauses.length === 0) {
+      return null;
+    }
+
+    const group = [];
+    for (const optionClause of optionClauses) {
+      const normalizedOptionClause = stripOuterParentheses(optionClause);
+      if (splitTopLevel(normalizedOptionClause, 'and').length > 1 || splitTopLevel(normalizedOptionClause, 'or').length > 1) {
+        return null;
+      }
+
+      const placeholderCount = (optionClause.match(/\[COURSE\]/g) ?? []).length;
+      if (placeholderCount === 0) {
+        return null;
+      }
+
+      const nextCourses = courseNodes.slice(courseIndex, courseIndex + placeholderCount);
+      if (nextCourses.length !== placeholderCount) {
+        return null;
+      }
+
+      group.push(...nextCourses.map((node) => node.normalized_value));
+      courseIndex += placeholderCount;
+    }
+
+    courseGroups.push(group);
+  }
+
+  if (courseIndex !== courseNodes.length) {
+    return null;
+  }
+
+  const standingNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING);
+  let standingIndex = 0;
+  const normalizedSiblingClauses = siblingClauses
+    .map((clause) => clause.replace(/\[STANDING\]/g, () => {
+      const replacement = standingNodes[standingIndex]?.raw_value ?? standingNodes[standingIndex]?.normalized_value ?? '[STANDING]';
+      standingIndex += 1;
+      return replacement;
+    }).trim())
+    .filter(Boolean);
+
+  if (groupClauses.length > 1 && normalizedSiblingClauses.some((clause) => looksCourseBearingClause(clause))) {
+    return null;
+  }
+
+  const escapeClauses = normalizedSiblingClauses
+    .filter((clause) => !looksCourseBearingClause(clause))
+    .map((clause) => normalizeEscapeClauseText(clause))
+    .filter(Boolean);
+
+  return {
+    courseGroups,
+    escapeClauses,
+  };
+}
+
+function summarizeTrailingCourseList(parsedRule) {
+  if (parsedRule.parseStatus !== PARSE_STATUS.PARTIAL || !parsedRule.unparsedText) {
+    return null;
+  }
+
+  if (parsedRule.nodes.some((node) => ![NODE_TYPE.COURSE, NODE_TYPE.STANDING].includes(node.node_type))) {
+    return null;
+  }
+
+  const courseNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE);
+  const standingNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING);
+  let unparsedCourseText = parsedRule.unparsedText;
+  let escapeClauses = [];
+
+  if (standingNodes.length > 0) {
+    if (standingNodes.length !== 1) {
+      return null;
+    }
+
+    const trailingStandingPattern = /(?:,\s*|\s+)or\s+\[STANDING\]$/i;
+    const trailingStandingMatch = unparsedCourseText.match(trailingStandingPattern);
+    if (!trailingStandingMatch) {
+      return null;
+    }
+
+    unparsedCourseText = unparsedCourseText.slice(0, trailingStandingMatch.index).trim().replace(/,\s*$/, '');
+    escapeClauses = [standingNodes[0].raw_value ?? standingNodes[0].normalized_value];
+  }
+
+  const courseListItemPattern = '\\[COURSE\\](?:\\/\\[COURSE\\])*';
+  const fullCourseListPattern = new RegExp(`^${courseListItemPattern}(?:,\\s*${courseListItemPattern})*(?:,\\s*(?:or|and)\\s*${courseListItemPattern}|\\s+(?:or|and)\\s+${courseListItemPattern})$`, 'i');
+  if (fullCourseListPattern.test(unparsedCourseText)) {
+    return {
+      courseGroups: [courseNodes.map((node) => node.normalized_value)],
+      escapeClauses,
+      summaryStatus: escapeClauses.length > 0 ? 'partial' : 'structured',
+    };
+  }
+
+  const aliasedLeadingCoursePattern = new RegExp(`^(\\[COURSE\\]\\s*\\(([^)]*)\\))(?:,\\s*|\\s+)or\\s+(${courseListItemPattern})(?:,\\s*|\\s+)or\\s+(.+)$`, 'i');
+  const aliasedLeadingCourseMatch = unparsedCourseText.match(aliasedLeadingCoursePattern);
+  if (aliasedLeadingCourseMatch && isAliasLikeParentheticalNote(aliasedLeadingCourseMatch[2])) {
+    const trailingEscapeClause = normalizeEscapeClauseText(aliasedLeadingCourseMatch[4]);
+    if (trailingEscapeClause && !/\[(?:COURSE|STANDING)\]/.test(trailingEscapeClause) && !looksCourseBearingClause(trailingEscapeClause)) {
+      const placeholderCount = (aliasedLeadingCourseMatch[3].match(/\[COURSE\]/g) ?? []).length;
+      return {
+        courseGroups: [
+          [courseNodes[0]?.normalized_value].filter(Boolean),
+          courseNodes.slice(-placeholderCount).map((node) => node.normalized_value),
+        ].filter((group) => group.length > 0),
+        escapeClauses: [...escapeClauses, trailingEscapeClause],
+        summaryStatus: 'partial',
+      };
+    }
+  }
+
+  const parentheticalAliasEscapePattern = /^(\[COURSE\]\s*\(([^\[\]]+)\))(?:,\s*|\s+)or\s+(.+)$/i;
+  const parentheticalAliasEscapeMatch = unparsedCourseText.match(parentheticalAliasEscapePattern);
+  if (parentheticalAliasEscapeMatch && courseNodes.length > 0 && isAliasLikeParentheticalNote(parentheticalAliasEscapeMatch[2])) {
+    const trailingEscapeClause = normalizeEscapeClauseText(parentheticalAliasEscapeMatch[3]);
+    if (trailingEscapeClause && !/\[(?:COURSE|STANDING)\]/.test(trailingEscapeClause) && !looksCourseBearingClause(trailingEscapeClause)) {
+      return {
+        courseGroups: [[courseNodes[0].normalized_value]],
+        escapeClauses: [...escapeClauses, trailingEscapeClause],
+        summaryStatus: 'partial',
+      };
+    }
+  }
+
+  const trailingEscapeClausePattern = new RegExp(`^(${courseListItemPattern}(?:,\\s*${courseListItemPattern})*(?:,\\s*(?:or|and)\\s*${courseListItemPattern}|\\s+(?:or|and)\\s+${courseListItemPattern}))(?:,\\s*|\\s+)or\\s+(.+)$`, 'i');
+  const trailingEscapeClauseMatch = unparsedCourseText.match(trailingEscapeClausePattern);
+  if (trailingEscapeClauseMatch && fullCourseListPattern.test(trailingEscapeClauseMatch[1])) {
+    const trailingEscapeClause = normalizeEscapeClauseText(trailingEscapeClauseMatch[2]);
+    if (trailingEscapeClause && !/\[(?:COURSE|STANDING)\]/.test(trailingEscapeClause) && !looksCourseBearingClause(trailingEscapeClause)) {
+      return {
+        courseGroups: [courseNodes.map((node) => node.normalized_value)],
+        escapeClauses: [...escapeClauses, trailingEscapeClause],
+        summaryStatus: 'partial',
+      };
+    }
+  }
+
+  const trailingCourseListPattern = new RegExp(`(${courseListItemPattern}(?:,\\s*${courseListItemPattern})*(?:,\\s*(?:or|and)\\s*${courseListItemPattern}|\\s+(?:or|and)\\s+${courseListItemPattern}))$`, 'i');
+  const trailingCourseListMatch = unparsedCourseText.match(trailingCourseListPattern);
+  if (trailingCourseListMatch) {
+    const leadingText = unparsedCourseText.slice(0, trailingCourseListMatch.index).trim();
+    if (!/\[(?:COURSE|STANDING)\]/.test(leadingText)) {
+      const placeholderCount = (trailingCourseListMatch[0].match(/\[COURSE\]/g) ?? []).length;
+      return {
+        courseGroups: [courseNodes.slice(-placeholderCount).map((node) => node.normalized_value)],
+        escapeClauses,
+        summaryStatus: leadingText || escapeClauses.length > 0 ? 'partial' : 'structured',
+      };
+    }
+
+    const leadingCourseWithOptionalAliasMatch = leadingText.match(/^\[COURSE\](?:\s*\(([^\[\]]+)\))?,?$/i);
+    if (leadingCourseWithOptionalAliasMatch && (!leadingCourseWithOptionalAliasMatch[1] || isAliasLikeParentheticalNote(leadingCourseWithOptionalAliasMatch[1]))) {
+      const placeholderCount = (trailingCourseListMatch[0].match(/\[COURSE\]/g) ?? []).length;
+      return {
+        courseGroups: [
+          [courseNodes[0].normalized_value],
+          courseNodes.slice(-placeholderCount).map((node) => node.normalized_value),
+        ],
+        escapeClauses,
+        summaryStatus: 'partial',
+      };
+    }
+  }
+
+  if (escapeClauses.length > 0) {
+    const trailingCommaSeparatedCourseListPattern = new RegExp(`(${courseListItemPattern}(?:,\\s*${courseListItemPattern})+)$`, 'i');
+    const trailingCommaSeparatedCourseListMatch = unparsedCourseText.match(trailingCommaSeparatedCourseListPattern);
+    if (trailingCommaSeparatedCourseListMatch) {
+      const leadingText = unparsedCourseText.slice(0, trailingCommaSeparatedCourseListMatch.index).trim();
+      if (!/\[(?:COURSE|STANDING)\]/.test(leadingText) && /^[A-Z][A-Z/]+\s+\d{3}[A-Z]?,?$/i.test(leadingText)) {
+        const placeholderCount = (trailingCommaSeparatedCourseListMatch[0].match(/\[COURSE\]/g) ?? []).length;
+        return {
+          courseGroups: [courseNodes.slice(-placeholderCount).map((node) => node.normalized_value)],
+          escapeClauses,
+          summaryStatus: 'partial',
+        };
+      }
+    }
+  }
+
+  const interruptedCourseListPattern = new RegExp(`^${courseListItemPattern},\\s*.+?,\\s*${courseListItemPattern}(?:,\\s*${courseListItemPattern})*(?:,\\s*(?:or|and)\\s*${courseListItemPattern}|\\s+(?:or|and)\\s+${courseListItemPattern})$`, 'i');
+  if (!interruptedCourseListPattern.test(unparsedCourseText)) {
+    return null;
+  }
+
+  const interruptedMatch = unparsedCourseText.match(/^(\[COURSE\](?:\/\[COURSE\])*(?:,\s*\[COURSE\](?:\/\[COURSE\])*)*),\s*(.+?),\s*(\[COURSE\](?:\/\[COURSE\])*(?:,\s*\[COURSE\](?:\/\[COURSE\])*)*(?:,\s*(?:or|and)\s*\[COURSE\](?:\/\[COURSE\])*|\s+(?:or|and)\s+\[COURSE\](?:\/\[COURSE\])*))$/i);
+  if (!interruptedMatch) {
+    return null;
+  }
+
+  const leadingCourseClause = interruptedMatch[1];
+  const unresolvedMiddleClause = interruptedMatch[2];
+  const trailingCourseClause = interruptedMatch[3];
+
+  if (!isCoursePlaceholderListClause(leadingCourseClause) || !isCoursePlaceholderListClause(trailingCourseClause)) {
+    return null;
+  }
+
+  if (!hasSingleUnresolvedSlashClause(unresolvedMiddleClause)) {
+    return null;
+  }
+
+  return {
+    courseGroups: [courseNodes.map((node) => node.normalized_value)],
+    escapeClauses,
+    summaryStatus: 'partial',
+  };
+}
+
+export function summarizePrerequisiteForAi(parsedRule, { rawText } = {}) {
+  const summary = {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  };
+
+  if (!parsedRule) {
+    return summary;
+  }
+
+  if (parsedRule.parseStatus === PARSE_STATUS.PARSED) {
+    const courseGroups = summarizeParsedCourseGraph(parsedRule);
+    if (courseGroups) {
+      return {
+        ...summary,
+        summaryStatus: 'structured',
+        courseGroups,
+      };
+    }
+
+    return summary;
+  }
+
+  const groupedSummary = summarizeGroupedCoursePath(parsedRule);
+  if (groupedSummary) {
+    return {
+      ...summary,
+      summaryStatus: groupedSummary.escapeClauses.length > 0 ? 'partial' : 'structured',
+      courseGroups: groupedSummary.courseGroups,
+      escapeClauses: groupedSummary.escapeClauses,
+    };
+  }
+
+  const trailingCourseListSummary = summarizeTrailingCourseList(parsedRule);
+  if (!trailingCourseListSummary) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    summaryStatus: trailingCourseListSummary.summaryStatus,
+    courseGroups: trailingCourseListSummary.courseGroups,
+    escapeClauses: trailingCourseListSummary.escapeClauses,
+  };
+}

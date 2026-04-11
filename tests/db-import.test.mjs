@@ -63,6 +63,7 @@ function buildCourseDbFixture({ courses, packageSnapshot }) {
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-summary-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-summary-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
@@ -655,6 +656,7 @@ async function loadBuildCourseDbModule() {
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-summary-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-summary-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
@@ -1494,6 +1496,166 @@ test('schema creates prerequisite graph tables and indexes', () => {
   }
 });
 
+test('schema ties prerequisite summary rows to the owning rule and course tuple', () => {
+  const db = createSchemaDb();
+  const insertCourse = db.prepare(`
+    INSERT INTO courses (
+      term_code, course_id, subject_code, subject_short_description, subject_description,
+      catalog_number, course_designation, title, description, minimum_credits,
+      maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+    ) VALUES (
+      @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+      @catalog_number, @course_designation, @title, @description, @minimum_credits,
+      @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+    )
+  `);
+
+  try {
+    insertCourse.run({
+      term_code: '1272',
+      course_id: '005770',
+      subject_code: null,
+      subject_short_description: null,
+      subject_description: null,
+      catalog_number: null,
+      course_designation: null,
+      title: null,
+      description: null,
+      minimum_credits: null,
+      maximum_credits: null,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: null,
+    });
+    insertCourse.run({
+      term_code: '1272',
+      course_id: '005771',
+      subject_code: null,
+      subject_short_description: null,
+      subject_description: null,
+      catalog_number: null,
+      course_designation: null,
+      title: null,
+      description: null,
+      minimum_credits: null,
+      maximum_credits: null,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: null,
+    });
+    db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `).run({
+      rule_id: 'rule:1272:005770',
+      term_code: '1272',
+      course_id: '005770',
+      raw_text: 'MATH 222',
+      parse_status: 'parsed',
+      parse_confidence: 1,
+      root_node_id: null,
+      unparsed_text: null,
+    });
+
+    assert.throws(
+      () => {
+        db.prepare(`
+          INSERT INTO prerequisite_course_summaries (
+            rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          'rule:1272:005770',
+          '1272',
+          '005771',
+          'structured',
+          JSON.stringify([['MATH 222']]),
+          JSON.stringify([]),
+        );
+      },
+      /FOREIGN KEY|constraint/i,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('schema requires valid JSON in prerequisite summary columns', () => {
+  const db = createSchemaDb();
+  const insertCourse = db.prepare(`
+    INSERT INTO courses (
+      term_code, course_id, subject_code, subject_short_description, subject_description,
+      catalog_number, course_designation, title, description, minimum_credits,
+      maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+    ) VALUES (
+      @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+      @catalog_number, @course_designation, @title, @description, @minimum_credits,
+      @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+    )
+  `);
+
+  try {
+    insertCourse.run({
+      term_code: '1272',
+      course_id: '005770',
+      subject_code: null,
+      subject_short_description: null,
+      subject_description: null,
+      catalog_number: null,
+      course_designation: null,
+      title: null,
+      description: null,
+      minimum_credits: null,
+      maximum_credits: null,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: null,
+    });
+    db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `).run({
+      rule_id: 'rule:1272:005770',
+      term_code: '1272',
+      course_id: '005770',
+      raw_text: 'MATH 222',
+      parse_status: 'parsed',
+      parse_confidence: 1,
+      root_node_id: null,
+      unparsed_text: null,
+    });
+
+    assert.throws(
+      () => {
+        db.prepare(`
+          INSERT INTO prerequisite_course_summaries (
+            rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          'rule:1272:005770',
+          '1272',
+          '005770',
+          'structured',
+          'not-json',
+          JSON.stringify([]),
+        );
+      },
+      /CHECK|constraint/i,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('build-course-db materializes prerequisite graph rows for parsed and partial prerequisite text', () => {
   const fixture = buildCourseDbFixture({
     courses: [
@@ -1777,6 +1939,382 @@ test('build-course-db preserves placeholder-shaped unparsed text for mixed real 
       nodes.filter((node) => node.node_type === 'COURSE').map((node) => node.normalized_value).sort(),
       ['ACCT I S 620', 'LAW 742'],
     );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes AI-friendly prerequisite course summaries for COMP SCI 577', () => {
+  const fixtureData = buildScheduleReadModelFixture();
+  fixtureData.courses = fixtureData.courses.map((course) =>
+    course.courseId === '005770'
+      ? {
+          ...course,
+          enrollmentPrerequisites:
+            '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students',
+        }
+      : course,
+  );
+
+  const fixture = buildCourseDbFixture(fixtureData);
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '005770');
+    const overviewRow = fixture.db.prepare(`
+      SELECT
+        term_code,
+        subject_code,
+        catalog_number,
+        course_id,
+        course_designation,
+        title,
+        rule_id,
+        parse_status,
+        parse_confidence,
+        summary_status,
+        course_groups_json,
+        escape_clauses_json,
+        raw_text,
+        unparsed_text
+      FROM prerequisite_course_summary_overview_v
+      WHERE course_designation = 'COMP SCI 577'
+    `).get();
+
+    assert.deepEqual(
+      {
+        rule_id: summaryRow.rule_id,
+        term_code: summaryRow.term_code,
+        course_id: summaryRow.course_id,
+        summary_status: summaryRow.summary_status,
+      },
+      {
+        rule_id: 'rule:1272:005770',
+        term_code: '1272',
+        course_id: '005770',
+        summary_status: 'partial',
+      },
+    );
+    assert.deepEqual(JSON.parse(summaryRow.course_groups_json), [
+      ['COMP SCI 240', 'MATH 240', 'COMP SCI 475', 'MATH 475', 'STAT 475'],
+      ['COMP SCI 367', 'COMP SCI 400'],
+    ]);
+    assert.deepEqual(JSON.parse(summaryRow.escape_clauses_json), [
+      'graduate/professional standing',
+      'member of engineering guest students',
+    ]);
+
+    assert.deepEqual(
+      {
+        term_code: overviewRow.term_code,
+        subject_code: overviewRow.subject_code,
+        catalog_number: overviewRow.catalog_number,
+        course_id: overviewRow.course_id,
+        course_designation: overviewRow.course_designation,
+        title: overviewRow.title,
+        rule_id: overviewRow.rule_id,
+        parse_status: overviewRow.parse_status,
+        parse_confidence: overviewRow.parse_confidence,
+        summary_status: overviewRow.summary_status,
+        raw_text: overviewRow.raw_text,
+        unparsed_text: overviewRow.unparsed_text,
+      },
+      {
+        term_code: '1272',
+        subject_code: '302',
+        catalog_number: '577',
+        course_id: '005770',
+        course_designation: 'COMP SCI 577',
+        title: 'Algorithms for Large Data',
+        rule_id: 'rule:1272:005770',
+        parse_status: 'partial',
+        parse_confidence: 0.5,
+        summary_status: 'partial',
+        raw_text:
+          '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students',
+        unparsed_text:
+          '(([COURSE]/[COURSE] or [COURSE]/[COURSE]/[COURSE]) and ([COURSE] or [COURSE])) or [STANDING] or member of engineering guest students',
+      },
+    );
+    assert.deepEqual(JSON.parse(overviewRow.course_groups_json), [
+      ['COMP SCI 240', 'MATH 240', 'COMP SCI 475', 'MATH 475', 'STAT 475'],
+      ['COMP SCI 367', 'COMP SCI 400'],
+    ]);
+    assert.deepEqual(JSON.parse(overviewRow.escape_clauses_json), [
+      'graduate/professional standing',
+      'member of engineering guest students',
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps shorthand numeric course alternatives out of escape clauses', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003320',
+          subjectCode: '006',
+          catalogNumber: '320',
+          courseDesignation: 'A A E 320',
+          title: 'Propulsion Systems',
+        }),
+        enrollmentPrerequisites: 'A A E 101 (215 prior to Fall 2024), ECON 101, or 111',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '006', courseId: '003320' },
+          packages: [
+            {
+              id: 'aae320-main',
+              termCode: '1272',
+              subjectCode: '006',
+              courseId: '003320',
+              enrollmentClassNumber: 33200,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003320');
+
+    assert.deepEqual(summaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["A A E 101"],["ECON 101","ECON 111"]]',
+      escape_clauses_json: '[]',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps a leading recognized prerequisite path alongside shorthand course alternatives', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003373',
+          subjectCode: '680',
+          catalogNumber: '373',
+          courseDesignation: 'INTL ST 373',
+          title: 'International Studies Methods',
+        }),
+        enrollmentPrerequisites: 'A A E 101 (215 prior to Fall 2024), ECON 101, 102, or 111',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '680', courseId: '003373' },
+          packages: [
+            {
+              id: 'intl373-main',
+              termCode: '1272',
+              subjectCode: '680',
+              courseId: '003373',
+              enrollmentClassNumber: 33730,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003373');
+
+    assert.deepEqual(summaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["A A E 101"],["ECON 101","ECON 102","ECON 111"]]',
+      escape_clauses_json: '[]',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps shorthand numbers after unresolved slash-subject clauses out of escape clauses', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003340',
+          subjectCode: '220',
+          catalogNumber: '340',
+          courseDesignation: 'SOC 340',
+          title: 'Social Theory and Practice',
+        }),
+        enrollmentPrerequisites: 'SOC 140, C&E SOC/SOC 181, 210, or 211',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '220', courseId: '003340' },
+          packages: [
+            {
+              id: 'soc340-main',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '003340',
+              enrollmentClassNumber: 33400,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003340');
+
+    assert.deepEqual(summaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["SOC 140","SOC 210","SOC 211"]]',
+      escape_clauses_json: '[]',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db excludes unresolved course siblings from escape clauses and trims escape punctuation', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003338',
+          subjectCode: '900',
+          catalogNumber: '338',
+          courseDesignation: 'ANAT&PHY 338',
+          title: 'Anatomy and Physiology Lab',
+        }),
+        enrollmentPrerequisites: '(COMP SCI 240 or 367) or ANATOMY/KINES 328, or concurrent enrollment',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005770',
+          subjectCode: '302',
+          catalogNumber: '577',
+          courseDesignation: 'COMP SCI 577',
+          title: 'Algorithms for Large Data',
+        }),
+        enrollmentPrerequisites:
+          '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing, or member of engineering guest students',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '900', courseId: '003338' },
+          packages: [
+            {
+              id: 'anat338-main',
+              termCode: '1272',
+              subjectCode: '900',
+              courseId: '003338',
+              enrollmentClassNumber: 33380,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005770' },
+          packages: [
+            {
+              id: 'cs577-main',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005770',
+              enrollmentClassNumber: 35770,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const anatSummaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003338');
+
+    assert.deepEqual(anatSummaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["COMP SCI 240","COMP SCI 367"]]',
+      escape_clauses_json: '["concurrent enrollment"]',
+    });
+
+    const cs577SummaryRow = fixture.db.prepare(`
+      SELECT escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '005770');
+
+    assert.deepEqual(cs577SummaryRow, {
+      escape_clauses_json: '["graduate/professional standing","member of engineering guest students"]',
+    });
   } finally {
     fixture.cleanup();
   }
@@ -4150,6 +4688,7 @@ test('build-course-db can rebuild an existing database file after adding schedul
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-summary-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-summary-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
