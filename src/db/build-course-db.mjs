@@ -11,6 +11,7 @@ import {
   makeInstructorRows,
   makeMeetingRows,
   makeInstructorKey,
+  makePrerequisiteCourseSummaryRow,
   makePersistedPrerequisiteNodeId,
   makePackageRow,
   makePrerequisiteEdgeRows,
@@ -20,6 +21,7 @@ import {
   makeSectionRows,
 } from './import-helpers.mjs';
 import { PARSE_STATUS, parsePrerequisiteText } from './prerequisite-helpers.mjs';
+import { summarizePrerequisiteForAi } from './prerequisite-summary-helpers.mjs';
 import {
   SCHEDULE_TIMEZONE,
   countBits,
@@ -50,6 +52,7 @@ function getPrerequisiteParseConfidence(parseStatus) {
 
 function buildPrerequisiteRows(courseRows) {
   const rules = [];
+  const summaries = [];
   const nodes = [];
   const edges = [];
   const rootUpdates = [];
@@ -77,6 +80,14 @@ function buildPrerequisiteRows(courseRows) {
         unparsedText: parsed.unparsedText,
       }),
     );
+    summaries.push(
+      makePrerequisiteCourseSummaryRow({
+        ruleId,
+        termCode: courseRow.term_code,
+        courseId: courseRow.course_id,
+        ...summarizePrerequisiteForAi(parsed, { rawText }),
+      }),
+    );
     nodes.push(...makePrerequisiteNodeRows(parsed.nodes, ruleId));
     edges.push(...makePrerequisiteEdgeRows(parsed.edges, ruleId));
 
@@ -88,7 +99,7 @@ function buildPrerequisiteRows(courseRows) {
     }
   }
 
-  return { rules, nodes, edges, rootUpdates };
+  return { rules, summaries, nodes, edges, rootUpdates };
 }
 
 function readJson(filePath) {
@@ -1220,15 +1231,15 @@ export function buildCourseDatabase({
     )
     `);
     const insertPrerequisiteNode = db.prepare(`
-    INSERT INTO prerequisite_nodes (
-      node_id, rule_id, node_type, value, normalized_value, position_start, position_end
+      INSERT INTO prerequisite_nodes (
+        node_id, rule_id, node_type, value, normalized_value, position_start, position_end
     ) VALUES (
       @node_id, @rule_id, @node_type, @value, @normalized_value, @position_start, @position_end
     )
     `);
     const insertPrerequisiteEdge = db.prepare(`
-    INSERT INTO prerequisite_edges (
-      rule_id, parent_node_id, child_node_id, sort_order
+      INSERT INTO prerequisite_edges (
+        rule_id, parent_node_id, child_node_id, sort_order
     ) VALUES (
       @rule_id, @parent_node_id, @child_node_id, @sort_order
     )
@@ -1238,10 +1249,18 @@ export function buildCourseDatabase({
     SET root_node_id = @root_node_id
     WHERE rule_id = @rule_id
     `);
+    const insertPrerequisiteCourseSummary = db.prepare(`
+    INSERT INTO prerequisite_course_summaries (
+      rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+    ) VALUES (
+      @rule_id, @term_code, @course_id, @summary_status, @course_groups_json, @escape_clauses_json
+    )
+    `);
 
     const insertAll = db.transaction(() => {
       for (const row of courseRows) insertCourse.run(row);
       for (const row of prerequisiteRows.rules) insertPrerequisiteRule.run(row);
+      for (const row of prerequisiteRows.summaries) insertPrerequisiteCourseSummary.run(row);
       for (const row of prerequisiteRows.nodes) insertPrerequisiteNode.run(row);
       for (const row of prerequisiteRows.edges) insertPrerequisiteEdge.run(row);
       for (const row of prerequisiteRows.rootUpdates) updatePrerequisiteRuleRoot.run(row);

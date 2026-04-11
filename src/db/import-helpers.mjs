@@ -448,6 +448,17 @@ export function makePrerequisiteRuleRow(rule) {
   };
 }
 
+export function makePrerequisiteCourseSummaryRow(summary) {
+  return {
+    rule_id: summary.ruleId,
+    term_code: summary.termCode,
+    course_id: summary.courseId,
+    summary_status: summary.summaryStatus,
+    course_groups_json: JSON.stringify(summary.courseGroups ?? []),
+    escape_clauses_json: JSON.stringify(summary.escapeClauses ?? []),
+  };
+}
+
 export function makePrerequisiteNodeRows(nodes = [], ruleId) {
   return nodes.map((node) => ({
     node_id: makePersistedPrerequisiteNodeId(ruleId, node.id),
