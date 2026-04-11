@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import {
   collapseInstructorIdentities,
   makeBuildingRows,
+  makeCourseCrossListingRows,
   makeCourseRow,
   makeInstructorRows,
   makeMeetingRows,
@@ -577,6 +578,35 @@ function uniqueRows(rows, getKey) {
   return [...byKey.values()];
 }
 
+function groupRows(rows, getKey) {
+  const groups = new Map();
+
+  for (const row of rows) {
+    const key = getKey(row);
+    if (key == null) continue;
+
+    const group = groups.get(key);
+    if (group) {
+      group.push(row);
+    } else {
+      groups.set(key, [row]);
+    }
+  }
+
+  return groups;
+}
+
+function appendGroupedRow(groups, key, row) {
+  if (key == null || row == null) return;
+
+  const group = groups.get(key);
+  if (group) {
+    group.push(row);
+  } else {
+    groups.set(key, [row]);
+  }
+}
+
 function toIsoString(value, fallback) {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return new Date(value).toISOString();
@@ -616,6 +646,8 @@ function synthesizeCourseFromPackageEntry(entry, defaultTermCode) {
     courseId,
     catalogNumber: course.catalogNumber ?? packageMetadata?.catalogNumber ?? null,
     courseDesignation: course.courseDesignation ?? packageMetadata?.courseDesignation ?? null,
+    fullCourseDesignation:
+      course.fullCourseDesignation ?? packageMetadata?.fullCourseDesignation ?? null,
     title: course.title ?? packageMetadata?.title ?? null,
     description: course.description ?? packageMetadata?.description ?? null,
     minimumCredits: course.minimumCredits ?? null,
@@ -1062,21 +1094,30 @@ export function buildCourseDatabase({
     return byId;
   }, new Map()).values()];
 
-  const courseRecordsByKey = new Map(
-    courses
-      .map((course) => [makeCourseIdentityKey(course), course])
-      .filter(([key]) => key != null),
-  );
+  const courseRecordsByKey = new Map();
+  const rawCourseGroups = groupRows(courses, makeCourseIdentityKey);
+
+  for (const [courseKey, group] of rawCourseGroups) {
+    courseRecordsByKey.set(courseKey, group[0]);
+  }
+
   for (const entry of packageSnapshot.results ?? []) {
     const synthesizedCourse = synthesizeCourseFromPackageEntry(entry, packageSnapshot.termCode);
     const courseKey = makeCourseIdentityKey(synthesizedCourse);
-    if (!courseKey || courseRecordsByKey.has(courseKey)) continue;
+    if (!courseKey) continue;
+
+    appendGroupedRow(rawCourseGroups, courseKey, synthesizedCourse);
+
+    if (courseRecordsByKey.has(courseKey)) continue;
     courseRecordsByKey.set(courseKey, synthesizedCourse);
   }
 
-  const courseRows = uniqueRows(
-    [...courseRecordsByKey.values()].map(makeCourseRow),
-    (row) => `${row.term_code}:${row.course_id}`,
+  const courseRows = [...courseRecordsByKey.values()].map(makeCourseRow);
+  const courseCrossListingRows = courseRows.flatMap((courseRow) =>
+    makeCourseCrossListingRows(
+      rawCourseGroups.get(`${courseRow.term_code}:${courseRow.course_id}`) ?? [],
+      courseRow,
+    ),
   );
   const packageRows = mergedPackageRecords.map(makePackageRow);
   const sectionRows = uniqueRows(
@@ -1169,6 +1210,15 @@ export function buildCourseDatabase({
       @has_open_seats, @has_waitlist, @is_full
     )
     `);
+    const insertCourseCrossListing = db.prepare(`
+    INSERT INTO course_cross_listings (
+      term_code, course_id, course_designation, full_course_designation,
+      subject_code, catalog_number, is_primary
+    ) VALUES (
+      @term_code, @course_id, @course_designation, @full_course_designation,
+      @subject_code, @catalog_number, @is_primary
+    )
+    `);
     const insertSection = db.prepare(`
     INSERT INTO sections (
       package_id, section_class_number, term_code, course_id, section_number,
@@ -1259,6 +1309,7 @@ export function buildCourseDatabase({
 
     const insertAll = db.transaction(() => {
       for (const row of courseRows) insertCourse.run(row);
+      for (const row of courseCrossListingRows) insertCourseCrossListing.run(row);
       for (const row of prerequisiteRows.rules) insertPrerequisiteRule.run(row);
       for (const row of prerequisiteRows.summaries) insertPrerequisiteCourseSummary.run(row);
       for (const row of prerequisiteRows.nodes) insertPrerequisiteNode.run(row);
