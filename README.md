@@ -1,14 +1,24 @@
 # uw-madison-courses
 
-A toolset for extracting UW–Madison course and enrollment data, building a local SQLite database, and generating conflict-free schedule combinations.
+A toolset for extracting UW–Madison course and enrollment data and building a local SQLite database you can explore with an AI assistant or query directly.
 
 ## Overview
 
-This project targets **Fall 2026** enrollment data from the [UW–Madison public enrollment site](https://public.enroll.wisc.edu). It provides three main capabilities:
+This project targets **Fall 2026** enrollment data from the [UW–Madison public enrollment site](https://public.enroll.wisc.edu). The intended workflow is:
 
-1. **Course extraction** – scrapes the enrollment search API with Playwright and saves raw course JSON.
-2. **Database build** – imports the raw JSON into a structured SQLite database with canonical views for reporting and schedule planning.
-3. **Schedule generation** – enumerates conflict-free section combinations from the database and ranks them by quality metrics (fewest campus days, latest start time, minimal idle gaps, tight transitions, etc.).
+1. **Extract** – scrape all course and enrollment data locally to a JSON file.
+2. **Build** – import the JSON into a structured SQLite database ready for queries.
+3. **Explore** – point your AI assistant (Cursor, Claude Desktop, Copilot, etc.) at the project directory and the SQLite database to ask questions, build schedules, and explore course availability in natural language.
+
+The project also ships a programmatic **schedule generator** that finds conflict-free section combinations from the database and ranks them by quality metrics (fewest campus days, latest start time, minimal idle gaps, tight transitions, etc.).
+
+### Current scope
+
+The toolset is entirely **local and offline-first**. You run the extractor once to pull down a snapshot of enrollment data, build the database on your machine, and then use whatever query tool or AI you prefer against the local files. There is no server, no hosted API, and no login required beyond the initial browser-based scrape.
+
+### Future plans
+
+The long-term goal is a **web application** that lets any UW–Madison student make advanced queries against the enrollment database and interactively build custom schedules — without needing to install anything locally.
 
 ## Project Structure
 
@@ -116,6 +126,25 @@ Output is a single line of JSON:
 ```
 
 Schedules are ranked by (in priority order): fewest campus days → latest start time → fewest large idle gaps → fewest tight transitions → least total walking distance → most open seats → earliest end time.
+
+## Using an AI with the Local Data
+
+After running steps 1 and 2 above you have everything an AI assistant needs to answer questions about UW–Madison courses.
+
+**Recommended approach**
+
+1. Open the project directory in your AI-enabled editor or chat client (e.g. Cursor, Claude Desktop, VS Code + Copilot).
+2. Point the AI at `data/fall-2026.sqlite` as the database source and `docs/querying-course-db.md` as the query reference.
+3. Ask questions in plain English — the AI can write and run SQL against the local database, explore availability, compare sections, and suggest schedules.
+
+**Example prompts**
+
+- *"Which CS 300-level courses still have open seats?"*
+- *"Build me a schedule with COMP SCI 577, STAT 340, and MATH 340 that avoids Fridays."*
+- *"Show me all online or asynchronous options for breadth requirements."*
+- *"What instructors teach ECON 101 this fall and which section has the most open seats?"*
+
+See [`docs/querying-course-db.md`](docs/querying-course-db.md) for the recommended views and patterns to steer the AI toward — this file is designed to be included in an AI context window.
 
 ## Database Schema
 
