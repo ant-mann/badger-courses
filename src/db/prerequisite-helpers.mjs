@@ -373,7 +373,7 @@ function extractSharedNumberSlashSubjectNodes(text, sourceText, offsets) {
   const singleTokenListTailPattern = new RegExp(`^\\s*(?:,\\s*(?:or\\s+|and\\s+)?|\\s+(?:or|and)\\s+)(?:(${SUBJECT_PATTERN})\\s+)?\\d{3}[A-Z]?\\b`, 'i');
   const singleTokenListLeadPattern = /\b\d{3}[A-Z]?\s*(?:,\s*(?:or\s+|and\s+)?|\s+(?:or|and)\s+)$/i;
   const parentheticalCourseAliasLeadPattern = new RegExp(`(?:${SUBJECT_PATTERN})\\s+\\d{3}[A-Z]?\\s*\\((?:${SUBJECT_PATTERN})\\s+\\d{3}[A-Z]?[^()]*(?:\\))\\s*(?:,\\s*(?:or\\s+|and\\s+)?|\\s+(?:or|and)\\s+)$`, 'i');
-  const protectedSingleTokenSlashPrefixPattern = new RegExp(`(?:^|[^A-Z])${LONG_SUBJECT_TOKEN_PATTERN}\s+[^,()]+/$`, 'i');
+  const protectedSingleTokenSlashPrefixPattern = new RegExp(`(?:^|[^A-Z])${LONG_SUBJECT_TOKEN_PATTERN}\\s+[^,()]+/$`, 'i');
 
   for (const match of text.matchAll(SHARED_NUMBER_SLASH_SUBJECT_PATTERN)) {
     const matchIndex = match.index ?? -1;
@@ -464,7 +464,7 @@ function extractCourseNodes(text, sourceText, offsets) {
       continue;
     }
 
-    if (/\b[A-Z][A-Z]+(?:\s+[A-Z]+)*\s+(?:and|or)\s*$/.test(leadingText)) {
+    if (/\b(?:[A-Z][A-Z]+|[A-Z](?:\s+[A-Z])+)(?:\s+[A-Z]+)*\s+(?:and|or)\s*$/.test(leadingText)) {
       continue;
     }
 

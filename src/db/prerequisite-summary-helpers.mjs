@@ -243,8 +243,9 @@ function summarizeTrailingCourseList(parsedRule) {
   }
 
   const courseListItemPattern = '\\[COURSE\\](?:\\/\\[COURSE\\])*';
+  const singleCoursePattern = new RegExp(`^${courseListItemPattern}$`, 'i');
   const fullCourseListPattern = new RegExp(`^${courseListItemPattern}(?:,\\s*${courseListItemPattern})*(?:,\\s*(?:or|and)\\s*${courseListItemPattern}|\\s+(?:or|and)\\s+${courseListItemPattern})$`, 'i');
-  if (fullCourseListPattern.test(unparsedCourseText)) {
+  if (singleCoursePattern.test(unparsedCourseText) || fullCourseListPattern.test(unparsedCourseText)) {
     return {
       courseGroups: [courseNodes.map((node) => node.normalized_value)],
       escapeClauses,
