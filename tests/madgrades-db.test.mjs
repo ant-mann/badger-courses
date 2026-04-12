@@ -1,0 +1,457 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { buildCourseDbFixture, makeCourse } from './helpers/madgrades-db-fixture.mjs';
+
+function buildMadgradesOverviewFixture() {
+  return buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '005770',
+        subjectCode: '302',
+        catalogNumber: '577',
+        courseDesignation: 'COMP SCI 577',
+        title: 'Algorithms for Large Data',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '302',
+            courseId: '005770',
+          },
+          packages: [
+            {
+              id: 'comp-sci-577-main',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005770',
+              enrollmentClassNumber: 57701,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 3,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 3,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 27,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 57701 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'IN PERSON',
+                  sessionCode: '1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 3,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 27,
+                  },
+                  instructors: [
+                    {
+                      name: { first: 'Ada', last: 'Lovelace' },
+                      email: 'ada@example.edu',
+                    },
+                  ],
+                  classMeetings: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+function seedMadgradesMatchRowsWithoutHistory(db) {
+  const instructorKey = db.prepare(`
+    SELECT instructor_key
+    FROM instructors
+    WHERE email = ?
+  `).pluck().get('ada@example.edu');
+
+  db.prepare(`
+    INSERT INTO madgrades_courses (
+      madgrades_course_id,
+      subject_code,
+      catalog_number,
+      course_designation
+    ) VALUES (?, ?, ?, ?)
+  `).run(11, '302', '577', 'COMP SCI 577');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructors (
+      madgrades_instructor_id,
+      display_name
+    ) VALUES (?, ?)
+  `).run(11, 'Ada Lovelace');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_matches (
+      term_code,
+      course_id,
+      madgrades_course_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run('1272', '005770', 11, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_matches (
+      instructor_key,
+      madgrades_instructor_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?)
+  `).run(instructorKey, 11, 'matched', '2024-01-16T00:00:00Z');
+}
+
+function seedMadgradesRows(db) {
+  const instructorKey = db.prepare(`
+    SELECT instructor_key
+    FROM instructors
+    WHERE email = ?
+  `).pluck().get('ada@example.edu');
+
+  db.prepare(`
+    INSERT INTO madgrades_refresh_runs (
+      madgrades_refresh_run_id,
+      snapshot_run_at,
+      last_refreshed_at,
+      source_term_code,
+      notes
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(1, '2024-01-15T00:00:00Z', '2024-01-16T00:00:00Z', '1264', 'seed');
+
+  db.prepare(`
+    INSERT INTO madgrades_courses (
+      madgrades_course_id,
+      subject_code,
+      catalog_number,
+      course_designation
+    ) VALUES (?, ?, ?, ?)
+  `).run(1, '302', '577', 'COMP SCI 577');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructors (
+      madgrades_instructor_id,
+      display_name
+    ) VALUES (?, ?)
+  `).run(1, 'Ada Lovelace');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_matches (
+      term_code,
+      course_id,
+      madgrades_course_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run('1272', '005770', 1, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_matches (
+      instructor_key,
+      madgrades_instructor_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?)
+  `).run(instructorKey, 1, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_grades (
+      madgrades_course_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_course_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(1, 1, 1, '1262', 20, 3.1);
+
+  db.prepare(`
+    INSERT INTO madgrades_course_grades (
+      madgrades_course_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_course_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(2, 1, 1, '1264', 40, 3.6);
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_grades (
+      madgrades_instructor_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_instructor_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(1, 1, 1, '1260', 15, 3.0);
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_grades (
+      madgrades_instructor_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_instructor_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(2, 1, 1, '1264', 45, 3.4);
+
+  db.prepare(`
+    INSERT INTO madgrades_course_offerings (
+      madgrades_course_offering_id,
+      madgrades_course_id,
+      madgrades_instructor_id,
+      term_code,
+      section_type,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(1, 1, 1, '1262', 'LEC', 20, 3.1);
+
+  db.prepare(`
+    INSERT INTO madgrades_course_offerings (
+      madgrades_course_offering_id,
+      madgrades_course_id,
+      madgrades_instructor_id,
+      term_code,
+      section_type,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(2, 1, 1, '1264', 'LEC', 40, 3.6);
+}
+
+function seedDuplicateMadgradesRefreshRows(db) {
+  db.prepare(`
+    INSERT INTO madgrades_refresh_runs (
+      madgrades_refresh_run_id,
+      snapshot_run_at,
+      last_refreshed_at,
+      source_term_code,
+      notes
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(2, '2024-02-15T00:00:00Z', '2024-02-16T00:00:00Z', '1264', 'duplicate refresh');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_grades (
+      madgrades_course_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_course_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(3, 2, 1, '1262', 22, 3.9);
+
+  db.prepare(`
+    INSERT INTO madgrades_course_grades (
+      madgrades_course_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_course_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(4, 2, 1, '1264', 41, 3.8);
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_grades (
+      madgrades_instructor_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_instructor_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(3, 2, 1, '1260', 17, 3.7);
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_grades (
+      madgrades_instructor_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_instructor_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(4, 2, 1, '1264', 46, 3.9);
+}
+
+test('current_term_section_instructor_grade_overview_v exposes current sections with weighted historical madgrades context', () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    seedMadgradesRows(fixture.db);
+
+    const rows = fixture.db.prepare(`
+      SELECT
+        course_designation,
+        instructor_display_name,
+        same_course_prior_offering_count,
+        same_course_student_count,
+        same_course_gpa,
+        instructor_overall_gpa,
+        course_historical_gpa,
+        instructor_match_status
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE term_code = ? AND course_id = ? AND section_class_number = ?
+    `).all('1272', '005770', 57701);
+
+    assert.deepEqual(rows, [
+      {
+        course_designation: 'COMP SCI 577',
+        instructor_display_name: 'Ada Lovelace',
+        same_course_prior_offering_count: 2,
+        same_course_student_count: 60,
+        same_course_gpa: 3.433333333333333,
+        instructor_overall_gpa: 3.3,
+        course_historical_gpa: 3.433333333333333,
+        instructor_match_status: 'matched',
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('madgrades overview views keep matched rows with no history at zero counts and null gpas', () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    seedMadgradesMatchRowsWithoutHistory(fixture.db);
+
+    const courseOverview = fixture.db.prepare(`
+      SELECT course_grade_term_count, historical_student_count, historical_gpa
+      FROM course_grade_overview_v
+      WHERE madgrades_course_id = ?
+    `).get(11);
+
+    const instructorOverview = fixture.db.prepare(`
+      SELECT instructor_grade_term_count, historical_student_count, overall_gpa
+      FROM instructor_grade_overview_v
+      WHERE madgrades_instructor_id = ?
+    `).get(11);
+
+    assert.deepEqual(courseOverview, {
+      course_grade_term_count: 0,
+      historical_student_count: 0,
+      historical_gpa: null,
+    });
+    assert.deepEqual(instructorOverview, {
+      instructor_grade_term_count: 0,
+      historical_student_count: 0,
+      overall_gpa: null,
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('current term madgrades overview dedupes duplicate historical terms across refresh runs', () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    seedMadgradesRows(fixture.db);
+    seedDuplicateMadgradesRefreshRows(fixture.db);
+
+    const courseOverview = fixture.db.prepare(`
+      SELECT course_grade_term_count, historical_student_count, historical_gpa
+      FROM course_grade_overview_v
+      WHERE madgrades_course_id = ?
+    `).get(1);
+
+    const instructorOverview = fixture.db.prepare(`
+      SELECT instructor_grade_term_count, historical_student_count, overall_gpa
+      FROM instructor_grade_overview_v
+      WHERE madgrades_instructor_id = ?
+    `).get(1);
+
+    const rows = fixture.db.prepare(`
+      SELECT
+        same_course_student_count,
+        same_course_gpa,
+        instructor_overall_gpa,
+        course_historical_gpa
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE term_code = ? AND course_id = ? AND section_class_number = ?
+    `).all('1272', '005770', 57701);
+
+    assert.deepEqual(courseOverview, {
+      course_grade_term_count: 2,
+      historical_student_count: 63,
+      historical_gpa: 3.834920634920634,
+    });
+    assert.deepEqual(instructorOverview, {
+      instructor_grade_term_count: 2,
+      historical_student_count: 63,
+      overall_gpa: 3.846031746031746,
+    });
+
+    assert.deepEqual(rows, [
+      {
+        same_course_student_count: 60,
+        same_course_gpa: 3.433333333333333,
+        instructor_overall_gpa: 3.846031746031746,
+        course_historical_gpa: 3.834920634920634,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('documented Madgrades enrichment queries execute against the implemented overview views', () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    seedMadgradesRows(fixture.db);
+
+    const courseRows = fixture.db.prepare(`
+      SELECT course_designation, historical_gpa, historical_student_count, course_grade_term_count
+      FROM course_grade_overview_v
+      WHERE course_designation = 'COMP SCI 577'
+    `).all();
+
+    const historyRows = fixture.db.prepare(`
+      SELECT course_designation, instructor_display_name, prior_offering_count,
+             student_count, same_course_gpa
+      FROM instructor_course_history_overview_v
+      WHERE course_designation = 'COMP SCI 577'
+      ORDER BY prior_offering_count DESC, student_count DESC
+    `).all();
+
+    const currentRows = fixture.db.prepare(`
+      SELECT course_designation, section_number, instructor_display_name,
+             same_course_prior_offering_count, same_course_student_count,
+             same_course_gpa, instructor_overall_gpa, course_historical_gpa
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE course_designation = 'COMP SCI 577'
+      ORDER BY same_course_prior_offering_count DESC, same_course_student_count DESC
+    `).all();
+
+    assert.equal(courseRows.length, 1);
+    assert.equal(historyRows.length, 1);
+    assert.equal(currentRows.length, 1);
+  } finally {
+    fixture.cleanup();
+  }
+});
