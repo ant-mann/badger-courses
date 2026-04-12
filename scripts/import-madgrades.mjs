@@ -30,6 +30,9 @@ const result = await runMadgradesImport({
   dbPath,
   snapshotRoot,
   refreshApi,
+  onProgress(message) {
+    process.stderr.write(`${message}\n`);
+  },
 });
 
 process.stdout.write(`${JSON.stringify(result)}\n`);

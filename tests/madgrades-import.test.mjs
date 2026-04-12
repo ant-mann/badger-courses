@@ -654,6 +654,10 @@ function createJsonResponse(payload) {
   };
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 test('runMadgradesImport loads the latest saved snapshot into SQLite overview views', async () => {
   const fixture = buildFixture();
   const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-latest-'));
@@ -815,6 +819,129 @@ test('runMadgradesImport rehydrates Madgrades tables into a rebuilt base DB from
   }
 });
 
+test('runMadgradesImport recomputes saved snapshot GPAs from grade distributions when stored GPAs are zero', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-recompute-gpa-'));
+  const { writeMadgradesSnapshot } = await loadSnapshotHelpers();
+  const { runMadgradesImport } = await loadImportRunner();
+
+  const snapshot = {
+    manifest: {
+      generatedAt: '2026-04-12T14:15:16.000Z',
+      source: 'madgrades-api',
+      sourceTermCode: '1272',
+      matchedCourseCount: 1,
+      matchedInstructorCount: 1,
+    },
+    courses: [
+      {
+        madgradesCourseId: 1,
+        subjectCode: '302',
+        catalogNumber: '577',
+        courseDesignation: 'COMP SCI 577',
+      },
+    ],
+    courseGrades: [
+      {
+        madgradesCourseGradeId: 1,
+        madgradesCourseId: 1,
+        termCode: '1264',
+        avgGpa: 0,
+        studentCount: 30,
+      },
+    ],
+    courseOfferings: [],
+    courseGradeDistributions: [
+      {
+        madgradesCourseGradeDistributionId: 1,
+        madgradesCourseGradeId: 1,
+        grades: {
+          a: 18,
+          ab: 6,
+          b: 6,
+        },
+      },
+    ],
+    instructors: [
+      {
+        madgradesInstructorId: 99,
+        displayName: 'Ada Lovelace',
+      },
+    ],
+    instructorGrades: [
+      {
+        madgradesInstructorGradeId: 1,
+        madgradesInstructorId: 99,
+        termCode: '1264',
+        avgGpa: 0,
+        studentCount: 30,
+      },
+    ],
+    instructorGradeDistributions: [
+      {
+        madgradesInstructorGradeDistributionId: 1,
+        madgradesInstructorGradeId: 1,
+        grades: {
+          a: 15,
+          ab: 10,
+          b: 5,
+        },
+      },
+    ],
+    matchReport: {
+      courseMatches: [
+        {
+          termCode: '1272',
+          courseId: '005770',
+          madgradesCourseId: 1,
+          matchStatus: 'matched',
+          matchedAt: '2026-04-12T14:15:16.000Z',
+        },
+      ],
+      instructorMatches: [
+        {
+          instructorKey: 'email:ada@example.edu',
+          madgradesInstructorId: 99,
+          matchStatus: 'matched',
+          matchedAt: '2026-04-12T14:15:16.000Z',
+        },
+      ],
+    },
+  };
+
+  try {
+    await writeMadgradesSnapshot({
+      snapshotRoot,
+      snapshotId: '20260412T141516Z',
+      snapshot,
+    });
+
+    await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: false,
+      now: new Date('2026-04-12T14:15:17.000Z'),
+    });
+
+    const courseOverview = fixture.db.prepare(`
+      SELECT historical_gpa
+      FROM course_grade_overview_v
+      WHERE madgrades_course_id = 1
+    `).get();
+    const instructorOverview = fixture.db.prepare(`
+      SELECT overall_gpa
+      FROM instructor_grade_overview_v
+      WHERE madgrades_instructor_id = 99
+    `).get();
+
+    assert.equal(courseOverview.historical_gpa, 3.7);
+    assert.equal(instructorOverview.overall_gpa, 3.6666666666666665);
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
 test('runMadgradesImport with refreshApi writes a snapshot and imports matched rows from mocked API responses', async () => {
   const fixture = buildFixture();
   const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-'));
@@ -845,6 +972,7 @@ test('runMadgradesImport with refreshApi writes a snapshot and imports matched r
           {
             id: 99,
             name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
           },
         ],
         currentPage: 1,
@@ -852,7 +980,7 @@ test('runMadgradesImport with refreshApi writes a snapshot and imports matched r
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-577') {
+    if (url === 'https://example.test/api/courses/course-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-577',
@@ -885,22 +1013,26 @@ test('runMadgradesImport with refreshApi writes a snapshot and imports matched r
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99/grades') {
       return createJsonResponse({
-        instructor: {
-          id: 99,
-          name: 'Ada Lovelace',
-        },
-        grades: [
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
           {
-            id: 'instructor-grade-1',
-            term: '1264',
-            average_gpa: 3.5,
-            distributions: {
-              A: 15,
-              AB: 10,
-              B: 5,
-            },
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'course-offering-1',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
           },
         ],
       });
@@ -952,8 +1084,8 @@ test('runMadgradesImport with refreshApi writes a snapshot and imports matched r
     assert.deepEqual(fetchCalls, [
       'https://example.test/api/courses?per_page=200&page=1',
       'https://example.test/api/instructors?per_page=200&page=1',
-      'https://example.test/api/explore/courses/course-577',
-      'https://example.test/api/explore/instructors/99',
+      'https://example.test/api/courses/course-577',
+      'https://example.test/api/instructors/99/grades',
     ]);
   } finally {
     fixture.cleanup();
@@ -994,6 +1126,7 @@ test('runMadgradesImport with refreshApi keeps generated IDs unique across multi
           {
             id: 99,
             name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
           },
           {
             id: 100,
@@ -1005,7 +1138,7 @@ test('runMadgradesImport with refreshApi keeps generated IDs unique across multi
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-577') {
+    if (url === 'https://example.test/api/courses/course-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-577',
@@ -1038,7 +1171,7 @@ test('runMadgradesImport with refreshApi keeps generated IDs unique across multi
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-340') {
+    if (url === 'https://example.test/api/courses/course-340') {
       return createJsonResponse({
         course: {
           uuid: 'course-340',
@@ -1071,28 +1204,32 @@ test('runMadgradesImport with refreshApi keeps generated IDs unique across multi
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99/grades') {
       return createJsonResponse({
-        instructor: {
-          id: 99,
-          name: 'Ada Lovelace',
-        },
-        grades: [
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
           {
-            id: 'instructor-grade-99',
-            term: '1264',
-            average_gpa: 3.5,
-            distributions: {
-              A: 15,
-              AB: 10,
-              B: 5,
-            },
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'course-offering-577',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
           },
         ],
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/100') {
+    if (url === 'https://example.test/api/instructors/100') {
       return createJsonResponse({
         instructor: {
           id: 100,
@@ -1211,6 +1348,137 @@ test('runMadgradesImport with refreshApi keeps generated IDs unique across multi
   }
 });
 
+test('runMadgradesImport with refreshApi overlaps detail fetches instead of running them fully serially', async () => {
+  const fixture = buildMultiMatchFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-concurrency-'));
+  const { runMadgradesImport } = await loadImportRunner();
+  const detailEvents = [];
+
+  const fetchImpl = async (url) => {
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-577',
+            subject: '302',
+            number: '577',
+            name: 'Algorithms for Large Data',
+          },
+          {
+            uuid: 'course-340',
+            subject: '302',
+            number: '340',
+            name: 'Introduction to Numerical Methods',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+          },
+          {
+            id: 100,
+            name: 'Grace Hopper',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577') {
+      detailEvents.push(`start:${url}`);
+      await delay(60);
+      detailEvents.push(`finish:${url}`);
+      return createJsonResponse({
+        course: {
+          uuid: 'course-577',
+          subject: '302',
+          number: '577',
+          abbreviation: 'COMP SCI 577',
+        },
+        grades: [],
+        offerings: [],
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-340') {
+      detailEvents.push(`start:${url}`);
+      await delay(60);
+      detailEvents.push(`finish:${url}`);
+      return createJsonResponse({
+        course: {
+          uuid: 'course-340',
+          subject: '302',
+          number: '340',
+          abbreviation: 'COMP SCI 340',
+        },
+        grades: [],
+        offerings: [],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99') {
+      detailEvents.push(`start:${url}`);
+      await delay(60);
+      detailEvents.push(`finish:${url}`);
+      return createJsonResponse({
+        instructor: {
+          id: 99,
+          name: 'Ada Lovelace',
+        },
+        grades: [],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/100') {
+      detailEvents.push(`start:${url}`);
+      await delay(60);
+      detailEvents.push(`finish:${url}`);
+      return createJsonResponse({
+        instructor: {
+          id: 100,
+          name: 'Grace Hopper',
+        },
+        grades: [],
+      });
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T10:11:12.000Z'),
+    });
+
+    assert.equal(detailEvents.filter((event) => event.startsWith('start:')).length, 4);
+    assert.equal(detailEvents.filter((event) => event.startsWith('finish:')).length, 4);
+    assert.ok(
+      detailEvents.some(
+        (event, index) => event.startsWith('start:') && detailEvents[index + 1]?.startsWith('start:'),
+      ),
+      `expected overlapping detail fetches, got event order: ${detailEvents.join(', ')}`,
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
 test('runMadgradesImport with refreshApi dedupes matched course detail fetches by Madgrades UUID', async () => {
   const fixture = buildDuplicateLocalCourseFixture();
   const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-dedup-course-'));
@@ -1241,6 +1509,7 @@ test('runMadgradesImport with refreshApi dedupes matched course detail fetches b
           {
             id: 99,
             name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
           },
         ],
         currentPage: 1,
@@ -1248,7 +1517,7 @@ test('runMadgradesImport with refreshApi dedupes matched course detail fetches b
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-577') {
+    if (url === 'https://example.test/api/courses/course-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-577',
@@ -1281,22 +1550,26 @@ test('runMadgradesImport with refreshApi dedupes matched course detail fetches b
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99/grades') {
       return createJsonResponse({
-        instructor: {
-          id: 99,
-          name: 'Ada Lovelace',
-        },
-        grades: [
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
           {
-            id: 'instructor-grade-99',
-            term: '1264',
-            average_gpa: 3.5,
-            distributions: {
-              A: 15,
-              AB: 10,
-              B: 5,
-            },
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'course-offering-577-unknown',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
           },
         ],
       });
@@ -1319,7 +1592,7 @@ test('runMadgradesImport with refreshApi dedupes matched course detail fetches b
     assert.equal(result.courses, 1);
     assert.equal(result.courseMatches, 2);
     assert.equal(
-      fetchCalls.filter((url) => url === 'https://example.test/api/explore/courses/course-577').length,
+      fetchCalls.filter((url) => url === 'https://example.test/api/courses/course-577').length,
       1,
     );
     assert.deepEqual(
@@ -1368,6 +1641,7 @@ test('runMadgradesImport with refreshApi omits course offerings for instructors 
           {
             id: 99,
             name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
           },
         ],
         currentPage: 1,
@@ -1375,7 +1649,7 @@ test('runMadgradesImport with refreshApi omits course offerings for instructors 
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-577') {
+    if (url === 'https://example.test/api/courses/course-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-577',
@@ -1408,22 +1682,26 @@ test('runMadgradesImport with refreshApi omits course offerings for instructors 
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99/grades') {
       return createJsonResponse({
-        instructor: {
-          id: 99,
-          name: 'Ada Lovelace',
-        },
-        grades: [
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
           {
-            id: 'instructor-grade-99',
-            term: '1264',
-            average_gpa: 3.5,
-            distributions: {
-              A: 15,
-              AB: 10,
-              B: 5,
-            },
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'course-offering-577',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
           },
         ],
       });
@@ -1502,7 +1780,7 @@ test('runMadgradesImport with refreshApi dedupes matched instructor detail fetch
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-577') {
+    if (url === 'https://example.test/api/courses/course-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-577',
@@ -1535,7 +1813,7 @@ test('runMadgradesImport with refreshApi dedupes matched instructor detail fetch
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99') {
       return createJsonResponse({
         instructor: {
           id: 99,
@@ -1573,7 +1851,7 @@ test('runMadgradesImport with refreshApi dedupes matched instructor detail fetch
     assert.equal(result.instructors, 1);
     assert.equal(result.instructorMatches, 2);
     assert.equal(
-      fetchCalls.filter((url) => url === 'https://example.test/api/explore/instructors/99').length,
+      fetchCalls.filter((url) => url === 'https://example.test/api/instructors/99').length,
       1,
     );
     assert.deepEqual(
@@ -1588,6 +1866,702 @@ test('runMadgradesImport with refreshApi dedupes matched instructor detail fetch
         instructor_grades: 1,
         instructor_matches: 2,
       },
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport with refreshApi rejects when a matched instructor grades endpoint returns 404', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-stale-instructor-'));
+  const { runMadgradesImport } = await loadImportRunner();
+
+  const fetchImpl = async (url) => {
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-577',
+            subject: '302',
+            number: '577',
+            name: 'Algorithms for Large Data',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577') {
+      return createJsonResponse({
+        course: {
+          uuid: 'course-577',
+          subject: '302',
+          number: '577',
+          abbreviation: 'COMP SCI 577',
+        },
+        grades: [
+          {
+            uuid: 'course-grade-1',
+            term: '1264',
+            average_gpa: 3.7,
+            distributions: {
+              A: 18,
+              AB: 6,
+              B: 6,
+            },
+          },
+        ],
+        offerings: [
+          {
+            uuid: 'course-offering-1',
+            instructor_id: 99,
+            term: '1264',
+            section_type: 'LEC',
+            student_count: 30,
+            average_gpa: 3.7,
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99/grades') {
+      return {
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        async text() {
+          return JSON.stringify({ error: 'Not found' });
+        },
+      };
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    await assert.rejects(
+      runMadgradesImport({
+        dbPath: fixture.dbPath,
+        snapshotRoot,
+        refreshApi: true,
+        token: 'test-token',
+        fetchImpl,
+        baseUrl: 'https://example.test/api',
+        now: new Date('2026-04-12T09:10:11.000Z'),
+      }),
+      /404 Not Found.*\/instructors\/99\/grades/,
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport with refreshApi supports live-style top-level detail payloads and separate grades endpoints', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-live-shape-'));
+  const { runMadgradesImport } = await loadImportRunner();
+
+  const fetchImpl = async (url) => {
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-577',
+            number: '577',
+            name: 'Algorithms for Large Data',
+            subjects: [
+              {
+                code: '302',
+                abbreviation: 'COMP SCI',
+              },
+            ],
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577') {
+      return createJsonResponse({
+        uuid: 'course-577',
+        number: '577',
+        name: 'Algorithms for Large Data',
+        subjects: [
+          {
+            code: '302',
+            abbreviation: 'COMP SCI',
+          },
+        ],
+        courseOfferings: [
+          {
+            uuid: 'offering-577-1264',
+            termCode: '1264',
+            sections: [
+              {
+                sectionType: 'LEC',
+                number: 1,
+                instructors: [
+                  {
+                    id: 99,
+                    name: 'Ada Lovelace',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577/grades') {
+      return createJsonResponse({
+        courseUuid: 'course-577',
+        cumulative: {
+          total: 30,
+          aCount: 18,
+          abCount: 6,
+          bCount: 6,
+        },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            cumulative: {
+              total: 30,
+              aCount: 18,
+              abCount: 6,
+              bCount: 6,
+            },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [
+                  {
+                    id: 99,
+                    name: 'Ada Lovelace',
+                  },
+                ],
+                total: 30,
+                aCount: 18,
+                abCount: 6,
+                bCount: 6,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99') {
+      return createJsonResponse({
+        id: 99,
+        name: 'Ada Lovelace',
+        sections: [],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99/grades') {
+      return createJsonResponse({
+        instructorId: 99,
+        cumulative: {
+          total: 30,
+          aCount: 15,
+          abCount: 10,
+          bCount: 5,
+        },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'offering-577-1264',
+            cumulative: {
+              total: 30,
+              aCount: 15,
+              abCount: 10,
+              bCount: 5,
+            },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [
+                  {
+                    id: 99,
+                    name: 'Ada Lovelace',
+                  },
+                ],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    const result = await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T11:12:13.000Z'),
+    });
+
+    assert.equal(result.courses, 1);
+    assert.equal(result.instructors, 1);
+
+    const courseOverview = fixture.db.prepare(`
+      SELECT course_grade_term_count, historical_student_count, historical_gpa
+      FROM course_grade_overview_v
+      WHERE madgrades_course_id = 1
+    `).get();
+    const instructorOverview = fixture.db.prepare(`
+      SELECT instructor_grade_term_count, historical_student_count, overall_gpa
+      FROM instructor_grade_overview_v
+      WHERE madgrades_instructor_id = 99
+    `).get();
+
+    assert.deepEqual(courseOverview, {
+      course_grade_term_count: 1,
+      historical_student_count: 30,
+      historical_gpa: 3.7,
+    });
+    assert.deepEqual(instructorOverview, {
+      instructor_grade_term_count: 1,
+      historical_student_count: 30,
+      overall_gpa: 3.6666666666666665,
+    });
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport with refreshApi emits richer forward progress messages', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-progress-'));
+  const { runMadgradesImport } = await loadImportRunner();
+  const progressMessages = [];
+
+  const fetchImpl = async (url) => {
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-577',
+            number: '577',
+            name: 'Algorithms for Large Data',
+            subjects: [
+              {
+                code: '302',
+                abbreviation: 'COMP SCI',
+              },
+            ],
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577/grades') {
+      return createJsonResponse({
+        courseUuid: 'course-577',
+        cumulative: {
+          total: 30,
+          A: 18,
+          AB: 6,
+          B: 6,
+        },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            cumulative: {
+              total: 30,
+              A: 18,
+              AB: 6,
+              B: 6,
+            },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [
+                  {
+                    id: 99,
+                    name: 'Ada Lovelace',
+                  },
+                ],
+                total: 30,
+                A: 18,
+                AB: 6,
+                B: 6,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99/grades') {
+      return createJsonResponse({
+        instructorId: 99,
+        cumulative: {
+          total: 30,
+          A: 15,
+          AB: 10,
+          B: 5,
+        },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'offering-577-1264',
+            cumulative: {
+              total: 30,
+              A: 15,
+              AB: 10,
+              B: 5,
+            },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [
+                  {
+                    id: 99,
+                    name: 'Ada Lovelace',
+                  },
+                ],
+                total: 30,
+                A: 15,
+                AB: 10,
+                B: 5,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T13:14:15.000Z'),
+      onProgress(message) {
+        progressMessages.push(message);
+      },
+    });
+
+    assert.ok(
+      progressMessages.some((message) => /Loaded \d+ local courses and \d+ local instructors\./.test(message)),
+      `expected local identity counts in progress output, got: ${progressMessages.join(' | ')}`,
+    );
+    assert.ok(
+      progressMessages.some((message) => /Fetched Madgrades indexes: \d+ courses, \d+ instructors\./.test(message)),
+      `expected remote index counts in progress output, got: ${progressMessages.join(' | ')}`,
+    );
+    assert.ok(progressMessages.includes('Matching local records against Madgrades indexes...'));
+    assert.ok(
+      progressMessages.some((message) => /Deduped to \d+ unique course fetches and \d+ unique instructor fetches\./.test(message)),
+      `expected dedupe counts in progress output, got: ${progressMessages.join(' | ')}`,
+    );
+    assert.ok(
+      progressMessages.some((message) => /Normalizing \d+ matched courses\.\.\./.test(message)),
+      `expected course normalization progress output, got: ${progressMessages.join(' | ')}`,
+    );
+    assert.ok(
+      progressMessages.some((message) => /Prepared snapshot rows:/.test(message)),
+      `expected snapshot row summary in progress output, got: ${progressMessages.join(' | ')}`,
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport with refreshApi reuses list metadata and skips live detail endpoints when grades endpoints are sufficient', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-skip-details-'));
+  const { runMadgradesImport } = await loadImportRunner();
+  const fetchCalls = [];
+
+  const fetchImpl = async (url) => {
+    fetchCalls.push(url);
+
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-577',
+            number: '577',
+            name: 'Algorithms for Large Data',
+            subjects: [{ code: '302', abbreviation: 'COMP SCI' }],
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577/grades') {
+      return createJsonResponse({
+        courseUuid: 'course-577',
+        cumulative: { total: 30, aCount: 18, abCount: 6, bCount: 6 },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            cumulative: { total: 30, aCount: 18, abCount: 6, bCount: 6 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 18,
+                abCount: 6,
+                bCount: 6,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99/grades') {
+      return createJsonResponse({
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'offering-577-1264',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    const result = await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T12:13:14.000Z'),
+    });
+
+    assert.equal(result.courses, 1);
+    assert.equal(result.instructors, 1);
+    assert.deepEqual(fetchCalls, [
+      'https://example.test/api/courses?per_page=200&page=1',
+      'https://example.test/api/instructors?per_page=200&page=1',
+      'https://example.test/api/courses/course-577/grades',
+      'https://example.test/api/instructors/99/grades',
+    ]);
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport with refreshApi overlaps course-grade and instructor-grade fetch phases', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-phase-overlap-'));
+  const { runMadgradesImport } = await loadImportRunner();
+  const events = [];
+
+  const fetchImpl = async (url) => {
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-577',
+            number: '577',
+            name: 'Algorithms for Large Data',
+            subjects: [{ code: '302', abbreviation: 'COMP SCI' }],
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-577/grades') {
+      events.push('start:course-grades');
+      await delay(60);
+      events.push('finish:course-grades');
+      return createJsonResponse({
+        courseUuid: 'course-577',
+        cumulative: { total: 30, aCount: 18, abCount: 6, bCount: 6 },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            cumulative: { total: 30, aCount: 18, abCount: 6, bCount: 6 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 18,
+                abCount: 6,
+                bCount: 6,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99/grades') {
+      events.push('start:instructor-grades');
+      await delay(60);
+      events.push('finish:instructor-grades');
+      return createJsonResponse({
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'offering-577-1264',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T12:45:00.000Z'),
+    });
+
+    assert.ok(
+      events.some(
+        (event, index) => event.startsWith('start:') && events[index + 1]?.startsWith('start:'),
+      ),
+      `expected overlapping phase fetches, got event order: ${events.join(', ')}`,
     );
   } finally {
     fixture.cleanup();
@@ -1622,6 +2596,7 @@ test('runMadgradesImport with refreshApi matches cross-listed local courses thro
           {
             id: 99,
             name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
           },
         ],
         currentPage: 1,
@@ -1629,7 +2604,7 @@ test('runMadgradesImport with refreshApi matches cross-listed local courses thro
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-math-577') {
+    if (url === 'https://example.test/api/courses/course-math-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-math-577',
@@ -1662,22 +2637,26 @@ test('runMadgradesImport with refreshApi matches cross-listed local courses thro
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99/grades') {
       return createJsonResponse({
-        instructor: {
-          id: 99,
-          name: 'Ada Lovelace',
-        },
-        grades: [
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
           {
-            id: 'instructor-grade-99',
-            term: '1264',
-            average_gpa: 3.5,
-            distributions: {
-              A: 15,
-              AB: 10,
-              B: 5,
-            },
+            termCode: '1264',
+            courseUuid: 'course-math-577',
+            courseOfferingUuid: 'course-offering-math-577',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
           },
         ],
       });
@@ -1755,6 +2734,7 @@ test('runMadgradesImport with refreshApi dedupes normalized course offerings at 
           {
             id: 99,
             name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
           },
         ],
         currentPage: 1,
@@ -1762,7 +2742,7 @@ test('runMadgradesImport with refreshApi dedupes normalized course offerings at 
       });
     }
 
-    if (url === 'https://example.test/api/explore/courses/course-577') {
+    if (url === 'https://example.test/api/courses/course-577') {
       return createJsonResponse({
         course: {
           uuid: 'course-577',
@@ -1803,22 +2783,42 @@ test('runMadgradesImport with refreshApi dedupes normalized course offerings at 
       });
     }
 
-    if (url === 'https://example.test/api/explore/instructors/99') {
+    if (url === 'https://example.test/api/instructors/99/grades') {
       return createJsonResponse({
-        instructor: {
-          id: 99,
-          name: 'Ada Lovelace',
-        },
-        grades: [
+        instructorId: 99,
+        cumulative: { total: 60, aCount: 30, abCount: 20, bCount: 10 },
+        courseOfferings: [
           {
-            id: 'instructor-grade-99',
-            term: '1264',
-            average_gpa: 3.5,
-            distributions: {
-              A: 15,
-              AB: 10,
-              B: 5,
-            },
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'course-offering-577-a',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
+          },
+          {
+            termCode: '1264',
+            courseUuid: 'course-577',
+            courseOfferingUuid: 'course-offering-577-b',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 2,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
           },
         ],
       });

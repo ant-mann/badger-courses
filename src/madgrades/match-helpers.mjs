@@ -35,6 +35,7 @@ export function matchLocalCourse(localCourse, madgradesCourses) {
   const subjectCatalogPairs = Array.isArray(localCourse.subjectCatalogPairs)
     ? localCourse.subjectCatalogPairs
     : [];
+  const normalizedTitle = normalizeMadgradesText(localCourse.title);
   const pairCandidates = madgradesCourses.filter((course) =>
     subjectCatalogPairs.some((pair) => matchesSubjectCatalogPair(course, pair)),
   );
@@ -47,6 +48,13 @@ export function matchLocalCourse(localCourse, madgradesCourses) {
   }
 
   if (pairCandidates.length === 1) {
+    if (normalizeMadgradesText(pairCandidates[0]?.name) !== normalizedTitle) {
+      return buildCourseResult(localCourse, {
+        matchStatus: 'unmatched',
+        matchNote: 'Unique subject/code candidate did not match the normalized title',
+      });
+    }
+
     return buildCourseResult(localCourse, {
       matchStatus: 'matched',
       matchMethod: 'subject-code+catalog-number',
@@ -54,7 +62,6 @@ export function matchLocalCourse(localCourse, madgradesCourses) {
     });
   }
 
-  const normalizedTitle = normalizeMadgradesText(localCourse.title);
   const titleCandidates = pairCandidates.filter(
     (course) => normalizeMadgradesText(course?.name) === normalizedTitle,
   );

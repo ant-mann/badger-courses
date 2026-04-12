@@ -213,6 +213,36 @@ test('matchLocalCourse returns unmatched when title alignment eliminates duplica
   });
 });
 
+test('matchLocalCourse does not auto-match a unique subject code candidate when the title differs', async () => {
+  const { matchLocalCourse } = await loadMatchHelpers();
+
+  const result = matchLocalCourse(
+    {
+      termCode: '1272',
+      courseId: 'local-course-title-mismatch',
+      title: 'Special Topics in Computing',
+      subjectCatalogPairs: [{ subjectCode: 'COMP SCI', catalogNumber: '777' }],
+    },
+    [
+      {
+        uuid: 'mg-course-777',
+        subject: 'COMP SCI',
+        number: '777',
+        name: 'Introduction to Compilers',
+      },
+    ],
+  );
+
+  assert.deepEqual(result, {
+    termCode: '1272',
+    courseId: 'local-course-title-mismatch',
+    matchStatus: 'unmatched',
+    matchMethod: null,
+    madgradesCourseUuid: null,
+    matchNote: 'Unique subject/code candidate did not match the normalized title',
+  });
+});
+
 test('matchLocalInstructor requires an exact normalized full-name match', async () => {
   const { matchLocalInstructor } = await loadMatchHelpers();
 
