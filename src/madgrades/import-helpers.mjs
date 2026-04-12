@@ -62,6 +62,36 @@ export function sumGradeCounts(distribution = {}) {
   return getDistributionEntries(distribution).reduce((total, entry) => total + entry.studentCount, 0);
 }
 
+function gpaFromDistribution(distribution = {}) {
+  const entries = Object.fromEntries(
+    getDistributionEntries(distribution).map((entry) => [String(entry.gradeCode).toLowerCase(), entry.studentCount]),
+  );
+  const gradedStudents = (
+    Number(entries.a ?? 0)
+    + Number(entries.ab ?? 0)
+    + Number(entries.b ?? 0)
+    + Number(entries.bc ?? 0)
+    + Number(entries.c ?? 0)
+    + Number(entries.d ?? 0)
+    + Number(entries.f ?? 0)
+  );
+
+  if (gradedStudents <= 0) {
+    return 0;
+  }
+
+  const qualityPoints = (
+    Number(entries.a ?? 0) * 4
+    + Number(entries.ab ?? 0) * 3.5
+    + Number(entries.b ?? 0) * 3
+    + Number(entries.bc ?? 0) * 2.5
+    + Number(entries.c ?? 0) * 2
+    + Number(entries.d ?? 0) * 1
+  );
+
+  return qualityPoints / gradedStudents;
+}
+
 export function makeMadgradesCourseRow(course = {}, index = 0) {
   return {
     madgrades_course_id: Number(course.madgradesCourseId ?? course.madgrades_course_id ?? index + 1),
@@ -187,10 +217,22 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
       sumGradeCounts(distribution.grades ?? distribution.distributions ?? {}),
     ]),
   );
+  const courseDistributionGpaByGradeId = new Map(
+    (snapshot?.courseGradeDistributions ?? []).map((distribution) => [
+      Number(distribution.madgradesCourseGradeId ?? distribution.madgrades_course_grade_id),
+      gpaFromDistribution(distribution.grades ?? distribution.distributions ?? {}),
+    ]),
+  );
   const instructorDistributionCountByGradeId = new Map(
     (snapshot?.instructorGradeDistributions ?? []).map((distribution) => [
       Number(distribution.madgradesInstructorGradeId ?? distribution.madgrades_instructor_grade_id),
       sumGradeCounts(distribution.grades ?? distribution.distributions ?? {}),
+    ]),
+  );
+  const instructorDistributionGpaByGradeId = new Map(
+    (snapshot?.instructorGradeDistributions ?? []).map((distribution) => [
+      Number(distribution.madgradesInstructorGradeId ?? distribution.madgrades_instructor_grade_id),
+      gpaFromDistribution(distribution.grades ?? distribution.distributions ?? {}),
     ]),
   );
   const courseGradeRows = (snapshot?.courseGrades ?? []).map((row, index) => {
@@ -199,9 +241,14 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
       index,
     });
     const distributionStudentCount = courseDistributionCountByGradeId.get(normalizedRow.madgrades_course_grade_id);
+    const distributionGpa = courseDistributionGpaByGradeId.get(normalizedRow.madgrades_course_grade_id);
 
     if (distributionStudentCount != null) {
       normalizedRow.student_count = distributionStudentCount;
+    }
+
+    if (distributionGpa != null && distributionGpa > 0 && Number(normalizedRow.avg_gpa) === 0) {
+      normalizedRow.avg_gpa = distributionGpa;
     }
 
     return normalizedRow;
@@ -212,9 +259,14 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
       index,
     });
     const distributionStudentCount = instructorDistributionCountByGradeId.get(normalizedRow.madgrades_instructor_grade_id);
+    const distributionGpa = instructorDistributionGpaByGradeId.get(normalizedRow.madgrades_instructor_grade_id);
 
     if (distributionStudentCount != null) {
       normalizedRow.student_count = distributionStudentCount;
+    }
+
+    if (distributionGpa != null && distributionGpa > 0 && Number(normalizedRow.avg_gpa) === 0) {
+      normalizedRow.avg_gpa = distributionGpa;
     }
 
     return normalizedRow;
