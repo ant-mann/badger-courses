@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Database from 'better-sqlite3';
 
 const loadHelpers = () => import('../src/db/import-helpers.mjs');
+const loadPrerequisiteHelpers = () => import('../src/db/prerequisite-helpers.mjs');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.join(__dirname, '..');
@@ -29,6 +30,7 @@ function makeCourse({
   subjectCode,
   catalogNumber,
   courseDesignation,
+  fullCourseDesignation,
   title,
 }) {
   return {
@@ -36,6 +38,7 @@ function makeCourse({
     courseId,
     catalogNumber,
     courseDesignation,
+    fullCourseDesignation: fullCourseDesignation ?? null,
     title,
     description: `${title} description`,
     minimumCredits: 3,
@@ -61,6 +64,8 @@ function buildCourseDbFixture({ courses, packageSnapshot }) {
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-summary-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-summary-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
@@ -642,6 +647,67 @@ function buildSharedLecturePackageFixture() {
   };
 }
 
+function buildCrossListedCourseFixture() {
+  return {
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '011630',
+        subjectCode: '302',
+        catalogNumber: '240',
+        courseDesignation: 'COMP SCI 240',
+        fullCourseDesignation: 'Computer Sciences 240',
+        title: 'Introduction to Discrete Mathematics',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '011630',
+        subjectCode: '640',
+        catalogNumber: '240',
+        courseDesignation: 'MATH 240',
+        fullCourseDesignation: 'Mathematics 240',
+        title: 'Introduction to Discrete Mathematics',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '302',
+            courseId: '011630',
+          },
+          packages: [
+            {
+              id: 'cs240-main',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '011630',
+              enrollmentClassNumber: 42400,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 8,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 8,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 22,
+              },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 async function loadBuildCourseDbModule() {
   const fixtureRoot = fs.mkdtempSync(path.join(repoRoot, '.tmp-db-module-'));
   const fixtureDbDir = path.join(fixtureRoot, 'src', 'db');
@@ -652,6 +718,8 @@ async function loadBuildCourseDbModule() {
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-summary-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-summary-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
@@ -889,6 +957,224 @@ test('makeCourseRow flattens a course record into one course table row', async (
   assert.equal(row.title, 'Introductory Financial Accounting');
 });
 
+test('makeCourseCrossListingRows emits one unique alias row and marks the canonical designation as primary', async () => {
+  const { makeCourseCrossListingRows, makeCourseRow } = await loadHelpers();
+  const primaryCourse = {
+    ...makeCourse({
+      termCode: '1272',
+      courseId: '011630',
+      subjectCode: '302',
+      catalogNumber: '240',
+      courseDesignation: 'COMP SCI 240',
+      title: 'Introduction to Discrete Mathematics',
+    }),
+    fullCourseDesignation: 'Computer Sciences 240',
+  };
+  const duplicatePrimaryCourse = { ...primaryCourse };
+  const aliasCourse = {
+    ...makeCourse({
+      termCode: '1272',
+      courseId: '011630',
+      subjectCode: '640',
+      catalogNumber: '240',
+      courseDesignation: 'MATH 240',
+      title: 'Introduction to Discrete Mathematics',
+    }),
+    fullCourseDesignation: 'Mathematics 240',
+  };
+
+  const rows = makeCourseCrossListingRows(
+    [primaryCourse, duplicatePrimaryCourse, aliasCourse],
+    makeCourseRow(primaryCourse),
+  );
+
+  assert.deepEqual(rows, [
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'COMP SCI 240',
+      full_course_designation: 'Computer Sciences 240',
+      subject_code: '302',
+      catalog_number: '240',
+      is_primary: 1,
+    },
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'MATH 240',
+      full_course_designation: 'Mathematics 240',
+      subject_code: '640',
+      catalog_number: '240',
+      is_primary: 0,
+    },
+  ]);
+});
+
+test('makeCourseCrossListingRows normalizes whitespace when matching the primary designation', async () => {
+  const { makeCourseCrossListingRows, makeCourseRow } = await loadHelpers();
+  const canonicalCourse = makeCourse({
+    termCode: '1272',
+    courseId: '011630',
+    subjectCode: '302',
+    catalogNumber: '240',
+    courseDesignation: 'COMP SCI 240',
+    title: 'Introduction to Discrete Mathematics',
+  });
+
+  const rows = makeCourseCrossListingRows(
+    [
+      {
+        ...canonicalCourse,
+        courseDesignation: '  COMP   SCI 240  ',
+        fullCourseDesignation: 'Computer Sciences 240',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: '240',
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Mathematics 240',
+      },
+    ],
+    makeCourseRow(canonicalCourse),
+  );
+
+  assert.equal(rows.filter((row) => row.is_primary === 1).length, 1);
+  assert.deepEqual(rows[0], {
+    term_code: '1272',
+    course_id: '011630',
+    course_designation: 'COMP SCI 240',
+    full_course_designation: 'Computer Sciences 240',
+    subject_code: '302',
+    catalog_number: '240',
+    is_primary: 1,
+  });
+});
+
+test('makeCourseCrossListingRows falls back to the first alias as primary when the canonical designation is blank', async () => {
+  const { makeCourseCrossListingRows } = await loadHelpers();
+
+  const rows = makeCourseCrossListingRows(
+    [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: '240',
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Mathematics 240',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '302',
+          catalogNumber: '240',
+          courseDesignation: 'COMP SCI 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Computer Sciences 240',
+      },
+    ],
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: '   ',
+    },
+  );
+
+  assert.equal(rows.filter((row) => row.is_primary === 1).length, 1);
+  assert.deepEqual(rows, [
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'MATH 240',
+      full_course_designation: 'Mathematics 240',
+      subject_code: '640',
+      catalog_number: '240',
+      is_primary: 1,
+    },
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'COMP SCI 240',
+      full_course_designation: 'Computer Sciences 240',
+      subject_code: '302',
+      catalog_number: '240',
+      is_primary: 0,
+    },
+  ]);
+});
+
+test('makeCourseCrossListingRows enriches duplicate alias rows with later metadata', async () => {
+  const { makeCourseCrossListingRows, makeCourseRow } = await loadHelpers();
+  const canonicalCourse = makeCourse({
+    termCode: '1272',
+    courseId: '011630',
+    subjectCode: '302',
+    catalogNumber: '240',
+    courseDesignation: 'COMP SCI 240',
+    title: 'Introduction to Discrete Mathematics',
+  });
+
+  const rows = makeCourseCrossListingRows(
+    [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: null,
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: null,
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '011630',
+          subjectCode: '640',
+          catalogNumber: '240',
+          courseDesignation: 'MATH 240',
+          title: 'Introduction to Discrete Mathematics',
+        }),
+        fullCourseDesignation: 'Mathematics 240',
+      },
+      canonicalCourse,
+    ],
+    makeCourseRow(canonicalCourse),
+  );
+
+  assert.deepEqual(rows, [
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'MATH 240',
+      full_course_designation: 'Mathematics 240',
+      subject_code: '640',
+      catalog_number: '240',
+      is_primary: 0,
+    },
+    {
+      term_code: '1272',
+      course_id: '011630',
+      course_designation: 'COMP SCI 240',
+      full_course_designation: null,
+      subject_code: '302',
+      catalog_number: '240',
+      is_primary: 1,
+    },
+  ]);
+});
+
 test('makePackageRow exposes availability flags for package-level queries', async () => {
   const { makePackageRow } = await loadHelpers();
   const row = makePackageRow(samplePackage);
@@ -990,6 +1276,364 @@ test('summarizeAvailability marks waitlisted or full rows correctly', async () =
   });
 });
 
+test('makePrerequisiteRuleRow maps a parsed prerequisite rule into one prerequisite_rules row', async () => {
+  const { makePrerequisiteRuleRow, makePersistedPrerequisiteNodeId } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const parsed = parsePrerequisiteText('MATH 222 or 276');
+
+  const row = makePrerequisiteRuleRow({
+    ruleId: 'rule:1272:005770',
+    termCode: '1272',
+    courseId: '005770',
+    rawText: 'MATH 222 or 276',
+    parseStatus: parsed.parseStatus,
+    parseConfidence: 0.94,
+    rootNodeId: parsed.nodes[0]?.id,
+    unparsedText: parsed.unparsedText,
+  });
+
+  assert.deepEqual(row, {
+    rule_id: 'rule:1272:005770',
+    term_code: '1272',
+    course_id: '005770',
+    raw_text: 'MATH 222 or 276',
+    parse_status: 'parsed',
+    parse_confidence: 0.94,
+    root_node_id: null,
+    unparsed_text: null,
+  });
+
+  assert.equal(
+    makePersistedPrerequisiteNodeId('rule:1272:005770', parsed.nodes[0]?.id),
+    'rule:1272:005770:node-1',
+  );
+});
+
+test('makePrerequisiteNodeRows maps parser nodes into prerequisite_nodes rows', async () => {
+  const { makePrerequisiteNodeRows } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const parsed = parsePrerequisiteText('MATH 222 or 276');
+
+  const rows = makePrerequisiteNodeRows(parsed.nodes, 'rule:1272:005770');
+
+  assert.deepEqual(rows, [
+    {
+      node_id: 'rule:1272:005770:node-1',
+      rule_id: 'rule:1272:005770',
+      node_type: 'OR',
+      value: 'or',
+      normalized_value: 'OR',
+      position_start: null,
+      position_end: null,
+    },
+    {
+      node_id: 'rule:1272:005770:node-2',
+      rule_id: 'rule:1272:005770',
+      node_type: 'COURSE',
+      value: 'MATH 222',
+      normalized_value: 'MATH 222',
+      position_start: null,
+      position_end: null,
+    },
+    {
+      node_id: 'rule:1272:005770:node-3',
+      rule_id: 'rule:1272:005770',
+      node_type: 'COURSE',
+      value: '276',
+      normalized_value: 'MATH 276',
+      position_start: null,
+      position_end: null,
+    },
+  ]);
+});
+
+test('makePrerequisiteEdgeRows maps parser edges into prerequisite_edges rows', async () => {
+  const { makePrerequisiteEdgeRows } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const parsed = parsePrerequisiteText('MATH 222 or 276');
+
+  const rows = makePrerequisiteEdgeRows(parsed.edges, 'rule:1272:005770');
+
+  assert.deepEqual(rows, [
+    {
+      rule_id: 'rule:1272:005770',
+      parent_node_id: 'rule:1272:005770:node-1',
+      child_node_id: 'rule:1272:005770:node-2',
+      sort_order: 0,
+    },
+    {
+      rule_id: 'rule:1272:005770',
+      parent_node_id: 'rule:1272:005770:node-1',
+      child_node_id: 'rule:1272:005770:node-3',
+      sort_order: 1,
+    },
+  ]);
+});
+
+test('prerequisite helper rows from separate parser results coexist without node id collisions', async () => {
+  const {
+    makeCourseRow,
+    makePrerequisiteRuleRow,
+    makePrerequisiteNodeRows,
+    makePrerequisiteEdgeRows,
+  } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const db = createSchemaDb();
+
+  try {
+    const insertCourse = db.prepare(`
+      INSERT INTO courses (
+        term_code, course_id, subject_code, subject_short_description, subject_description,
+        catalog_number, course_designation, title, description, minimum_credits,
+        maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+      ) VALUES (
+        @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+        @catalog_number, @course_designation, @title, @description, @minimum_credits,
+        @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+      )
+    `);
+    const insertRule = db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `);
+    const insertNode = db.prepare(`
+      INSERT INTO prerequisite_nodes (
+        node_id, rule_id, node_type, value, normalized_value, position_start, position_end
+      ) VALUES (
+        @node_id, @rule_id, @node_type, @value, @normalized_value, @position_start, @position_end
+      )
+    `);
+    const insertEdge = db.prepare(`
+      INSERT INTO prerequisite_edges (
+        rule_id, parent_node_id, child_node_id, sort_order
+      ) VALUES (
+        @rule_id, @parent_node_id, @child_node_id, @sort_order
+      )
+    `);
+
+    const firstParsed = parsePrerequisiteText('MATH 222 or 276');
+    const secondParsed = parsePrerequisiteText('MATH 222 or 276');
+    const firstRule = makePrerequisiteRuleRow({
+      ruleId: 'rule:1272:005770',
+      termCode: '1272',
+      courseId: '005770',
+      rawText: 'MATH 222 or 276',
+      parseStatus: firstParsed.parseStatus,
+      parseConfidence: 0.95,
+      rootNodeId: firstParsed.nodes[0]?.id,
+      unparsedText: firstParsed.unparsedText,
+    });
+    const secondRule = makePrerequisiteRuleRow({
+      ruleId: 'rule:1272:005771',
+      termCode: '1272',
+      courseId: '005771',
+      rawText: 'MATH 222 or 276',
+      parseStatus: secondParsed.parseStatus,
+      parseConfidence: 0.95,
+      rootNodeId: secondParsed.nodes[0]?.id,
+      unparsedText: secondParsed.unparsedText,
+    });
+
+    insertCourse.run(makeCourseRow({ termCode: '1272', courseId: '005770', currentlyTaught: true }));
+    insertCourse.run(makeCourseRow({ termCode: '1272', courseId: '005771', currentlyTaught: true }));
+    insertRule.run({ ...firstRule, root_node_id: null });
+    insertRule.run({ ...secondRule, root_node_id: null });
+
+    for (const row of makePrerequisiteNodeRows(firstParsed.nodes, firstRule.rule_id)) {
+      insertNode.run(row);
+    }
+    for (const row of makePrerequisiteNodeRows(secondParsed.nodes, secondRule.rule_id)) {
+      insertNode.run(row);
+    }
+    for (const row of makePrerequisiteEdgeRows(firstParsed.edges, firstRule.rule_id)) {
+      insertEdge.run(row);
+    }
+    for (const row of makePrerequisiteEdgeRows(secondParsed.edges, secondRule.rule_id)) {
+      insertEdge.run(row);
+    }
+
+    db.prepare('UPDATE prerequisite_rules SET root_node_id = ? WHERE rule_id = ?').run(
+      firstRule.root_node_id,
+      firstRule.rule_id,
+    );
+    db.prepare('UPDATE prerequisite_rules SET root_node_id = ? WHERE rule_id = ?').run(
+      secondRule.root_node_id,
+      secondRule.rule_id,
+    );
+
+    const persistedNodeIds = db.prepare(`
+      SELECT node_id
+      FROM prerequisite_nodes
+      ORDER BY rule_id, node_id
+    `).pluck().all();
+
+    assert.deepEqual(persistedNodeIds, [
+      'rule:1272:005770:node-1',
+      'rule:1272:005770:node-2',
+      'rule:1272:005770:node-3',
+      'rule:1272:005771:node-1',
+      'rule:1272:005771:node-2',
+      'rule:1272:005771:node-3',
+    ]);
+  } finally {
+    db.close();
+  }
+});
+
+test('prerequisite helper rows insert cleanly through the schema when root_node_id is set after nodes exist', async () => {
+  const {
+    makeCourseRow,
+    makePersistedPrerequisiteNodeId,
+    makePrerequisiteRuleRow,
+    makePrerequisiteNodeRows,
+    makePrerequisiteEdgeRows,
+  } = await loadHelpers();
+  const { parsePrerequisiteText } = await loadPrerequisiteHelpers();
+  const db = createSchemaDb();
+
+  try {
+    const parsed = parsePrerequisiteText('MATH 222 or 276');
+    const courseRow = makeCourseRow({
+      termCode: '1272',
+      courseId: '005770',
+      currentlyTaught: true,
+    });
+    const ruleRow = makePrerequisiteRuleRow({
+      ruleId: 'rule:1272:005770',
+      termCode: '1272',
+      courseId: '005770',
+      rawText: 'MATH 222 or 276',
+      parseStatus: parsed.parseStatus,
+      parseConfidence: 0.91,
+      rootNodeId: parsed.nodes[0]?.id ?? null,
+      unparsedText: parsed.unparsedText,
+    });
+    const nodeRows = makePrerequisiteNodeRows(parsed.nodes, ruleRow.rule_id);
+    const edgeRows = makePrerequisiteEdgeRows(parsed.edges, ruleRow.rule_id);
+
+    db.prepare(`
+      INSERT INTO courses (
+        term_code, course_id, subject_code, subject_short_description, subject_description,
+        catalog_number, course_designation, title, description, minimum_credits,
+        maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+      ) VALUES (
+        @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+        @catalog_number, @course_designation, @title, @description, @minimum_credits,
+        @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+      )
+    `).run(courseRow);
+
+    db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `).run(ruleRow);
+
+    const insertNode = db.prepare(`
+      INSERT INTO prerequisite_nodes (
+        node_id, rule_id, node_type, value, normalized_value, position_start, position_end
+      ) VALUES (
+        @node_id, @rule_id, @node_type, @value, @normalized_value, @position_start, @position_end
+      )
+    `);
+    const insertEdge = db.prepare(`
+      INSERT INTO prerequisite_edges (
+        rule_id, parent_node_id, child_node_id, sort_order
+      ) VALUES (
+        @rule_id, @parent_node_id, @child_node_id, @sort_order
+      )
+    `);
+
+    for (const row of nodeRows) {
+      insertNode.run(row);
+    }
+
+    for (const row of edgeRows) {
+      insertEdge.run(row);
+    }
+
+    db.prepare(`
+      UPDATE prerequisite_rules
+      SET root_node_id = ?
+      WHERE rule_id = ?
+    `).run(makePersistedPrerequisiteNodeId(ruleRow.rule_id, parsed.nodes[0]?.id ?? null), ruleRow.rule_id);
+
+    const persistedRule = db.prepare(`
+      SELECT rule_id, term_code, course_id, root_node_id, parse_status
+      FROM prerequisite_rules
+      WHERE rule_id = ?
+    `).get(ruleRow.rule_id);
+    const persistedNodes = db.prepare(`
+      SELECT node_id, rule_id, node_type, value, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all(ruleRow.rule_id);
+    const persistedEdges = db.prepare(`
+      SELECT rule_id, parent_node_id, child_node_id, sort_order
+      FROM prerequisite_edges
+      WHERE rule_id = ?
+      ORDER BY sort_order
+    `).all(ruleRow.rule_id);
+
+    assert.deepEqual(persistedRule, {
+      rule_id: 'rule:1272:005770',
+      term_code: '1272',
+      course_id: '005770',
+      root_node_id: 'rule:1272:005770:node-1',
+      parse_status: 'parsed',
+    });
+    assert.deepEqual(persistedNodes, [
+      {
+        node_id: 'rule:1272:005770:node-1',
+        rule_id: 'rule:1272:005770',
+        node_type: 'OR',
+        value: 'or',
+        normalized_value: 'OR',
+      },
+      {
+        node_id: 'rule:1272:005770:node-2',
+        rule_id: 'rule:1272:005770',
+        node_type: 'COURSE',
+        value: 'MATH 222',
+        normalized_value: 'MATH 222',
+      },
+      {
+        node_id: 'rule:1272:005770:node-3',
+        rule_id: 'rule:1272:005770',
+        node_type: 'COURSE',
+        value: '276',
+        normalized_value: 'MATH 276',
+      },
+    ]);
+    assert.deepEqual(persistedEdges, [
+      {
+        rule_id: 'rule:1272:005770',
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-2',
+        sort_order: 0,
+      },
+      {
+        rule_id: 'rule:1272:005770',
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-3',
+        sort_order: 1,
+      },
+    ]);
+  } finally {
+    db.close();
+  }
+});
+
 test('course_overview_v uses the newest canonical section row for availability', () => {
   const db = createSchemaDb();
 
@@ -1022,6 +1666,1248 @@ test('course_overview_v uses the newest canonical section row for availability',
     });
   } finally {
     db.close();
+  }
+});
+
+test('schema creates prerequisite graph tables and indexes', () => {
+  const db = createSchemaDb();
+
+  try {
+    const tableNames = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN ('prerequisite_rules', 'prerequisite_nodes', 'prerequisite_edges')
+      ORDER BY name
+    `).pluck().all();
+
+    assert.deepEqual(tableNames, [
+      'prerequisite_edges',
+      'prerequisite_nodes',
+      'prerequisite_rules',
+    ]);
+
+    const indexNames = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'index'
+        AND name IN (
+          'idx_prerequisite_edges_child',
+          'idx_prerequisite_rules_course',
+          'idx_prerequisite_nodes_rule'
+        )
+      ORDER BY name
+    `).pluck().all();
+
+    assert.deepEqual(indexNames, [
+      'idx_prerequisite_edges_child',
+      'idx_prerequisite_nodes_rule',
+      'idx_prerequisite_rules_course',
+    ]);
+
+    const prerequisiteNodeForeignKey = db.prepare(`
+      SELECT id, seq, "table", "from", "to", on_delete
+      FROM pragma_foreign_key_list('prerequisite_rules')
+      WHERE "table" = 'prerequisite_nodes'
+      ORDER BY id, seq
+    `).all();
+
+    assert.deepEqual(prerequisiteNodeForeignKey, [
+      {
+        id: 0,
+        seq: 0,
+        table: 'prerequisite_nodes',
+        from: 'rule_id',
+        to: 'rule_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 0,
+        seq: 1,
+        table: 'prerequisite_nodes',
+        from: 'root_node_id',
+        to: 'node_id',
+        on_delete: 'CASCADE',
+      },
+    ]);
+
+    const prerequisiteEdgeForeignKeys = db.prepare(`
+      SELECT id, seq, "table", "from", "to", on_delete
+      FROM pragma_foreign_key_list('prerequisite_edges')
+      WHERE "table" = 'prerequisite_nodes'
+      ORDER BY id, seq
+    `).all();
+
+    assert.deepEqual(prerequisiteEdgeForeignKeys, [
+      {
+        id: 0,
+        seq: 0,
+        table: 'prerequisite_nodes',
+        from: 'rule_id',
+        to: 'rule_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 0,
+        seq: 1,
+        table: 'prerequisite_nodes',
+        from: 'child_node_id',
+        to: 'node_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 1,
+        seq: 0,
+        table: 'prerequisite_nodes',
+        from: 'rule_id',
+        to: 'rule_id',
+        on_delete: 'CASCADE',
+      },
+      {
+        id: 1,
+        seq: 1,
+        table: 'prerequisite_nodes',
+        from: 'parent_node_id',
+        to: 'node_id',
+        on_delete: 'CASCADE',
+      },
+    ]);
+  } finally {
+    db.close();
+  }
+});
+
+test('schema ties prerequisite summary rows to the owning rule and course tuple', () => {
+  const db = createSchemaDb();
+  const insertCourse = db.prepare(`
+    INSERT INTO courses (
+      term_code, course_id, subject_code, subject_short_description, subject_description,
+      catalog_number, course_designation, title, description, minimum_credits,
+      maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+    ) VALUES (
+      @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+      @catalog_number, @course_designation, @title, @description, @minimum_credits,
+      @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+    )
+  `);
+
+  try {
+    insertCourse.run({
+      term_code: '1272',
+      course_id: '005770',
+      subject_code: null,
+      subject_short_description: null,
+      subject_description: null,
+      catalog_number: null,
+      course_designation: null,
+      title: null,
+      description: null,
+      minimum_credits: null,
+      maximum_credits: null,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: null,
+    });
+    insertCourse.run({
+      term_code: '1272',
+      course_id: '005771',
+      subject_code: null,
+      subject_short_description: null,
+      subject_description: null,
+      catalog_number: null,
+      course_designation: null,
+      title: null,
+      description: null,
+      minimum_credits: null,
+      maximum_credits: null,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: null,
+    });
+    db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `).run({
+      rule_id: 'rule:1272:005770',
+      term_code: '1272',
+      course_id: '005770',
+      raw_text: 'MATH 222',
+      parse_status: 'parsed',
+      parse_confidence: 1,
+      root_node_id: null,
+      unparsed_text: null,
+    });
+
+    assert.throws(
+      () => {
+        db.prepare(`
+          INSERT INTO prerequisite_course_summaries (
+            rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          'rule:1272:005770',
+          '1272',
+          '005771',
+          'structured',
+          JSON.stringify([['MATH 222']]),
+          JSON.stringify([]),
+        );
+      },
+      /FOREIGN KEY|constraint/i,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('schema requires valid JSON in prerequisite summary columns', () => {
+  const db = createSchemaDb();
+  const insertCourse = db.prepare(`
+    INSERT INTO courses (
+      term_code, course_id, subject_code, subject_short_description, subject_description,
+      catalog_number, course_designation, title, description, minimum_credits,
+      maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+    ) VALUES (
+      @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+      @catalog_number, @course_designation, @title, @description, @minimum_credits,
+      @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+    )
+  `);
+
+  try {
+    insertCourse.run({
+      term_code: '1272',
+      course_id: '005770',
+      subject_code: null,
+      subject_short_description: null,
+      subject_description: null,
+      catalog_number: null,
+      course_designation: null,
+      title: null,
+      description: null,
+      minimum_credits: null,
+      maximum_credits: null,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: null,
+    });
+    db.prepare(`
+      INSERT INTO prerequisite_rules (
+        rule_id, term_code, course_id, raw_text, parse_status,
+        parse_confidence, root_node_id, unparsed_text
+      ) VALUES (
+        @rule_id, @term_code, @course_id, @raw_text, @parse_status,
+        @parse_confidence, @root_node_id, @unparsed_text
+      )
+    `).run({
+      rule_id: 'rule:1272:005770',
+      term_code: '1272',
+      course_id: '005770',
+      raw_text: 'MATH 222',
+      parse_status: 'parsed',
+      parse_confidence: 1,
+      root_node_id: null,
+      unparsed_text: null,
+    });
+
+    assert.throws(
+      () => {
+        db.prepare(`
+          INSERT INTO prerequisite_course_summaries (
+            rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          'rule:1272:005770',
+          '1272',
+          '005770',
+          'structured',
+          'not-json',
+          JSON.stringify([]),
+        );
+      },
+      /CHECK|constraint/i,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('course_cross_listings enforces boolean primary flags and one primary alias per course', () => {
+  const db = createSchemaDb();
+
+  try {
+    db.prepare(`
+      INSERT INTO courses (
+        term_code, course_id, subject_code, subject_short_description, subject_description,
+        catalog_number, course_designation, title, description, minimum_credits,
+        maximum_credits, enrollment_prerequisites, currently_taught, last_taught
+      ) VALUES (
+        @term_code, @course_id, @subject_code, @subject_short_description, @subject_description,
+        @catalog_number, @course_designation, @title, @description, @minimum_credits,
+        @maximum_credits, @enrollment_prerequisites, @currently_taught, @last_taught
+      )
+    `).run({
+      term_code: '1272',
+      course_id: '011630',
+      subject_code: '302',
+      subject_short_description: 'COMP SCI',
+      subject_description: 'COMPUTER SCIENCES',
+      catalog_number: '240',
+      course_designation: 'COMP SCI 240',
+      title: 'Introduction to Discrete Mathematics',
+      description: null,
+      minimum_credits: 3,
+      maximum_credits: 3,
+      enrollment_prerequisites: null,
+      currently_taught: 1,
+      last_taught: '1264',
+    });
+
+    const insertCrossListing = db.prepare(`
+      INSERT INTO course_cross_listings (
+        term_code, course_id, course_designation, full_course_designation,
+        subject_code, catalog_number, is_primary
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertCrossListing.run('1272', '011630', 'COMP SCI 240', 'COMP SCI 240', '302', '240', 1);
+
+    assert.throws(
+      () => {
+        insertCrossListing.run('1272', '011630', 'MATH 240', 'MATH 240', '640', '240', 2);
+      },
+      /CHECK|constraint/i,
+    );
+
+    assert.throws(
+      () => {
+        insertCrossListing.run('1272', '011630', 'MATH 240', 'MATH 240', '640', '240', 1);
+      },
+      /UNIQUE|constraint/i,
+    );
+
+    insertCrossListing.run('1272', '011630', 'MATH 240', 'MATH 240', '640', '240', 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('build-course-db materializes prerequisite graph rows for parsed and partial prerequisite text', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005770',
+          subjectCode: '302',
+          catalogNumber: '577',
+          courseDesignation: 'COMP SCI 577',
+          title: 'Algorithms for Large Data',
+        }),
+        enrollmentPrerequisites: 'MATH 222 or 276',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005771',
+          subjectCode: '302',
+          catalogNumber: '578',
+          courseDesignation: 'COMP SCI 578',
+          title: 'Mixed Requirement Course',
+        }),
+        enrollmentPrerequisites: 'MATH 222 and graduate/professional standing',
+      },
+      makeCourse({
+        termCode: '1272',
+        courseId: '005772',
+        subjectCode: '302',
+        catalogNumber: '579',
+        courseDesignation: 'COMP SCI 579',
+        title: 'No Prereq Course',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005770' },
+          packages: [
+            {
+              id: 'cs577-prereq',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005770',
+              enrollmentClassNumber: 55770,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 2, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 2, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 18 },
+              sections: [],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005771' },
+          packages: [
+            {
+              id: 'cs578-prereq',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005771',
+              enrollmentClassNumber: 55771,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 3, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 3, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 17 },
+              sections: [],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005772' },
+          packages: [
+            {
+              id: 'cs579-prereq',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005772',
+              enrollmentClassNumber: 55772,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 4, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 4, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 16 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const rules = fixture.db.prepare(`
+      SELECT course_id, parse_status, parse_confidence, raw_text, root_node_id, unparsed_text
+      FROM prerequisite_rules
+      ORDER BY course_id
+    `).all();
+    const parsedNodes = fixture.db.prepare(`
+      SELECT node_type, value, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:005770');
+    const partialNodes = fixture.db.prepare(`
+      SELECT node_type, value, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:005771');
+    const parsedEdges = fixture.db.prepare(`
+      SELECT parent_node_id, child_node_id, sort_order
+      FROM prerequisite_edges
+      WHERE rule_id = ?
+      ORDER BY sort_order
+    `).all('rule:1272:005770');
+    const overviewRows = fixture.db.prepare(`
+      SELECT
+        term_code,
+        subject_code,
+        catalog_number,
+        course_id,
+        course_designation,
+        title,
+        rule_id,
+        parse_status,
+        parse_confidence,
+        raw_text,
+        unparsed_text
+      FROM prerequisite_rule_overview_v
+      ORDER BY course_id
+    `).all();
+
+    assert.deepEqual(rules, [
+      {
+        course_id: '005770',
+        parse_status: 'parsed',
+        parse_confidence: 1,
+        raw_text: 'MATH 222 or 276',
+        root_node_id: 'rule:1272:005770:node-1',
+        unparsed_text: null,
+      },
+      {
+        course_id: '005771',
+        parse_status: 'partial',
+        parse_confidence: 0.5,
+        raw_text: 'MATH 222 and graduate/professional standing',
+        root_node_id: null,
+        unparsed_text: '[COURSE] and [STANDING]',
+      },
+    ]);
+    assert.deepEqual(parsedNodes, [
+      { node_type: 'OR', value: 'or', normalized_value: 'OR' },
+      { node_type: 'COURSE', value: 'MATH 222', normalized_value: 'MATH 222' },
+      { node_type: 'COURSE', value: '276', normalized_value: 'MATH 276' },
+    ]);
+    assert.deepEqual(
+      [...partialNodes].sort((left, right) => left.node_type.localeCompare(right.node_type)),
+      [
+        { node_type: 'COURSE', value: 'MATH 222', normalized_value: 'MATH 222' },
+        {
+          node_type: 'STANDING',
+          value: 'graduate/professional standing',
+          normalized_value: 'Graduate/professional standing',
+        },
+      ],
+    );
+    assert.deepEqual(parsedEdges, [
+      {
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-2',
+        sort_order: 0,
+      },
+      {
+        parent_node_id: 'rule:1272:005770:node-1',
+        child_node_id: 'rule:1272:005770:node-3',
+        sort_order: 1,
+      },
+    ]);
+    assert.deepEqual(overviewRows, [
+      {
+        term_code: '1272',
+        subject_code: '302',
+        catalog_number: '577',
+        course_id: '005770',
+        course_designation: 'COMP SCI 577',
+        title: 'Algorithms for Large Data',
+        rule_id: 'rule:1272:005770',
+        parse_status: 'parsed',
+        parse_confidence: 1,
+        raw_text: 'MATH 222 or 276',
+        unparsed_text: null,
+      },
+      {
+        term_code: '1272',
+        subject_code: '302',
+        catalog_number: '578',
+        course_id: '005771',
+        course_designation: 'COMP SCI 578',
+        title: 'Mixed Requirement Course',
+        rule_id: 'rule:1272:005771',
+        parse_status: 'partial',
+        parse_confidence: 0.5,
+        raw_text: 'MATH 222 and graduate/professional standing',
+        unparsed_text: '[COURSE] and [STANDING]',
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db preserves placeholder-shaped unparsed text for mixed real prerequisite clauses', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '007724',
+          subjectCode: '232',
+          catalogNumber: '724',
+          courseDesignation: 'ACCT I S 724',
+          title: 'Accounting Analytics Seminar',
+        }),
+        enrollmentPrerequisites:
+          'Graduate/professional standing and (ACCT I S 620 or LAW 742), declared in Business: Accounting and Business Analysis MSB, or declared in graduate Business Exchange program',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '232', courseId: '007724' },
+          packages: [
+            {
+              id: 'acct724-prereq',
+              termCode: '1272',
+              subjectCode: '232',
+              courseId: '007724',
+              enrollmentClassNumber: 77240,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const rule = fixture.db.prepare(`
+      SELECT parse_status, parse_confidence, unparsed_text
+      FROM prerequisite_rules
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '007724');
+    const nodes = fixture.db.prepare(`
+      SELECT node_type, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:007724');
+
+    assert.deepEqual(rule, {
+      parse_status: 'partial',
+      parse_confidence: 0.5,
+      unparsed_text:
+        '[STANDING] and ([COURSE] or [COURSE]), declared in Business: Accounting and Business Analysis MSB, or declared in graduate Business Exchange program',
+    });
+    assert.deepEqual(
+      nodes.map((node) => node.node_type),
+      ['STANDING', 'COURSE', 'COURSE'],
+    );
+    assert.deepEqual(
+      nodes.filter((node) => node.node_type === 'COURSE').map((node) => node.normalized_value).sort(),
+      ['ACCT I S 620', 'LAW 742'],
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes AI-friendly prerequisite course summaries for COMP SCI 577', () => {
+  const fixtureData = buildScheduleReadModelFixture();
+  fixtureData.courses = fixtureData.courses.map((course) =>
+    course.courseId === '005770'
+      ? {
+          ...course,
+          enrollmentPrerequisites:
+            '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students',
+        }
+      : course,
+  );
+
+  const fixture = buildCourseDbFixture(fixtureData);
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT rule_id, term_code, course_id, summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '005770');
+    const overviewRow = fixture.db.prepare(`
+      SELECT
+        term_code,
+        subject_code,
+        catalog_number,
+        course_id,
+        course_designation,
+        title,
+        rule_id,
+        parse_status,
+        parse_confidence,
+        summary_status,
+        course_groups_json,
+        escape_clauses_json,
+        raw_text,
+        unparsed_text
+      FROM prerequisite_course_summary_overview_v
+      WHERE course_designation = 'COMP SCI 577'
+    `).get();
+
+    assert.deepEqual(
+      {
+        rule_id: summaryRow.rule_id,
+        term_code: summaryRow.term_code,
+        course_id: summaryRow.course_id,
+        summary_status: summaryRow.summary_status,
+      },
+      {
+        rule_id: 'rule:1272:005770',
+        term_code: '1272',
+        course_id: '005770',
+        summary_status: 'partial',
+      },
+    );
+    assert.deepEqual(JSON.parse(summaryRow.course_groups_json), [
+      ['COMP SCI 240', 'MATH 240', 'COMP SCI 475', 'MATH 475', 'STAT 475'],
+      ['COMP SCI 367', 'COMP SCI 400'],
+    ]);
+    assert.deepEqual(JSON.parse(summaryRow.escape_clauses_json), [
+      'graduate/professional standing',
+      'member of engineering guest students',
+    ]);
+
+    assert.deepEqual(
+      {
+        term_code: overviewRow.term_code,
+        subject_code: overviewRow.subject_code,
+        catalog_number: overviewRow.catalog_number,
+        course_id: overviewRow.course_id,
+        course_designation: overviewRow.course_designation,
+        title: overviewRow.title,
+        rule_id: overviewRow.rule_id,
+        parse_status: overviewRow.parse_status,
+        parse_confidence: overviewRow.parse_confidence,
+        summary_status: overviewRow.summary_status,
+        raw_text: overviewRow.raw_text,
+        unparsed_text: overviewRow.unparsed_text,
+      },
+      {
+        term_code: '1272',
+        subject_code: '302',
+        catalog_number: '577',
+        course_id: '005770',
+        course_designation: 'COMP SCI 577',
+        title: 'Algorithms for Large Data',
+        rule_id: 'rule:1272:005770',
+        parse_status: 'partial',
+        parse_confidence: 0.5,
+        summary_status: 'partial',
+        raw_text:
+          '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students',
+        unparsed_text:
+          '(([COURSE]/[COURSE] or [COURSE]/[COURSE]/[COURSE]) and ([COURSE] or [COURSE])) or [STANDING] or member of engineering guest students',
+      },
+    );
+    assert.deepEqual(JSON.parse(overviewRow.course_groups_json), [
+      ['COMP SCI 240', 'MATH 240', 'COMP SCI 475', 'MATH 475', 'STAT 475'],
+      ['COMP SCI 367', 'COMP SCI 400'],
+    ]);
+    assert.deepEqual(JSON.parse(overviewRow.escape_clauses_json), [
+      'graduate/professional standing',
+      'member of engineering guest students',
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes cross-listed aliases for shared course ids', () => {
+  const fixture = buildCourseDbFixture(buildCrossListedCourseFixture());
+
+  try {
+    const canonicalCourseRows = fixture.db.prepare(`
+      SELECT course_designation, subject_code, catalog_number
+      FROM courses
+      WHERE term_code = ? AND course_id = ?
+    `).all('1272', '011630');
+    const crossListings = fixture.db.prepare(`
+      SELECT course_designation, full_course_designation, subject_code, catalog_number, is_primary
+      FROM course_cross_listings
+      WHERE term_code = ? AND course_id = ?
+      ORDER BY course_designation
+    `).all('1272', '011630');
+    const aliasLookup = fixture.db.prepare(`
+      SELECT canonical_course_designation, alias_course_designation, course_id, is_primary
+      FROM course_cross_listing_overview_v
+      WHERE alias_course_designation = ?
+    `).get('MATH 240');
+    const overviewRow = fixture.db.prepare(`
+      SELECT course_designation, cross_list_count, cross_list_designations_json
+      FROM course_overview_v
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '011630');
+
+    assert.deepEqual(crossListings, [
+      {
+        course_designation: 'COMP SCI 240',
+        full_course_designation: 'Computer Sciences 240',
+        subject_code: '302',
+        catalog_number: '240',
+        is_primary: 1,
+      },
+      {
+        course_designation: 'MATH 240',
+        full_course_designation: 'Mathematics 240',
+        subject_code: '640',
+        catalog_number: '240',
+        is_primary: 0,
+      },
+    ]);
+    assert.equal(canonicalCourseRows.length, 1);
+    assert.deepEqual(canonicalCourseRows[0], {
+      course_designation: 'COMP SCI 240',
+      subject_code: '302',
+      catalog_number: '240',
+    });
+    assert.deepEqual(aliasLookup, {
+      canonical_course_designation: 'COMP SCI 240',
+      alias_course_designation: 'MATH 240',
+      course_id: '011630',
+      is_primary: 0,
+    });
+    assert.equal(overviewRow.course_designation, 'COMP SCI 240');
+    assert.equal(overviewRow.cross_list_count, 2);
+    assert.deepEqual(JSON.parse(overviewRow.cross_list_designations_json), [
+      'COMP SCI 240',
+      'MATH 240',
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db materializes package-only alias metadata for an existing canonical course group', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '011630',
+        subjectCode: '302',
+        catalogNumber: '240',
+        courseDesignation: 'COMP SCI 240',
+        title: 'Introduction to Discrete Mathematics',
+        fullCourseDesignation: 'Computer Sciences 240',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '640',
+            courseId: '011630',
+            catalogNumber: '240',
+            courseDesignation: 'MATH 240',
+            fullCourseDesignation: 'Mathematics 240',
+            title: 'Introduction to Discrete Mathematics',
+          },
+          packages: [
+            {
+              id: 'math240-main',
+              termCode: '1272',
+              subjectCode: '640',
+              courseId: '011630',
+              catalogNumber: '240',
+              courseDesignation: 'MATH 240',
+              fullCourseDesignation: 'Mathematics 240',
+              title: 'Introduction to Discrete Mathematics',
+              enrollmentClassNumber: 42401,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 8,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 8,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 22,
+              },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const crossListings = fixture.db.prepare(`
+      SELECT course_designation, full_course_designation, subject_code, catalog_number, is_primary
+      FROM course_cross_listings
+      WHERE term_code = ? AND course_id = ?
+      ORDER BY course_designation
+    `).all('1272', '011630');
+
+    assert.deepEqual(crossListings, [
+      {
+        course_designation: 'COMP SCI 240',
+        full_course_designation: 'Computer Sciences 240',
+        subject_code: '302',
+        catalog_number: '240',
+        is_primary: 1,
+      },
+      {
+        course_designation: 'MATH 240',
+        full_course_designation: 'Mathematics 240',
+        subject_code: '640',
+        catalog_number: '240',
+        is_primary: 0,
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps singleton courses canonical while still exposing one alias designation', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '003210',
+        subjectCode: '220',
+        catalogNumber: '340',
+        courseDesignation: 'STAT 340',
+        fullCourseDesignation: 'Statistics 340',
+        title: 'Data Science Modeling',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [],
+    },
+  });
+
+  try {
+    const aliasCount = fixture.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM course_cross_listings
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003210');
+    const overviewRow = fixture.db.prepare(`
+      SELECT course_designation, cross_list_count, cross_list_designations_json
+      FROM course_overview_v
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003210');
+
+    assert.equal(aliasCount.count, 1);
+    assert.equal(overviewRow.course_designation, 'STAT 340');
+    assert.equal(overviewRow.cross_list_count, 1);
+    assert.deepEqual(JSON.parse(overviewRow.cross_list_designations_json), ['STAT 340']);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db allows repeated alias designations across distinct course ids', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '026791',
+        subjectCode: '106',
+        catalogNumber: '270',
+        courseDesignation: 'AFROAMER 270',
+        fullCourseDesignation: 'AFRICAN AMERICAN STUDIES 270',
+        title: 'Selected Topics in African American Studies',
+      }),
+      makeCourse({
+        termCode: '1272',
+        courseId: '026791.5',
+        subjectCode: '106',
+        catalogNumber: '270',
+        courseDesignation: 'AFROAMER 270',
+        fullCourseDesignation: 'AFRICAN AMERICAN STUDIES 270',
+        title: 'Sports, War, & Black Masc.',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [],
+    },
+  });
+
+  try {
+    const aliasRows = fixture.db.prepare(`
+      SELECT course_id, canonical_course_designation, alias_course_designation, is_primary, title
+      FROM course_cross_listing_overview_v
+      WHERE alias_course_designation = ?
+      ORDER BY course_id
+    `).all('AFROAMER 270');
+
+    assert.deepEqual(aliasRows, [
+      {
+        course_id: '026791',
+        canonical_course_designation: 'AFROAMER 270',
+        alias_course_designation: 'AFROAMER 270',
+        is_primary: 1,
+        title: 'Selected Topics in African American Studies',
+      },
+      {
+        course_id: '026791.5',
+        canonical_course_designation: 'AFROAMER 270',
+        alias_course_designation: 'AFROAMER 270',
+        is_primary: 1,
+        title: 'Sports, War, & Black Masc.',
+      },
+    ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps shorthand numeric course alternatives out of escape clauses', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003320',
+          subjectCode: '006',
+          catalogNumber: '320',
+          courseDesignation: 'A A E 320',
+          title: 'Propulsion Systems',
+        }),
+        enrollmentPrerequisites: 'A A E 101 (215 prior to Fall 2024), ECON 101, or 111',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '006', courseId: '003320' },
+          packages: [
+            {
+              id: 'aae320-main',
+              termCode: '1272',
+              subjectCode: '006',
+              courseId: '003320',
+              enrollmentClassNumber: 33200,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003320');
+
+    assert.deepEqual(summaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["A A E 101"],["ECON 101","ECON 111"]]',
+      escape_clauses_json: '[]',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps a leading recognized prerequisite path alongside shorthand course alternatives', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003373',
+          subjectCode: '680',
+          catalogNumber: '373',
+          courseDesignation: 'INTL ST 373',
+          title: 'International Studies Methods',
+        }),
+        enrollmentPrerequisites: 'A A E 101 (215 prior to Fall 2024), ECON 101, 102, or 111',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '680', courseId: '003373' },
+          packages: [
+            {
+              id: 'intl373-main',
+              termCode: '1272',
+              subjectCode: '680',
+              courseId: '003373',
+              enrollmentClassNumber: 33730,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003373');
+
+    assert.deepEqual(summaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["A A E 101"],["ECON 101","ECON 102","ECON 111"]]',
+      escape_clauses_json: '[]',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db keeps shorthand numbers after unresolved slash-subject clauses out of escape clauses', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003340',
+          subjectCode: '220',
+          catalogNumber: '340',
+          courseDesignation: 'SOC 340',
+          title: 'Social Theory and Practice',
+        }),
+        enrollmentPrerequisites: 'SOC 140, C&E SOC/SOC 181, 210, or 211',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '220', courseId: '003340' },
+          packages: [
+            {
+              id: 'soc340-main',
+              termCode: '1272',
+              subjectCode: '220',
+              courseId: '003340',
+              enrollmentClassNumber: 33400,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const summaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003340');
+
+    assert.deepEqual(summaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["SOC 140","SOC 210","SOC 211"]]',
+      escape_clauses_json: '[]',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('build-course-db excludes unresolved course siblings from escape clauses and trims escape punctuation', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '003338',
+          subjectCode: '900',
+          catalogNumber: '338',
+          courseDesignation: 'ANAT&PHY 338',
+          title: 'Anatomy and Physiology Lab',
+        }),
+        enrollmentPrerequisites: '(COMP SCI 240 or 367) or ANATOMY/KINES 328, or concurrent enrollment',
+      },
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005770',
+          subjectCode: '302',
+          catalogNumber: '577',
+          courseDesignation: 'COMP SCI 577',
+          title: 'Algorithms for Large Data',
+        }),
+        enrollmentPrerequisites:
+          '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing, or member of engineering guest students',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '900', courseId: '003338' },
+          packages: [
+            {
+              id: 'anat338-main',
+              termCode: '1272',
+              subjectCode: '900',
+              courseId: '003338',
+              enrollmentClassNumber: 33380,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+        {
+          course: { termCode: '1272', subjectCode: '302', courseId: '005770' },
+          packages: [
+            {
+              id: 'cs577-main',
+              termCode: '1272',
+              subjectCode: '302',
+              courseId: '005770',
+              enrollmentClassNumber: 35770,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const anatSummaryRow = fixture.db.prepare(`
+      SELECT summary_status, course_groups_json, escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '003338');
+
+    assert.deepEqual(anatSummaryRow, {
+      summary_status: 'partial',
+      course_groups_json: '[["COMP SCI 240","COMP SCI 367"]]',
+      escape_clauses_json: '["concurrent enrollment"]',
+    });
+
+    const cs577SummaryRow = fixture.db.prepare(`
+      SELECT escape_clauses_json
+      FROM prerequisite_course_summaries
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '005770');
+
+    assert.deepEqual(cs577SummaryRow, {
+      escape_clauses_json: '["graduate/professional standing","member of engineering guest students"]',
+    });
+  } finally {
+    fixture.cleanup();
   }
 });
 
@@ -3392,6 +5278,8 @@ test('build-course-db can rebuild an existing database file after adding schedul
 
   fs.copyFileSync(path.join(repoRoot, 'src/db/build-course-db.mjs'), path.join(fixtureDbDir, 'build-course-db.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/import-helpers.mjs'), path.join(fixtureDbDir, 'import-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-helpers.mjs'));
+  fs.copyFileSync(path.join(repoRoot, 'src/db/prerequisite-summary-helpers.mjs'), path.join(fixtureDbDir, 'prerequisite-summary-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 

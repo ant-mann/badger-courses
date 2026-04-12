@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildEnrollmentPackagesPath,
   buildSearchRequest,
   extractSearchPage,
 } from '../src/extractor-helpers.mjs';
+import { makeExtractionContextOptions } from '../scripts/extract-fall-2026-courses.mjs';
 
 test('extractSearchPage returns hits and found from a valid response', () => {
   const page = extractSearchPage({
@@ -44,4 +46,18 @@ test('buildSearchRequest keeps the confirmed browser payload shape', () => {
   assert.equal(request.sortOrder, 'SUBJECT');
   assert.equal(request.queryString, '*');
   assert.match(JSON.stringify(request.filters), /OPEN WAITLISTED CLOSED/);
+});
+
+test('makeExtractionContextOptions returns a realistic desktop profile for headless mode', () => {
+  const options = makeExtractionContextOptions({ headless: true });
+
+  assert.match(options.userAgent, /Chrome\//);
+  assert.deepEqual(options.viewport, { width: 1280, height: 720 });
+  assert.equal(options.locale, 'en-US');
+  assert.equal(options.timezoneId, 'America/Chicago');
+  assert.equal(options.extraHTTPHeaders['Accept-Language'], 'en-US,en;q=0.9');
+});
+
+test('importing extractor helpers does not execute the extractor entrypoint', () => {
+  assert.notEqual(process.argv[1], fileURLToPath(new URL('../scripts/extract-fall-2026-courses.mjs', import.meta.url)));
 });

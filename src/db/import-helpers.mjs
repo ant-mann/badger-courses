@@ -30,6 +30,12 @@ function normalizeKeyPart(value) {
   return normalized || null;
 }
 
+function normalizeCourseDesignation(value) {
+  if (value == null) return null;
+  const normalized = String(value).trim().replace(/\s+/g, ' ');
+  return normalized || null;
+}
+
 function getInstructorNameParts(instructor = {}) {
   return {
     firstName: normalizeKeyPart(instructor.name?.first ?? instructor.first_name),
@@ -273,6 +279,53 @@ export function makeCourseRow(course) {
   };
 }
 
+export function makeCourseCrossListingRows(courses = [], canonicalCourseRow) {
+  const rowsByDesignation = new Map();
+  const canonicalDesignation = normalizeCourseDesignation(canonicalCourseRow?.course_designation);
+
+  for (const course of courses) {
+    const courseDesignation = normalizeCourseDesignation(course.courseDesignation);
+    if (!courseDesignation) continue;
+
+    const nextRow = {
+      term_code: course.termCode ?? canonicalCourseRow?.term_code ?? null,
+      course_id: course.courseId ?? canonicalCourseRow?.course_id ?? null,
+      course_designation: courseDesignation,
+      full_course_designation: course.fullCourseDesignation ?? null,
+      subject_code: course.subject?.subjectCode ?? null,
+      catalog_number: course.catalogNumber ?? null,
+      is_primary: toIntFlag(courseDesignation === canonicalDesignation),
+    };
+    const existingRow = rowsByDesignation.get(courseDesignation);
+
+    if (!existingRow) {
+      rowsByDesignation.set(courseDesignation, nextRow);
+      continue;
+    }
+
+    rowsByDesignation.set(courseDesignation, {
+      ...existingRow,
+      term_code: existingRow.term_code ?? nextRow.term_code,
+      course_id: existingRow.course_id ?? nextRow.course_id,
+      full_course_designation: existingRow.full_course_designation ?? nextRow.full_course_designation,
+      subject_code: existingRow.subject_code ?? nextRow.subject_code,
+      catalog_number: existingRow.catalog_number ?? nextRow.catalog_number,
+      is_primary: existingRow.is_primary || nextRow.is_primary,
+    });
+  }
+
+  const rows = [...rowsByDesignation.values()];
+
+  if (rows.length > 0 && !rows.some((row) => row.is_primary === 1)) {
+    rows[0] = {
+      ...rows[0],
+      is_primary: 1,
+    };
+  }
+
+  return rows;
+}
+
 export function makePackageRow(pkg) {
   const summary = summarizeAvailability(pkg.enrollmentStatus ?? {});
 
@@ -428,4 +481,54 @@ export function makeBuildingRows(packages) {
   }
 
   return [...byCode.values()].map(({ _source, ...building }) => building);
+}
+
+export function makePersistedPrerequisiteNodeId(ruleId, nodeId) {
+  if (ruleId == null || nodeId == null) return null;
+  return `${ruleId}:${nodeId}`;
+}
+
+export function makePrerequisiteRuleRow(rule) {
+  return {
+    rule_id: rule.ruleId,
+    term_code: rule.termCode,
+    course_id: rule.courseId,
+    raw_text: rule.rawText,
+    parse_status: rule.parseStatus,
+    parse_confidence: rule.parseConfidence,
+    root_node_id: null,
+    unparsed_text: rule.unparsedText ?? null,
+  };
+}
+
+export function makePrerequisiteCourseSummaryRow(summary) {
+  return {
+    rule_id: summary.ruleId,
+    term_code: summary.termCode,
+    course_id: summary.courseId,
+    summary_status: summary.summaryStatus,
+    course_groups_json: JSON.stringify(summary.courseGroups ?? []),
+    escape_clauses_json: JSON.stringify(summary.escapeClauses ?? []),
+  };
+}
+
+export function makePrerequisiteNodeRows(nodes = [], ruleId) {
+  return nodes.map((node) => ({
+    node_id: makePersistedPrerequisiteNodeId(ruleId, node.id),
+    rule_id: ruleId,
+    node_type: node.node_type,
+    value: node.raw_value ?? null,
+    normalized_value: node.normalized_value ?? null,
+    position_start: null,
+    position_end: null,
+  }));
+}
+
+export function makePrerequisiteEdgeRows(edges = [], ruleId) {
+  return edges.map((edge, index) => ({
+    rule_id: ruleId,
+    parent_node_id: makePersistedPrerequisiteNodeId(ruleId, edge.source),
+    child_node_id: makePersistedPrerequisiteNodeId(ruleId, edge.target),
+    sort_order: index,
+  }));
 }

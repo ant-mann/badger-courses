@@ -2,13 +2,20 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 DROP VIEW IF EXISTS online_courses_v;
+DROP VIEW IF EXISTS prerequisite_course_summary_overview_v;
+DROP VIEW IF EXISTS prerequisite_rule_overview_v;
 DROP VIEW IF EXISTS schedule_candidates_v;
 DROP VIEW IF EXISTS schedule_planning_v;
 DROP VIEW IF EXISTS availability_v;
 DROP VIEW IF EXISTS section_overview_v;
+DROP VIEW IF EXISTS course_cross_listing_overview_v;
 DROP VIEW IF EXISTS course_overview_v;
 
 DROP TABLE IF EXISTS refresh_runs;
+DROP TABLE IF EXISTS prerequisite_course_summaries;
+DROP TABLE IF EXISTS prerequisite_edges;
+DROP TABLE IF EXISTS prerequisite_nodes;
+DROP TABLE IF EXISTS prerequisite_rules;
 DROP TABLE IF EXISTS package_transitions;
 DROP TABLE IF EXISTS schedule_conflicts;
 DROP TABLE IF EXISTS schedulable_packages;
@@ -19,6 +26,7 @@ DROP TABLE IF EXISTS instructors;
 DROP TABLE IF EXISTS meetings;
 DROP TABLE IF EXISTS sections;
 DROP TABLE IF EXISTS packages;
+DROP TABLE IF EXISTS course_cross_listings;
 DROP TABLE IF EXISTS courses;
 DROP TABLE IF EXISTS buildings;
 
@@ -46,6 +54,86 @@ CREATE TABLE courses (
   currently_taught INTEGER,
   last_taught TEXT,
   PRIMARY KEY (term_code, course_id)
+);
+
+CREATE TABLE course_cross_listings (
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  course_designation TEXT NOT NULL,
+  full_course_designation TEXT,
+  subject_code TEXT,
+  catalog_number TEXT,
+  is_primary INTEGER NOT NULL,
+  CHECK (is_primary IN (0, 1)),
+  PRIMARY KEY (term_code, course_id, course_designation),
+  FOREIGN KEY (term_code, course_id)
+    REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE prerequisite_rules (
+  rule_id TEXT PRIMARY KEY,
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  raw_text TEXT NOT NULL,
+  parse_status TEXT NOT NULL,
+  parse_confidence REAL NOT NULL,
+  root_node_id TEXT,
+  unparsed_text TEXT,
+  FOREIGN KEY (term_code, course_id)
+    REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (rule_id, root_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_prerequisite_rules_rule_course
+  ON prerequisite_rules(rule_id, term_code, course_id);
+
+CREATE TABLE prerequisite_nodes (
+  node_id TEXT PRIMARY KEY,
+  rule_id TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  value TEXT,
+  normalized_value TEXT,
+  position_start INTEGER,
+  position_end INTEGER,
+  UNIQUE (rule_id, node_id),
+  FOREIGN KEY (rule_id)
+    REFERENCES prerequisite_rules (rule_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE prerequisite_edges (
+  rule_id TEXT NOT NULL,
+  parent_node_id TEXT NOT NULL,
+  child_node_id TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (rule_id, parent_node_id, child_node_id),
+  FOREIGN KEY (rule_id, parent_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (rule_id, child_node_id)
+    REFERENCES prerequisite_nodes (rule_id, node_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE prerequisite_course_summaries (
+  rule_id TEXT PRIMARY KEY,
+  term_code TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  summary_status TEXT NOT NULL,
+  course_groups_json TEXT NOT NULL,
+  escape_clauses_json TEXT NOT NULL,
+  CHECK (json_valid(course_groups_json)),
+  CHECK (json_valid(escape_clauses_json)),
+  FOREIGN KEY (term_code, course_id)
+    REFERENCES courses (term_code, course_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (rule_id, term_code, course_id)
+    REFERENCES prerequisite_rules (rule_id, term_code, course_id)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE packages (
@@ -237,6 +325,15 @@ CREATE TABLE schedulable_packages (
 );
 
 CREATE INDEX idx_courses_subject ON courses(subject_code, catalog_number);
+CREATE INDEX idx_course_cross_listings_course ON course_cross_listings(term_code, course_id);
+CREATE INDEX idx_course_cross_listings_designation ON course_cross_listings(term_code, course_designation);
+CREATE UNIQUE INDEX idx_course_cross_listings_one_primary_per_course
+  ON course_cross_listings(term_code, course_id)
+  WHERE is_primary = 1;
+CREATE INDEX idx_prerequisite_rules_course ON prerequisite_rules(term_code, course_id);
+CREATE INDEX idx_prerequisite_nodes_rule ON prerequisite_nodes(rule_id);
+CREATE INDEX idx_prerequisite_edges_child ON prerequisite_edges(rule_id, child_node_id);
+CREATE INDEX idx_prerequisite_course_summaries_course ON prerequisite_course_summaries(term_code, course_id);
 CREATE INDEX idx_packages_course ON packages(term_code, course_id);
 CREATE INDEX idx_packages_updated ON packages(package_last_updated DESC, package_id);
 CREATE INDEX idx_sections_course ON sections(term_code, course_id, section_type);
@@ -247,7 +344,35 @@ CREATE INDEX idx_canonical_meetings_package_time ON canonical_meetings(package_i
 CREATE INDEX idx_schedulable_packages_designation_open ON schedulable_packages(course_designation, has_temporary_restriction, open_seats);
 CREATE INDEX idx_schedulable_packages_designation_day_start ON schedulable_packages(course_designation, campus_day_count, earliest_start_minute_local);
 
+CREATE VIEW course_cross_listing_overview_v AS
+SELECT
+  ccl.term_code,
+  ccl.course_id,
+  c.course_designation AS canonical_course_designation,
+  ccl.course_designation AS alias_course_designation,
+  ccl.full_course_designation,
+  ccl.subject_code,
+  ccl.catalog_number,
+  c.title,
+  ccl.is_primary
+FROM course_cross_listings ccl
+JOIN courses c
+  ON c.term_code = ccl.term_code AND c.course_id = ccl.course_id;
+
 CREATE VIEW course_overview_v AS
+WITH cross_list_agg AS (
+  SELECT
+    term_code,
+    course_id,
+    json_group_array(course_designation) AS cross_list_designations_json,
+    COUNT(*) AS cross_list_count
+  FROM (
+    SELECT term_code, course_id, course_designation
+    FROM course_cross_listings
+    ORDER BY course_designation
+  ) ordered_cross_listings
+  GROUP BY term_code, course_id
+)
 SELECT
   c.term_code,
   c.subject_code,
@@ -257,6 +382,8 @@ SELECT
   c.title,
   c.minimum_credits,
   c.maximum_credits,
+  COALESCE(cla.cross_list_designations_json, json_array(c.course_designation)) AS cross_list_designations_json,
+  COALESCE(cla.cross_list_count, 1) AS cross_list_count,
   COUNT(DISTINCT so.section_class_number) AS section_count,
   MAX(so.has_open_seats) AS has_any_open_seats,
   MAX(so.has_waitlist) AS has_any_waitlist,
@@ -264,9 +391,53 @@ SELECT
 FROM courses c
 LEFT JOIN section_overview_v so
   ON so.term_code = c.term_code AND so.course_id = c.course_id
+LEFT JOIN cross_list_agg cla
+  ON cla.term_code = c.term_code AND cla.course_id = c.course_id
 GROUP BY
   c.term_code, c.subject_code, c.catalog_number, c.course_id,
-  c.course_designation, c.title, c.minimum_credits, c.maximum_credits;
+  c.course_designation, c.title, c.minimum_credits, c.maximum_credits,
+  cla.cross_list_designations_json, cla.cross_list_count;
+
+CREATE VIEW prerequisite_rule_overview_v AS
+SELECT
+  pr.term_code,
+  c.subject_code,
+  c.catalog_number,
+  pr.course_id,
+  c.course_designation,
+  c.title,
+  pr.rule_id,
+  pr.parse_status,
+  pr.parse_confidence,
+  pr.raw_text,
+  pr.unparsed_text
+FROM prerequisite_rules pr
+JOIN courses c
+  ON c.term_code = pr.term_code AND c.course_id = pr.course_id;
+
+CREATE VIEW prerequisite_course_summary_overview_v AS
+SELECT
+  pcs.term_code,
+  c.subject_code,
+  c.catalog_number,
+  pcs.course_id,
+  c.course_designation,
+  c.title,
+  pcs.rule_id,
+  pr.parse_status,
+  pr.parse_confidence,
+  pcs.summary_status,
+  pcs.course_groups_json,
+  pcs.escape_clauses_json,
+  pr.raw_text,
+  pr.unparsed_text
+FROM prerequisite_course_summaries pcs
+JOIN courses c
+  ON c.term_code = pcs.term_code AND c.course_id = pcs.course_id
+JOIN prerequisite_rules pr
+  ON pr.rule_id = pcs.rule_id
+ AND pr.term_code = pcs.term_code
+ AND pr.course_id = pcs.course_id;
 
 CREATE VIEW section_overview_v AS
 WITH ranked_section_sources AS (
