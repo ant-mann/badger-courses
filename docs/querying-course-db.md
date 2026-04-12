@@ -16,6 +16,10 @@
 | Package-level seat counts, online flags | `availability_v` |
 | Meeting times, locations, exam dates | `schedule_planning_v` |
 | Online/asynchronous courses | `online_courses_v` |
+| Historical course GPA baseline | `course_grade_overview_v` |
+| Historical instructor GPA baseline | `instructor_grade_overview_v` |
+| Instructor history for a specific local course | `instructor_course_history_overview_v` |
+| Current sections + instructor grade context | `current_term_section_instructor_grade_overview_v` |
 | AI schedule generation (bundles + time summaries) | `schedule_candidates_v` |
 | Prerequisite course groups (AI-friendly) | `prerequisite_course_summary_overview_v` |
 | Raw prerequisite parse inspection | `prerequisite_rule_overview_v` |
@@ -68,6 +72,37 @@ SELECT *
 FROM refresh_runs
 ORDER BY last_refreshed_at DESC
 LIMIT 1;
+```
+
+## Madgrades Enrichment
+
+- Madgrades data is manual enrichment, not a live query dependency.
+- Reuse the latest saved snapshot: `npm run import:madgrades`
+- Fetch a new Madgrades snapshot and import it: `MADGRADES_API_TOKEN=... npm run import:madgrades -- --refresh-api`
+- Madgrades snapshots are stored under `data/madgrades/` and can be re-imported after rebuilding `data/fall-2026.sqlite`.
+- Historical GPA is a proxy for grading outcomes, not a full teaching-quality measure.
+
+```sql
+SELECT course_designation, historical_gpa, historical_student_count, course_grade_term_count
+FROM course_grade_overview_v
+WHERE course_designation = 'COMP SCI 577';
+```
+
+```sql
+SELECT course_designation, instructor_display_name, prior_offering_count,
+       student_count, same_course_gpa
+FROM instructor_course_history_overview_v
+WHERE course_designation = 'COMP SCI 577'
+ORDER BY prior_offering_count DESC, student_count DESC;
+```
+
+```sql
+SELECT course_designation, section_number, instructor_display_name,
+       same_course_prior_offering_count, same_course_student_count,
+       same_course_gpa, instructor_overall_gpa, course_historical_gpa
+FROM current_term_section_instructor_grade_overview_v
+WHERE course_designation = 'COMP SCI 577'
+ORDER BY same_course_prior_offering_count DESC, same_course_student_count DESC;
 ```
 
 ## Useful Queries
