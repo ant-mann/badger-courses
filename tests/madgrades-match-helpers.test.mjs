@@ -243,6 +243,37 @@ test('matchLocalCourse does not auto-match a unique subject code candidate when 
   });
 });
 
+test('matchLocalCourse matches a renamed unique subject code candidate when an alternate Madgrades name aligns', async () => {
+  const { matchLocalCourse } = await loadMatchHelpers();
+
+  const result = matchLocalCourse(
+    {
+      termCode: '1272',
+      courseId: '024185',
+      title: 'Molecules to Life and the Nature of Science',
+      subjectCatalogPairs: [{ subjectCode: 'BIOCHEM', catalogNumber: '104' }],
+    },
+    [
+      {
+        uuid: 'mg-biochem-104',
+        subject: 'BIOCHEM',
+        number: '104',
+        name: 'Molecular Mechanisms, Human Health & You',
+        names: ['Molecules to Life and the Nature of Science'],
+      },
+    ],
+  );
+
+  assert.deepEqual(result, {
+    termCode: '1272',
+    courseId: '024185',
+    matchStatus: 'matched',
+    matchMethod: 'subject-code+catalog-number',
+    madgradesCourseUuid: 'mg-biochem-104',
+    matchNote: null,
+  });
+});
+
 test('matchLocalInstructor requires an exact normalized full-name match', async () => {
   const { matchLocalInstructor } = await loadMatchHelpers();
 
