@@ -922,6 +922,10 @@ function canStructureCourseExpression(splitExpression, childResults) {
     return false;
   }
 
+  if (splitExpression.operator === NODE_TYPE.OR) {
+    return true;
+  }
+
   const subjects = childResults
     .map((result) => getCourseSubject(result.nodes[0].normalized_value))
     .filter(Boolean);
