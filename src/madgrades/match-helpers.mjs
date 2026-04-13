@@ -59,8 +59,9 @@ export function matchLocalCourse(localCourse, madgradesCourses) {
 
     if (!titleMatches && !alternateTitleMatches) {
       return buildCourseResult(localCourse, {
-        matchStatus: 'unmatched',
-        matchNote: 'Unique subject/code candidate did not match the normalized title',
+        matchStatus: 'matched',
+        matchMethod: 'subject-code+catalog-number-only',
+        madgradesCourseUuid: candidate.uuid,
       });
     }
 

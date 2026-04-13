@@ -213,7 +213,7 @@ test('matchLocalCourse returns unmatched when title alignment eliminates duplica
   });
 });
 
-test('matchLocalCourse does not auto-match a unique subject code candidate when the title differs', async () => {
+test('matchLocalCourse falls back to a unique designation-only match when the title differs', async () => {
   const { matchLocalCourse } = await loadMatchHelpers();
 
   const result = matchLocalCourse(
@@ -236,10 +236,10 @@ test('matchLocalCourse does not auto-match a unique subject code candidate when 
   assert.deepEqual(result, {
     termCode: '1272',
     courseId: 'local-course-title-mismatch',
-    matchStatus: 'unmatched',
-    matchMethod: null,
-    madgradesCourseUuid: null,
-    matchNote: 'Unique subject/code candidate did not match the normalized title',
+    matchStatus: 'matched',
+    matchMethod: 'subject-code+catalog-number-only',
+    madgradesCourseUuid: 'mg-course-777',
+    matchNote: null,
   });
 });
 
