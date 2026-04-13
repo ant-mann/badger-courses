@@ -68,6 +68,19 @@ test('summarizes a rooted partial AND tree with a required non-course sibling co
   });
 });
 
+test('summarizes a rooted standing leaf as an escape-only summary', () => {
+  const rawText = 'graduate/professional standing';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'partial',
+    courseGroups: [],
+    escapeClauses: ['graduate/professional standing'],
+    rawText,
+  });
+});
+
 test('summarizes the real comp sci 577 prerequisite conservatively', () => {
   const rawText = '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students';
   const parsed = parsePrerequisiteText(rawText);

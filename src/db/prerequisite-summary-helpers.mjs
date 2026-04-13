@@ -358,6 +358,14 @@ function summarizeTreeRoot(parsedRule) {
   }
 
   const reduction = normalizePathReduction(summarizeTreeNode(parsedRule.rootNodeId, buildTreeIndex(parsedRule)));
+  if (reduction.kind === 'escape') {
+    return {
+      courseGroups: [],
+      escapeClauses: reduction.escapeClauses,
+      summaryStatus: 'partial',
+    };
+  }
+
   if (reduction.kind !== 'path' || reduction.courseGroups.length === 0) {
     return null;
   }
