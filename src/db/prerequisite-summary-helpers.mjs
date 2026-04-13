@@ -158,8 +158,32 @@ function createEscapeReduction(clauses, operator) {
 
   return {
     kind: 'escape',
-    escapeClauses: [escapeClauses.join(` ${operator} `)],
+    escapeClauses: [normalizeEscapeClauseText(stripOuterParentheses(escapeClauses.join(` ${operator} `)))],
   };
+}
+
+function hasUnsafeCourseBearingResidue(parsedRule, treeSummary) {
+  if (parsedRule.parseStatus !== PARSE_STATUS.PARTIAL || !parsedRule.unparsedText) {
+    return false;
+  }
+
+  const normalizedText = parsedRule.unparsedText.replace(/\[COURSE\]/g, '').trim();
+  if (!normalizedText) {
+    return false;
+  }
+
+  const escapeClauseSet = new Set(treeSummary.escapeClauses.map((clause) => normalizeEscapeClauseText(clause).toLowerCase()));
+  const residueClauses = splitTopLevel(normalizedText, 'or')
+    .map((clause) => normalizeEscapeClauseText(stripOuterParentheses(clause)))
+    .filter(Boolean);
+
+  return residueClauses.some((clause) => {
+    if (escapeClauseSet.has(clause.toLowerCase())) {
+      return false;
+    }
+
+    return looksCourseBearingClause(clause) || /^\d{3}[A-Z]?$/i.test(clause);
+  });
 }
 
 function summarizeTreeNode(nodeId, treeIndex) {
@@ -177,13 +201,24 @@ function summarizeTreeNode(nodeId, treeIndex) {
 
   if (![NODE_TYPE.AND, NODE_TYPE.OR].includes(node.node_type)) {
     const clause = normalizeEscapeClauseText(node.raw_value ?? node.normalized_value ?? '');
-    if (!clause || looksCourseBearingClause(clause)) {
+    if (!clause) {
+      return { kind: 'opaque' };
+    }
+
+    if ([NODE_TYPE.STANDING, NODE_TYPE.CONCURRENT].includes(node.node_type)) {
+      return {
+        kind: 'escape',
+        escapeClauses: [clause],
+      };
+    }
+
+    if (looksCourseBearingClause(clause) || /^\d{3}[A-Z]?$/i.test(clause)) {
       return { kind: 'opaqueCourseBearingLeaf' };
     }
 
     return {
-      kind: 'escape',
-      escapeClauses: [clause],
+      kind: 'opaqueNonCourseLeaf',
+      text: clause,
     };
   }
 
@@ -200,9 +235,11 @@ function summarizeTreeNode(nodeId, treeIndex) {
   const operator = (node.raw_value ?? node.normalized_value ?? node.node_type).toLowerCase();
 
   if (node.node_type === NODE_TYPE.AND) {
-    if (childReductions.every((reduction) => reduction.kind === 'escape')) {
+    if (childReductions.every((reduction) => ['escape', 'opaqueNonCourseLeaf'].includes(reduction.kind))) {
       return createEscapeReduction(
-        childReductions.flatMap((reduction) => reduction.escapeClauses),
+        childReductions.flatMap((reduction) => reduction.kind === 'escape'
+          ? reduction.escapeClauses
+          : [reduction.text]),
         operator,
       );
     }
@@ -213,6 +250,7 @@ function summarizeTreeNode(nodeId, treeIndex) {
 
     const pathChildren = childReductions
       .filter((reduction) => reduction.kind !== 'escape')
+      .filter((reduction) => reduction.kind !== 'opaqueNonCourseLeaf')
       .map(normalizePathReduction);
 
     if (pathChildren.length === 0) {
@@ -227,7 +265,7 @@ function summarizeTreeNode(nodeId, treeIndex) {
       kind: 'path',
       courseGroups: pathChildren.flatMap((reduction) => reduction.courseGroups),
       escapeClauses: [],
-      isPartial: childReductions.some((reduction) => reduction.kind === 'escape')
+      isPartial: childReductions.some((reduction) => ['escape', 'opaqueNonCourseLeaf'].includes(reduction.kind))
         || pathChildren.some((reduction) => reduction.isPartial),
     };
   }
@@ -244,6 +282,10 @@ function summarizeTreeNode(nodeId, treeIndex) {
       kind: 'option',
       courses: childReductions.flatMap((reduction) => reduction.courses),
     };
+  }
+
+  if (childReductions.some((reduction) => reduction.kind === 'opaqueNonCourseLeaf')) {
+    return { kind: 'opaque' };
   }
 
   if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
@@ -282,11 +324,17 @@ function summarizeTreeRoot(parsedRule) {
     return null;
   }
 
-  return {
+  const treeSummary = {
     courseGroups: reduction.courseGroups,
     escapeClauses: reduction.escapeClauses,
     summaryStatus: reduction.escapeClauses.length > 0 || reduction.isPartial ? 'partial' : 'structured',
   };
+
+  if (hasUnsafeCourseBearingResidue(parsedRule, treeSummary)) {
+    return null;
+  }
+
+  return treeSummary;
 }
 
 function summarizeParsedCourseGraph(parsedRule) {
@@ -326,6 +374,13 @@ function summarizeGroupedCoursePath(parsedRule) {
 
   const siblingClauses = topLevelOrClauses.filter((_, index) => index !== courseClauseIndex);
   if (siblingClauses.some((clause) => clause.includes('[COURSE]'))) {
+    return null;
+  }
+
+  if (siblingClauses.some((clause) => {
+    const strippedClause = stripOuterParentheses(clause);
+    return splitTopLevel(strippedClause, 'and').length > 1 || splitTopLevel(strippedClause, 'or').length > 1;
+  })) {
     return null;
   }
 
@@ -572,16 +627,14 @@ export function summarizePrerequisiteForAi(parsedRule, { rawText } = {}) {
 
   if (parsedRule.rootNodeId) {
     const treeSummary = summarizeTreeRoot(parsedRule);
-    if (!treeSummary) {
-      return summary;
+    if (treeSummary) {
+      return {
+        ...summary,
+        summaryStatus: treeSummary.summaryStatus,
+        courseGroups: treeSummary.courseGroups,
+        escapeClauses: treeSummary.escapeClauses,
+      };
     }
-
-    return {
-      ...summary,
-      summaryStatus: treeSummary.summaryStatus,
-      courseGroups: treeSummary.courseGroups,
-      escapeClauses: treeSummary.escapeClauses,
-    };
   }
 
   if (parsedRule.parseStatus === PARSE_STATUS.PARSED) {

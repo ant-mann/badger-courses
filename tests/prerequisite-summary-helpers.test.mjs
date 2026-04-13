@@ -39,6 +39,19 @@ test('summarizes a rooted AND tree into one required course group per child path
   });
 });
 
+test('summarizes a simple rooted AND prerequisite into one required course group per sibling', () => {
+  const rawText = 'MATH 221 and MATH 222';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'structured',
+    courseGroups: [['MATH 221'], ['MATH 222']],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
 test('summarizes a rooted partial AND tree with a required non-course sibling conservatively', () => {
   const rawText = 'MATH 221 and consent of instructor';
   const parsed = parsePrerequisiteText(rawText);
@@ -318,6 +331,45 @@ test('does not mislabel unresolved course-bearing sibling text as an escape clau
     summaryStatus: 'partial',
     courseGroups: [['COMP SCI 240', 'COMP SCI 367']],
     escapeClauses: ['concurrent enrollment'],
+    rawText,
+  });
+});
+
+test('keeps rooted partial OR summaries opaque when unresolved course-bearing residue remains in unparsed text', () => {
+  const rawText = 'COMP SCI 240 or 367 or concurrent enrollment';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('does not promote consent leaves to escape clauses in rooted OR summaries', () => {
+  const rawText = 'MATH 221 or consent of instructor';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('does not promote generic text leaves to escape clauses in rooted OR summaries', () => {
+  const rawText = 'MATH 221 or instructor approval';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
     rawText,
   });
 });
