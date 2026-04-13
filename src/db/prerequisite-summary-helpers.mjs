@@ -99,6 +99,128 @@ function isAliasLikeParentheticalNote(text) {
     || /\bequivalent\b/i.test(normalized);
 }
 
+function buildTreeIndex(parsedRule) {
+  const nodesById = new Map(parsedRule.nodes.map((node) => [node.id, node]));
+  const childrenBySourceId = new Map();
+
+  for (const edge of parsedRule.edges) {
+    const children = childrenBySourceId.get(edge.source) ?? [];
+    children.push(edge.target);
+    childrenBySourceId.set(edge.source, children);
+  }
+
+  return {
+    nodesById,
+    childrenBySourceId,
+  };
+}
+
+function normalizePathReduction(reduction) {
+  if (reduction.kind === 'option') {
+    return {
+      kind: 'path',
+      courseGroups: [reduction.courses],
+      escapeClauses: [],
+    };
+  }
+
+  return reduction;
+}
+
+function summarizeTreeNode(nodeId, treeIndex) {
+  const node = treeIndex.nodesById.get(nodeId);
+  if (!node) {
+    return { kind: 'opaque' };
+  }
+
+  if (node.node_type === NODE_TYPE.COURSE) {
+    return {
+      kind: 'option',
+      courses: [node.normalized_value],
+    };
+  }
+
+  if (![NODE_TYPE.AND, NODE_TYPE.OR].includes(node.node_type)) {
+    const clause = normalizeEscapeClauseText(node.raw_value ?? node.normalized_value ?? '');
+    if (!clause || looksCourseBearingClause(clause)) {
+      return { kind: 'opaque' };
+    }
+
+    return {
+      kind: 'escape',
+      escapeClauses: [clause],
+    };
+  }
+
+  const childIds = treeIndex.childrenBySourceId.get(nodeId) ?? [];
+  if (childIds.length === 0) {
+    return { kind: 'opaque' };
+  }
+
+  const childReductions = childIds.map((childId) => summarizeTreeNode(childId, treeIndex));
+  if (childReductions.some((reduction) => reduction.kind === 'opaque')) {
+    return { kind: 'opaque' };
+  }
+
+  if (node.node_type === NODE_TYPE.AND) {
+    if (childReductions.some((reduction) => reduction.kind === 'escape')) {
+      return { kind: 'opaque' };
+    }
+
+    const pathChildren = childReductions.map(normalizePathReduction);
+    if (pathChildren.some((reduction) => reduction.escapeClauses.length > 0)) {
+      return { kind: 'opaque' };
+    }
+
+    return {
+      kind: 'path',
+      courseGroups: pathChildren.flatMap((reduction) => reduction.courseGroups),
+      escapeClauses: [],
+    };
+  }
+
+  if (childReductions.every((reduction) => reduction.kind === 'option')) {
+    return {
+      kind: 'option',
+      courses: childReductions.flatMap((reduction) => reduction.courses),
+    };
+  }
+
+  const pathChildren = childReductions
+    .filter((reduction) => reduction.kind !== 'escape')
+    .map(normalizePathReduction);
+
+  if (pathChildren.length !== 1) {
+    return { kind: 'opaque' };
+  }
+
+  return {
+    kind: 'path',
+    courseGroups: pathChildren[0].courseGroups,
+    escapeClauses: [
+      ...pathChildren[0].escapeClauses,
+      ...childReductions.flatMap((reduction) => reduction.kind === 'escape' ? reduction.escapeClauses : []),
+    ],
+  };
+}
+
+function summarizeTreeRoot(parsedRule) {
+  if (!parsedRule.rootNodeId) {
+    return null;
+  }
+
+  const reduction = normalizePathReduction(summarizeTreeNode(parsedRule.rootNodeId, buildTreeIndex(parsedRule)));
+  if (reduction.kind !== 'path' || reduction.courseGroups.length === 0) {
+    return null;
+  }
+
+  return {
+    courseGroups: reduction.courseGroups,
+    escapeClauses: reduction.escapeClauses,
+    summaryStatus: reduction.escapeClauses.length > 0 ? 'partial' : 'structured',
+  };
+}
+
 function summarizeParsedCourseGraph(parsedRule) {
   const courseNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE);
 
@@ -378,6 +500,20 @@ export function summarizePrerequisiteForAi(parsedRule, { rawText } = {}) {
 
   if (!parsedRule) {
     return summary;
+  }
+
+  if (parsedRule.rootNodeId) {
+    const treeSummary = summarizeTreeRoot(parsedRule);
+    if (!treeSummary) {
+      return summary;
+    }
+
+    return {
+      ...summary,
+      summaryStatus: treeSummary.summaryStatus,
+      courseGroups: treeSummary.courseGroups,
+      escapeClauses: treeSummary.escapeClauses,
+    };
   }
 
   if (parsedRule.parseStatus === PARSE_STATUS.PARSED) {
