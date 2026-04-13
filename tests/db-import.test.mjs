@@ -2908,7 +2908,7 @@ test('build-course-db keeps shorthand numbers after unresolved slash-subject cla
   }
 });
 
-test('build-course-db excludes unresolved course siblings from escape clauses and trims escape punctuation', () => {
+test('build-course-db keeps unresolved course-bearing OR siblings opaque and still trims escape punctuation for safe rows', () => {
   const fixture = buildCourseDbFixture({
     courses: [
       {
@@ -2986,9 +2986,9 @@ test('build-course-db excludes unresolved course siblings from escape clauses an
     `).get('1272', '003338');
 
     assert.deepEqual(anatSummaryRow, {
-      summary_status: 'partial',
-      course_groups_json: '[["COMP SCI 240","COMP SCI 367"]]',
-      escape_clauses_json: '["concurrent enrollment"]',
+      summary_status: 'opaque',
+      course_groups_json: '[]',
+      escape_clauses_json: '[]',
     });
 
     const cs577SummaryRow = fixture.db.prepare(`

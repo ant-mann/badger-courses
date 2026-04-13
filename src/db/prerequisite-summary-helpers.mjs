@@ -310,9 +310,7 @@ function summarizeTreeNode(nodeId, treeIndex) {
   }
 
   if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
-    if (!childReductions.some((reduction) => reduction.kind === 'escape')) {
-      return { kind: 'opaque' };
-    }
+    return { kind: 'opaque' };
   }
 
   const pathChildren = childReductions

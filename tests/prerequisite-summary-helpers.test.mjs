@@ -378,15 +378,15 @@ test('summarizes trailing shorthand numbers introduced by and', () => {
   });
 });
 
-test('summarizes a rooted partial OR case into course groups plus escape clauses without misreported sibling text', () => {
+test('keeps rooted partial OR cases opaque when unresolved course-bearing siblings appear beside escape clauses', () => {
   const rawText = '(COMP SCI 240 or 367) or ANATOMY/KINES 328, or concurrent enrollment';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
   assert.deepEqual(summary, {
-    summaryStatus: 'partial',
-    courseGroups: [['COMP SCI 240', 'COMP SCI 367']],
-    escapeClauses: ['concurrent enrollment'],
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
     rawText,
   });
 });
@@ -484,6 +484,19 @@ test('keeps rooted OR summaries opaque when generic text remains opaque', () => 
 
 test('keeps rooted partial OR summaries opaque when unresolved subject-bearing residue remains beside an escape clause', () => {
   const rawText = 'COMP SCI 240 or BIOLOGY/BOTANY 151 or concurrent enrollment';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('keeps rooted partial OR summaries opaque when shorthand numeric alternatives remain beside escape clauses', () => {
+  const rawText = '(BIOCHEM 501 or 507 or concurrent enrollment) or graduate/professional standing';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
