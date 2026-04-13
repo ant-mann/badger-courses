@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { buildCourseDbFixture, makeCourse } from './helpers/madgrades-db-fixture.mjs';
 
@@ -117,6 +118,153 @@ function seedMadgradesMatchRowsWithoutHistory(db) {
       matched_at
     ) VALUES (?, ?, ?, ?)
   `).run(instructorKey, 11, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_refresh_runs (
+      madgrades_refresh_run_id,
+      snapshot_run_at,
+      last_refreshed_at,
+      source_term_code,
+      notes
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(11, '2024-01-15T00:00:00Z', '2024-01-16T00:00:00Z', '1264', 'instructor only seed');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_grades (
+      madgrades_instructor_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_instructor_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(11, 11, 11, '1264', 25, 3.2);
+}
+
+function seedMadgradesMatchRowsWithoutSameCourseHistory(db) {
+  const instructorKey = db.prepare(`
+    SELECT instructor_key
+    FROM instructors
+    WHERE email = ?
+  `).pluck().get('ada@example.edu');
+
+  db.prepare(`
+    INSERT INTO madgrades_courses (
+      madgrades_course_id,
+      subject_code,
+      catalog_number,
+      course_designation
+    ) VALUES (?, ?, ?, ?)
+  `).run(13, '302', '577', 'COMP SCI 577');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructors (
+      madgrades_instructor_id,
+      display_name
+    ) VALUES (?, ?)
+  `).run(13, 'Ada Lovelace');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructors (
+      madgrades_instructor_id,
+      display_name
+    ) VALUES (?, ?)
+  `).run(14, 'Grace Hopper');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_matches (
+      term_code,
+      course_id,
+      madgrades_course_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run('1272', '005770', 13, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_matches (
+      instructor_key,
+      madgrades_instructor_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?)
+  `).run(instructorKey, 13, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_refresh_runs (
+      madgrades_refresh_run_id,
+      snapshot_run_at,
+      last_refreshed_at,
+      source_term_code,
+      notes
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(13, '2024-01-15T00:00:00Z', '2024-01-16T00:00:00Z', '1264', 'course history from other instructor');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_grades (
+      madgrades_course_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_course_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(13, 13, 13, '1264', 30, 3.7);
+
+  db.prepare(`
+    INSERT INTO madgrades_course_offerings (
+      madgrades_course_offering_id,
+      madgrades_course_id,
+      madgrades_instructor_id,
+      term_code,
+      section_type,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(13, 13, 14, '1264', 'LEC', 30, 3.7);
+}
+
+function seedMadgradesMatchRowsWithoutAnyHistory(db) {
+  const instructorKey = db.prepare(`
+    SELECT instructor_key
+    FROM instructors
+    WHERE email = ?
+  `).pluck().get('ada@example.edu');
+
+  db.prepare(`
+    INSERT INTO madgrades_courses (
+      madgrades_course_id,
+      subject_code,
+      catalog_number,
+      course_designation
+    ) VALUES (?, ?, ?, ?)
+  `).run(12, '302', '577', 'COMP SCI 577');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructors (
+      madgrades_instructor_id,
+      display_name
+    ) VALUES (?, ?)
+  `).run(12, 'Ada Lovelace');
+
+  db.prepare(`
+    INSERT INTO madgrades_course_matches (
+      term_code,
+      course_id,
+      madgrades_course_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run('1272', '005770', 12, 'matched', '2024-01-16T00:00:00Z');
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_matches (
+      instructor_key,
+      madgrades_instructor_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?)
+  `).run(instructorKey, 12, 'matched', '2024-01-16T00:00:00Z');
 }
 
 function seedMadgradesRows(db) {
@@ -309,7 +457,6 @@ test('current_term_section_instructor_grade_overview_v exposes current sections 
         same_course_prior_offering_count,
         same_course_student_count,
         same_course_gpa,
-        instructor_overall_gpa,
         course_historical_gpa,
         instructor_match_status
       FROM current_term_section_instructor_grade_overview_v
@@ -323,7 +470,6 @@ test('current_term_section_instructor_grade_overview_v exposes current sections 
         same_course_prior_offering_count: 2,
         same_course_student_count: 60,
         same_course_gpa: 3.433333333333333,
-        instructor_overall_gpa: 3.3,
         course_historical_gpa: 3.433333333333333,
         instructor_match_status: 'matched',
       },
@@ -333,7 +479,7 @@ test('current_term_section_instructor_grade_overview_v exposes current sections 
   }
 });
 
-test('madgrades overview views keep matched rows with no history at zero counts and null gpas', () => {
+test('current-term madgrades overview keeps matched sections when only instructor-wide history exists', () => {
   const fixture = buildMadgradesOverviewFixture();
 
   try {
@@ -351,6 +497,117 @@ test('madgrades overview views keep matched rows with no history at zero counts 
       WHERE madgrades_instructor_id = ?
     `).get(11);
 
+    const currentTermOverview = fixture.db.prepare(`
+      SELECT
+        course_designation,
+        instructor_display_name,
+        same_course_prior_offering_count,
+        same_course_student_count,
+        same_course_gpa,
+        course_historical_gpa,
+        instructor_match_status
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE term_code = ? AND course_id = ? AND section_class_number = ?
+    `).get('1272', '005770', 57701);
+
+    const currentTermOverviewAllFields = fixture.db.prepare(`
+      SELECT *
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE term_code = ? AND course_id = ? AND section_class_number = ?
+    `).get('1272', '005770', 57701);
+
+    assert.deepEqual(courseOverview, {
+      course_grade_term_count: 0,
+      historical_student_count: 0,
+      historical_gpa: null,
+    });
+    assert.deepEqual(instructorOverview, {
+      instructor_grade_term_count: 1,
+      historical_student_count: 25,
+      overall_gpa: 3.2,
+    });
+    assert.deepEqual(currentTermOverview, {
+      course_designation: 'COMP SCI 577',
+      instructor_display_name: 'Ada Lovelace',
+      same_course_prior_offering_count: null,
+      same_course_student_count: null,
+      same_course_gpa: null,
+      course_historical_gpa: null,
+      instructor_match_status: 'matched',
+    });
+    assert.equal(
+      Object.hasOwn(currentTermOverviewAllFields, 'instructor_overall_gpa'),
+      false,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('current-term madgrades overview preserves course history when same-course instructor history is absent', () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    seedMadgradesMatchRowsWithoutSameCourseHistory(fixture.db);
+
+    const currentTermOverview = fixture.db.prepare(`
+      SELECT
+        course_designation,
+        instructor_display_name,
+        same_course_prior_offering_count,
+        same_course_student_count,
+        same_course_gpa,
+        course_historical_gpa,
+        instructor_match_status
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE term_code = ? AND course_id = ? AND section_class_number = ?
+    `).get('1272', '005770', 57701);
+
+    assert.deepEqual(currentTermOverview, {
+      course_designation: 'COMP SCI 577',
+      instructor_display_name: 'Ada Lovelace',
+      same_course_prior_offering_count: null,
+      same_course_student_count: null,
+      same_course_gpa: null,
+      course_historical_gpa: 3.7,
+      instructor_match_status: 'matched',
+    });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('current-term madgrades overview keeps matched sections when no history exists', () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    seedMadgradesMatchRowsWithoutAnyHistory(fixture.db);
+
+    const courseOverview = fixture.db.prepare(`
+      SELECT course_grade_term_count, historical_student_count, historical_gpa
+      FROM course_grade_overview_v
+      WHERE madgrades_course_id = ?
+    `).get(12);
+
+    const instructorOverview = fixture.db.prepare(`
+      SELECT instructor_grade_term_count, historical_student_count, overall_gpa
+      FROM instructor_grade_overview_v
+      WHERE madgrades_instructor_id = ?
+    `).get(12);
+
+    const currentTermOverview = fixture.db.prepare(`
+      SELECT
+        course_designation,
+        instructor_display_name,
+        same_course_prior_offering_count,
+        same_course_student_count,
+        same_course_gpa,
+        course_historical_gpa,
+        instructor_match_status
+      FROM current_term_section_instructor_grade_overview_v
+      WHERE term_code = ? AND course_id = ? AND section_class_number = ?
+    `).get('1272', '005770', 57701);
+
     assert.deepEqual(courseOverview, {
       course_grade_term_count: 0,
       historical_student_count: 0,
@@ -360,6 +617,15 @@ test('madgrades overview views keep matched rows with no history at zero counts 
       instructor_grade_term_count: 0,
       historical_student_count: 0,
       overall_gpa: null,
+    });
+    assert.deepEqual(currentTermOverview, {
+      course_designation: 'COMP SCI 577',
+      instructor_display_name: 'Ada Lovelace',
+      same_course_prior_offering_count: null,
+      same_course_student_count: null,
+      same_course_gpa: null,
+      course_historical_gpa: null,
+      instructor_match_status: 'matched',
     });
   } finally {
     fixture.cleanup();
@@ -389,7 +655,6 @@ test('current term madgrades overview dedupes duplicate historical terms across 
       SELECT
         same_course_student_count,
         same_course_gpa,
-        instructor_overall_gpa,
         course_historical_gpa
       FROM current_term_section_instructor_grade_overview_v
       WHERE term_code = ? AND course_id = ? AND section_class_number = ?
@@ -410,7 +675,6 @@ test('current term madgrades overview dedupes duplicate historical terms across 
       {
         same_course_student_count: 60,
         same_course_gpa: 3.433333333333333,
-        instructor_overall_gpa: 3.846031746031746,
         course_historical_gpa: 3.834920634920634,
       },
     ]);
@@ -442,7 +706,7 @@ test('documented Madgrades enrichment queries execute against the implemented ov
     const currentRows = fixture.db.prepare(`
       SELECT course_designation, section_number, instructor_display_name,
              same_course_prior_offering_count, same_course_student_count,
-             same_course_gpa, instructor_overall_gpa, course_historical_gpa
+             same_course_gpa, course_historical_gpa
       FROM current_term_section_instructor_grade_overview_v
       WHERE course_designation = 'COMP SCI 577'
       ORDER BY same_course_prior_offering_count DESC, same_course_student_count DESC
@@ -451,6 +715,19 @@ test('documented Madgrades enrichment queries execute against the implemented ov
     assert.equal(courseRows.length, 1);
     assert.equal(historyRows.length, 1);
     assert.equal(currentRows.length, 1);
+
+    const queryingCourseDbDocs = readFileSync(
+      new URL('../docs/querying-course-db.md', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(queryingCourseDbDocs, /current_term_section_instructor_grade_overview_v/);
+    assert.match(queryingCourseDbDocs, /same_course_prior_offering_count/);
+    assert.match(queryingCourseDbDocs, /same_course_student_count/);
+    assert.match(queryingCourseDbDocs, /same_course_gpa/);
+    assert.match(queryingCourseDbDocs, /course_historical_gpa/);
+    assert.doesNotMatch(queryingCourseDbDocs, /\|\s*Historical instructor GPA baseline\s*\|\s*`instructor_grade_overview_v`\s*\|/);
+    assert.doesNotMatch(queryingCourseDbDocs, /instructor_overall_gpa/);
   } finally {
     fixture.cleanup();
   }

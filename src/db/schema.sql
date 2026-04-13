@@ -873,15 +873,12 @@ SELECT
   ich.prior_offering_count AS same_course_prior_offering_count,
   ich.student_count AS same_course_student_count,
   ich.same_course_gpa,
-  igo.overall_gpa AS instructor_overall_gpa,
   cgo.historical_gpa AS course_historical_gpa,
   csi.instructor_match_status
 FROM current_section_instructors csi
 LEFT JOIN instructor_course_history_overview_v ich
   ON ich.madgrades_course_id = csi.madgrades_course_id
- AND ich.madgrades_instructor_id = csi.madgrades_instructor_id
-LEFT JOIN instructor_grade_overview_v igo
-  ON igo.madgrades_instructor_id = csi.madgrades_instructor_id
+  AND ich.madgrades_instructor_id = csi.madgrades_instructor_id
 LEFT JOIN course_grade_overview_v cgo
   ON cgo.madgrades_course_id = csi.madgrades_course_id;
 
