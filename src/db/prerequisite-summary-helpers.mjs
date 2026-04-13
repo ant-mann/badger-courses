@@ -101,12 +101,27 @@ function isAliasLikeParentheticalNote(text) {
 
 function buildTreeIndex(parsedRule) {
   const nodesById = new Map(parsedRule.nodes.map((node) => [node.id, node]));
-  const childrenBySourceId = new Map();
+  const outgoingEdgesBySourceId = new Map();
 
   for (const edge of parsedRule.edges) {
-    const children = childrenBySourceId.get(edge.source) ?? [];
-    children.push(edge.target);
-    childrenBySourceId.set(edge.source, children);
+    const edges = outgoingEdgesBySourceId.get(edge.source) ?? [];
+    edges.push(edge);
+    outgoingEdgesBySourceId.set(edge.source, edges);
+  }
+
+  const childrenBySourceId = new Map();
+  for (const [sourceId, edges] of outgoingEdgesBySourceId.entries()) {
+    childrenBySourceId.set(
+      sourceId,
+      edges
+        .slice()
+        .sort((leftEdge, rightEdge) => {
+          const leftOrder = leftEdge.sort_order ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder = rightEdge.sort_order ?? Number.MAX_SAFE_INTEGER;
+          return leftOrder - rightOrder;
+        })
+        .map((edge) => edge.target),
+    );
   }
 
   return {
@@ -121,10 +136,30 @@ function normalizePathReduction(reduction) {
       kind: 'path',
       courseGroups: [reduction.courses],
       escapeClauses: [],
+      isPartial: false,
     };
   }
 
   return reduction;
+}
+
+function createEscapeReduction(clauses, operator) {
+  const escapeClauses = clauses.filter(Boolean);
+  if (escapeClauses.length === 0) {
+    return { kind: 'opaque' };
+  }
+
+  if (escapeClauses.length === 1) {
+    return {
+      kind: 'escape',
+      escapeClauses,
+    };
+  }
+
+  return {
+    kind: 'escape',
+    escapeClauses: [escapeClauses.join(` ${operator} `)],
+  };
 }
 
 function summarizeTreeNode(nodeId, treeIndex) {
@@ -143,7 +178,7 @@ function summarizeTreeNode(nodeId, treeIndex) {
   if (![NODE_TYPE.AND, NODE_TYPE.OR].includes(node.node_type)) {
     const clause = normalizeEscapeClauseText(node.raw_value ?? node.normalized_value ?? '');
     if (!clause || looksCourseBearingClause(clause)) {
-      return { kind: 'opaque' };
+      return { kind: 'opaqueCourseBearingLeaf' };
     }
 
     return {
@@ -162,12 +197,28 @@ function summarizeTreeNode(nodeId, treeIndex) {
     return { kind: 'opaque' };
   }
 
+  const operator = (node.raw_value ?? node.normalized_value ?? node.node_type).toLowerCase();
+
   if (node.node_type === NODE_TYPE.AND) {
-    if (childReductions.some((reduction) => reduction.kind === 'escape')) {
+    if (childReductions.every((reduction) => reduction.kind === 'escape')) {
+      return createEscapeReduction(
+        childReductions.flatMap((reduction) => reduction.escapeClauses),
+        operator,
+      );
+    }
+
+    if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
       return { kind: 'opaque' };
     }
 
-    const pathChildren = childReductions.map(normalizePathReduction);
+    const pathChildren = childReductions
+      .filter((reduction) => reduction.kind !== 'escape')
+      .map(normalizePathReduction);
+
+    if (pathChildren.length === 0) {
+      return { kind: 'opaque' };
+    }
+
     if (pathChildren.some((reduction) => reduction.escapeClauses.length > 0)) {
       return { kind: 'opaque' };
     }
@@ -176,7 +227,16 @@ function summarizeTreeNode(nodeId, treeIndex) {
       kind: 'path',
       courseGroups: pathChildren.flatMap((reduction) => reduction.courseGroups),
       escapeClauses: [],
+      isPartial: childReductions.some((reduction) => reduction.kind === 'escape')
+        || pathChildren.some((reduction) => reduction.isPartial),
     };
+  }
+
+  if (childReductions.every((reduction) => reduction.kind === 'escape')) {
+    return createEscapeReduction(
+      childReductions.flatMap((reduction) => reduction.escapeClauses),
+      operator,
+    );
   }
 
   if (childReductions.every((reduction) => reduction.kind === 'option')) {
@@ -186,8 +246,15 @@ function summarizeTreeNode(nodeId, treeIndex) {
     };
   }
 
+  if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
+    if (!childReductions.some((reduction) => reduction.kind === 'escape')) {
+      return { kind: 'opaque' };
+    }
+  }
+
   const pathChildren = childReductions
     .filter((reduction) => reduction.kind !== 'escape')
+    .filter((reduction) => reduction.kind !== 'opaqueCourseBearingLeaf')
     .map(normalizePathReduction);
 
   if (pathChildren.length !== 1) {
@@ -201,6 +268,7 @@ function summarizeTreeNode(nodeId, treeIndex) {
       ...pathChildren[0].escapeClauses,
       ...childReductions.flatMap((reduction) => reduction.kind === 'escape' ? reduction.escapeClauses : []),
     ],
+    isPartial: true,
   };
 }
 
@@ -217,7 +285,7 @@ function summarizeTreeRoot(parsedRule) {
   return {
     courseGroups: reduction.courseGroups,
     escapeClauses: reduction.escapeClauses,
-    summaryStatus: reduction.escapeClauses.length > 0 ? 'partial' : 'structured',
+    summaryStatus: reduction.escapeClauses.length > 0 || reduction.isPartial ? 'partial' : 'structured',
   };
 }
 
