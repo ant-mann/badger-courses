@@ -323,12 +323,16 @@ test('keeps connective text when opaque text follows a recognized course', () =>
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '[COURSE] and consent of instructor');
 });
 
@@ -662,11 +666,14 @@ test('keeps CS 577 prerequisite text conservative when escape clauses remain', (
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.equal(
     result.unparsedText,
     '(([COURSE]/[COURSE] or [COURSE]/[COURSE]/[COURSE]) and ([COURSE] or [COURSE])) or [STANDING] or member of engineering guest students',
   );
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -681,7 +688,25 @@ test('keeps CS 577 prerequisite text conservative when escape clauses remain', (
       'COMP SCI 400',
     ],
   );
-  assert.deepEqual(result.edges, []);
+  assert.ok(result.edges.length > 0);
+});
+
+test('keeps rooted partial trees when recursive mixed branches include opaque leaves', () => {
+  const result = parsePrerequisiteText('(MATH 221 or consent of instructor) and concurrent enrollment', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.OR).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONCURRENT).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([COURSE] or consent of instructor) and concurrent enrollment');
 });
 
 test('treats multi-word subject text as a parsed course leaf', () => {
