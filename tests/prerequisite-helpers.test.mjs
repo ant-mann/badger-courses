@@ -117,38 +117,44 @@ test('keeps partial nodes in source order', () => {
   );
 });
 
-test('keeps unresolved relation text for course-only partial cases', () => {
+test('parses repeated AND course clauses into a rooted tree', () => {
   const result = parsePrerequisiteText('MATH 221 and MATH 222', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
     courseId: '005500',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221', 'MATH 222'],
   );
-  assert.equal(result.unparsedText, '[COURSE] and [COURSE]');
+  assert.equal(result.edges.length, 2);
 });
 
-test('keeps unresolved repeated OR text for multi-course partial cases', () => {
+test('parses repeated OR course clauses into a rooted tree', () => {
   const result = parsePrerequisiteText('MATH 221 or MATH 222 or MATH 223', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
     courseId: '005500',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221', 'MATH 222', 'MATH 223'],
   );
-  assert.equal(result.unparsedText, '[COURSE] or [COURSE] or [COURSE]');
+  assert.equal(result.edges.length, 3);
 });
 
 test('keeps unresolved separator text for standing comma course partial cases', () => {
@@ -504,18 +510,17 @@ test('keeps three-way slash subject alternatives with a shared number as a conse
   assert.deepEqual(result.edges, []);
 });
 
-test('keeps grouped course-only slash alternatives conservative while recognizing each course leaf', () => {
+test('parses grouped COMP SCI 577 course-only clauses into a rooted tree', () => {
   const result = parsePrerequisiteText('(COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)', {
     courseDesignation: 'COMP SCI 577',
     termCode: '1272',
     courseId: '005577',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
-  assert.equal(
-    result.unparsedText,
-    '([COURSE]/[COURSE] or [COURSE]/[COURSE]/[COURSE]) and ([COURSE] or [COURSE])',
-  );
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -530,7 +535,7 @@ test('keeps grouped course-only slash alternatives conservative while recognizin
       'COMP SCI 400',
     ],
   );
-  assert.deepEqual(result.edges, []);
+  assert.equal(result.edges.length, 9);
 });
 
 test('keeps CS 577 prerequisite text conservative when escape clauses remain', () => {
