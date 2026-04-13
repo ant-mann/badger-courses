@@ -184,6 +184,24 @@ test('keeps standing plus special-clause OR expressions conservative without a c
   assert.equal(result.unparsedText, '[STANDING] or concurrent enrollment');
 });
 
+test('keeps rooted partial trees when a nested non-course boolean subtree attaches to a course branch', () => {
+  const result = parsePrerequisiteText('(graduate/professional standing or consent of instructor) and MATH 221', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.OR).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([STANDING] or consent of instructor) and [COURSE]');
+});
+
 test('parses repeated AND course clauses into a rooted AND tree', () => {
   const result = parsePrerequisiteText('MATH 221 and MATH 222', {
     courseDesignation: 'MATH 500',

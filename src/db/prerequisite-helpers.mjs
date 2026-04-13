@@ -989,6 +989,94 @@ function hasCourseBearingStructuredAnchor(result) {
     || result?.nodes?.some((node) => node.node_type === NODE_TYPE.COURSE);
 }
 
+function isAttachableNonCourseStructuredSubtree(result) {
+  return Boolean(result?.rootNodeId)
+    && result.nodes.some((node) => node.id === result.rootNodeId && (
+      node.node_type === NODE_TYPE.AND || node.node_type === NODE_TYPE.OR
+    ))
+    && !hasCourseBearingStructuredAnchor(result);
+}
+
+function hasPotentialCourseBearingSiblingPart(rawText) {
+  const structuredChild = parseStructuredCourseExpression(rawText);
+  if (structuredChild && hasCourseBearingStructuredAnchor(structuredChild)) {
+    return true;
+  }
+
+  const recognizedChild = parseRecognizedPrerequisiteText(rawText);
+  return isSafeStructuredCourseLeaf(recognizedChild) || isSingleLeafResult(recognizedChild, NODE_TYPE.STANDING);
+}
+
+function parseGroupedNonCourseStructuredSubtree(text) {
+  const sourceText = text ?? '';
+  const unwrappedText = stripOneOuterParenthesisPair(sourceText);
+  if (!unwrappedText) {
+    return null;
+  }
+
+  const innerOffsets = buildNormalizedTextWithOffsets(unwrappedText.rawInnerText);
+  const splitExpression = splitTopLevelBooleanExpression(
+    innerOffsets.normalizedText,
+    unwrappedText.rawInnerText,
+    innerOffsets,
+  );
+  if (!splitExpression) {
+    return null;
+  }
+
+  const childResults = [];
+  for (const part of splitExpression.parts) {
+    const nestedGroupedChild = parseGroupedNonCourseStructuredSubtree(part.rawText);
+    if (nestedGroupedChild) {
+      childResults.push(nestedGroupedChild);
+      continue;
+    }
+
+    const recognizedChild = parseRecognizedPrerequisiteText(part.rawText);
+    if (
+      isSingleLeafResult(recognizedChild, NODE_TYPE.STANDING)
+      || isSingleLeafResult(recognizedChild, NODE_TYPE.CONSENT)
+      || isSingleLeafResult(recognizedChild, NODE_TYPE.CONCURRENT)
+    ) {
+      childResults.push(recognizedChild);
+      continue;
+    }
+
+    if (recognizedChild.parseStatus !== PARSE_STATUS.UNPARSED) {
+      return null;
+    }
+
+    const opaqueLeaf = parseOpaqueStructuredLeaf(part.rawText);
+    if (!opaqueLeaf || hasCourseBearingStructuredAnchor(opaqueLeaf)) {
+      return null;
+    }
+
+    childResults.push(opaqueLeaf);
+  }
+
+  if (!childResults.every((result) => result.rootNodeId)) {
+    return null;
+  }
+
+  const rootNode = createNode(NODE_TYPE[splitExpression.operator], splitExpression.operator, splitExpression.operatorRaw);
+  const nodes = [rootNode];
+  const edges = [];
+
+  for (const childResult of childResults) {
+    nodes.push(...childResult.nodes);
+    edges.push(...childResult.edges);
+    edges.push({ source: rootNode.id, target: childResult.rootNodeId });
+  }
+
+  return createResult(
+    PARSE_STATUS.PARTIAL,
+    getStructuredDisplayText(sourceText),
+    nodes,
+    edges,
+    rootNode.id,
+  );
+}
+
 function canAttachStructuredExpression(splitExpression, childResults) {
   const allChildrenAttachable = splitExpression.operator === NODE_TYPE.OR
     ? childResults.every((result) => result.rootNodeId || isDirectSlashCourseLeaf(result))
@@ -1000,6 +1088,10 @@ function canAttachStructuredExpression(splitExpression, childResults) {
 
   if (!childResults.some(hasCourseBearingStructuredAnchor)) {
     return false;
+  }
+
+  if (childResults.some(isAttachableNonCourseStructuredSubtree)) {
+    return true;
   }
 
   if (canFullyParseStructuredExpression(splitExpression, childResults)) {
@@ -1154,12 +1246,35 @@ function parseStructuredCourseExpression(text) {
       continue;
     }
 
+    childResults.push(null);
+  }
+
+  const hasCourseBearingSibling = splitExpression.parts.some((part, index) => (
+    childResults[index]
+      ? hasCourseBearingStructuredAnchor(childResults[index])
+      : hasPotentialCourseBearingSiblingPart(part.rawText)
+  ));
+
+  for (let index = 0; index < splitExpression.parts.length; index++) {
+    if (childResults[index]) {
+      continue;
+    }
+
+    const part = splitExpression.parts[index];
+    if (hasCourseBearingSibling) {
+      const groupedStructuredChild = parseGroupedNonCourseStructuredSubtree(part.rawText);
+      if (groupedStructuredChild) {
+        childResults[index] = groupedStructuredChild;
+        continue;
+      }
+    }
+
     const recognizedChild = parseRecognizedPrerequisiteText(part.rawText);
     if (
       isSafeStructuredCourseLeaf(recognizedChild)
       || isSingleLeafResult(recognizedChild, NODE_TYPE.STANDING)
     ) {
-      childResults.push(recognizedChild);
+      childResults[index] = recognizedChild;
       continue;
     }
 
@@ -1167,7 +1282,7 @@ function parseStructuredCourseExpression(text) {
       return null;
     }
 
-    childResults.push(parseOpaqueStructuredLeaf(part.rawText));
+    childResults[index] = parseOpaqueStructuredLeaf(part.rawText);
   }
 
   if (!canAttachStructuredExpression(splitExpression, childResults)) {
