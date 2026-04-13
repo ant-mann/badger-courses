@@ -39,7 +39,7 @@ test('summarizes a rooted AND tree into one required course group per child path
   });
 });
 
-test('summarizes a simple rooted AND prerequisite into one required course group per sibling', () => {
+test('summarizes a simple rooted AND tree into one required course group per sibling', () => {
   const rawText = 'MATH 221 and MATH 222';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
@@ -68,7 +68,7 @@ test('summarizes a rooted partial AND tree with a required non-course sibling co
   });
 });
 
-test('summarizes the real comp sci 577 prerequisite into course groups plus escape clauses', () => {
+test('summarizes the real comp sci 577 prerequisite conservatively', () => {
   const rawText = '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
@@ -83,7 +83,7 @@ test('summarizes the real comp sci 577 prerequisite into course groups plus esca
   assert.equal(summary.rawText, rawText);
 });
 
-test('summarizes a rooted partial OR tree into course groups plus escape clauses', () => {
+test('summarizes a rooted partial OR case into course groups plus escape clauses', () => {
   const rawText = '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students';
   const parsed = parsePrerequisiteText(rawText);
 
@@ -154,7 +154,7 @@ test('preserves rooted child order from edge sort_order when summarizing tree gr
   ]);
 });
 
-test('does not misreport an opaque conjunctive sibling as an escape clause in a rooted partial tree', () => {
+test('does not leave an opaque conjunctive sibling misreported as an escape clause in a rooted partial tree', () => {
   const rawText = '(COMP SCI 240 or 367) or (ANATOMY/KINES 328 and concurrent enrollment)';
   const parsed = parsePrerequisiteText(rawText);
 
@@ -322,7 +322,7 @@ test('summarizes trailing shorthand numbers introduced by and', () => {
   });
 });
 
-test('does not mislabel unresolved course-bearing sibling text as an escape clause', () => {
+test('summarizes a rooted partial OR case into course groups plus escape clauses without misreported sibling text', () => {
   const rawText = '(COMP SCI 240 or 367) or ANATOMY/KINES 328, or concurrent enrollment';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
@@ -331,6 +331,32 @@ test('does not mislabel unresolved course-bearing sibling text as an escape clau
     summaryStatus: 'partial',
     courseGroups: [['COMP SCI 240', 'COMP SCI 367']],
     escapeClauses: ['concurrent enrollment'],
+    rawText,
+  });
+});
+
+test('keeps rooted unsafe OR summaries opaque when a grouped course path is paired with instructor approval', () => {
+  const rawText = '(MATH 221 or MATH 222) or instructor approval';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('keeps rooted unsafe OR summaries opaque when a grouped course path is paired with consent of instructor', () => {
+  const rawText = '(MATH 221 or MATH 222) or consent of instructor';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
     rawText,
   });
 });

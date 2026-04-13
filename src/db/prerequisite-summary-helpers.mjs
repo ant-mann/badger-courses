@@ -182,7 +182,7 @@ function hasUnsafeCourseBearingResidue(parsedRule, treeSummary) {
       return false;
     }
 
-    return looksCourseBearingClause(clause) || /^\d{3}[A-Z]?$/i.test(clause);
+    return /^\d{3}[A-Z]?$/i.test(clause);
   });
 }
 
@@ -212,13 +212,20 @@ function summarizeTreeNode(nodeId, treeIndex) {
       };
     }
 
+    if (node.node_type === NODE_TYPE.CONSENT || /\bapproval\b/i.test(clause)) {
+      return {
+        kind: 'opaqueNonCourseLeaf',
+        text: clause,
+      };
+    }
+
     if (looksCourseBearingClause(clause) || /^\d{3}[A-Z]?$/i.test(clause)) {
       return { kind: 'opaqueCourseBearingLeaf' };
     }
 
     return {
-      kind: 'opaqueNonCourseLeaf',
-      text: clause,
+      kind: 'escape',
+      escapeClauses: [clause],
     };
   }
 
@@ -635,6 +642,8 @@ export function summarizePrerequisiteForAi(parsedRule, { rawText } = {}) {
         escapeClauses: treeSummary.escapeClauses,
       };
     }
+
+    return summary;
   }
 
   if (parsedRule.parseStatus === PARSE_STATUS.PARSED) {
