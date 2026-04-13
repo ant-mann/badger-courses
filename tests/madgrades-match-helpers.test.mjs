@@ -274,6 +274,73 @@ test('matchLocalCourse matches a renamed unique subject code candidate when an a
   });
 });
 
+test('matchLocalCourse matches when a live Madgrades course carries the local subject as a secondary subject', async () => {
+  const { matchLocalCourse } = await loadMatchHelpers();
+
+  const result = matchLocalCourse(
+    {
+      termCode: '1272',
+      courseId: '017821',
+      title: 'Environmental Biophysics',
+      subjectCatalogPairs: [{ subjectCode: 'ATM OCN', catalogNumber: '532' }],
+    },
+    [
+      {
+        uuid: 'mg-atm-ocn-532',
+        subject: 'AGRONOMY',
+        number: '532',
+        name: 'Environmental Biophysics',
+        names: ['Environmental Biophysics'],
+        subjectAliases: ['AGRONOMY', 'ATM OCN', 'SOIL SCI'],
+      },
+    ],
+  );
+
+  assert.deepEqual(result, {
+    termCode: '1272',
+    courseId: '017821',
+    matchStatus: 'matched',
+    matchMethod: 'subject-code+catalog-number',
+    madgradesCourseUuid: 'mg-atm-ocn-532',
+    matchNote: null,
+  });
+});
+
+test('matchLocalCourse matches when live Madgrades subjects use object metadata and the local subject is secondary', async () => {
+  const { matchLocalCourse } = await loadMatchHelpers();
+
+  const result = matchLocalCourse(
+    {
+      termCode: '1272',
+      courseId: '017821',
+      title: 'Environmental Biophysics',
+      subjectCatalogPairs: [{ subjectCode: 'ATM OCN', catalogNumber: '532' }],
+    },
+    [
+      {
+        uuid: 'mg-atm-ocn-532',
+        subject: '006',
+        number: '532',
+        name: 'Environmental Biophysics',
+        subjects: [
+          { code: '006', abbreviation: 'AGRONOMY' },
+          { code: '530', abbreviation: 'ATM OCN' },
+          { code: '900', abbreviation: 'SOIL SCI' },
+        ],
+      },
+    ],
+  );
+
+  assert.deepEqual(result, {
+    termCode: '1272',
+    courseId: '017821',
+    matchStatus: 'matched',
+    matchMethod: 'subject-code+catalog-number',
+    madgradesCourseUuid: 'mg-atm-ocn-532',
+    matchNote: null,
+  });
+});
+
 test('matchLocalInstructor requires an exact normalized full-name match', async () => {
   const { matchLocalInstructor } = await loadMatchHelpers();
 

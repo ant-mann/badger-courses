@@ -27,7 +27,13 @@ function buildInstructorResult(localInstructor, overrides) {
 }
 
 function matchesSubjectCatalogPair(course, pair) {
-  return normalizeMadgradesText(course?.subject) === normalizeMadgradesText(pair?.subjectCode)
+  const subjects = Array.isArray(course?.subjectAliases) && course.subjectAliases.length > 0
+    ? course.subjectAliases
+    : Array.isArray(course?.subjects) && course.subjects.length > 0
+      ? course.subjects.flatMap((subject) => [subject?.abbreviation, subject?.code].filter(Boolean))
+      : [course?.subject];
+
+  return subjects.some((subject) => normalizeMadgradesText(subject) === normalizeMadgradesText(pair?.subjectCode))
     && normalizeMadgradesText(course?.number) === normalizeMadgradesText(pair?.catalogNumber);
 }
 
