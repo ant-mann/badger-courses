@@ -950,7 +950,8 @@ function isStructuredBooleanResult(result) {
 
 function isSpecificOpaqueStructuredLeaf(result) {
   return isSingleLeafResult(result, NODE_TYPE.CONSENT)
-    || isSingleLeafResult(result, NODE_TYPE.CONCURRENT);
+    || isSingleLeafResult(result, NODE_TYPE.CONCURRENT)
+    || isSingleLeafResult(result, NODE_TYPE.STANDING);
 }
 
 function isParenthesizedOpaqueStructuredLeaf(result) {
