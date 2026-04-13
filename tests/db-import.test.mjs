@@ -1997,6 +1997,80 @@ test('course_cross_listings enforces boolean primary flags and one primary alias
   }
 });
 
+test('build-course-db persists root nodes for partial prerequisite trees when a real root exists', () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      {
+        ...makeCourse({
+          termCode: '1272',
+          courseId: '005500',
+          subjectCode: '600',
+          catalogNumber: '500',
+          courseDesignation: 'MATH 500',
+          title: 'Advanced Topics in Mathematics',
+        }),
+        enrollmentPrerequisites: 'MATH 221 and consent of instructor',
+      },
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: { termCode: '1272', subjectCode: '600', courseId: '005500' },
+          packages: [
+            {
+              id: 'math500-main',
+              termCode: '1272',
+              subjectCode: '600',
+              courseId: '005500',
+              enrollmentClassNumber: 55000,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: { status: 'OPEN', availableSeats: 5, waitlistTotal: 0 },
+              enrollmentStatus: { openSeats: 5, waitlistCurrentSize: 0, capacity: 20, currentlyEnrolled: 15 },
+              sections: [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  try {
+    const rule = fixture.db.prepare(`
+      SELECT parse_status, root_node_id, unparsed_text
+      FROM prerequisite_rules
+      WHERE term_code = ? AND course_id = ?
+    `).get('1272', '005500');
+    const nodes = fixture.db.prepare(`
+      SELECT node_type, normalized_value
+      FROM prerequisite_nodes
+      WHERE rule_id = ?
+      ORDER BY node_id
+    `).all('rule:1272:005500');
+    const edges = fixture.db.prepare(`
+      SELECT parent_node_id, child_node_id, sort_order
+      FROM prerequisite_edges
+      WHERE rule_id = ?
+      ORDER BY sort_order
+    `).all('rule:1272:005500');
+
+    assert.deepEqual(rule, {
+      parse_status: 'partial',
+      root_node_id: 'rule:1272:005500:node-4',
+      unparsed_text: '[COURSE] and consent of instructor',
+    });
+    assert.deepEqual(
+      [...nodes.map((node) => node.node_type)].sort(),
+      ['AND', 'CONSENT', 'COURSE'],
+    );
+    assert.equal(edges.length, 2);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('build-course-db materializes prerequisite graph rows for parsed and partial prerequisite text', () => {
   const fixture = buildCourseDbFixture({
     courses: [
@@ -2147,7 +2221,7 @@ test('build-course-db materializes prerequisite graph rows for parsed and partia
         parse_status: 'partial',
         parse_confidence: 0.5,
         raw_text: 'MATH 222 and graduate/professional standing',
-        root_node_id: null,
+        root_node_id: 'rule:1272:005771:node-4',
         unparsed_text: '[COURSE] and [STANDING]',
       },
     ]);
@@ -2156,9 +2230,17 @@ test('build-course-db materializes prerequisite graph rows for parsed and partia
       { node_type: 'COURSE', value: 'MATH 222', normalized_value: 'MATH 222' },
       { node_type: 'COURSE', value: '276', normalized_value: 'MATH 276' },
     ]);
+    const partialEdges = fixture.db.prepare(`
+      SELECT parent_node_id, child_node_id, sort_order
+      FROM prerequisite_edges
+      WHERE rule_id = ?
+      ORDER BY sort_order
+    `).all('rule:1272:005771');
+
     assert.deepEqual(
       [...partialNodes].sort((left, right) => left.node_type.localeCompare(right.node_type)),
       [
+        { node_type: 'AND', value: 'and', normalized_value: 'AND' },
         { node_type: 'COURSE', value: 'MATH 222', normalized_value: 'MATH 222' },
         {
           node_type: 'STANDING',
@@ -2176,6 +2258,18 @@ test('build-course-db materializes prerequisite graph rows for parsed and partia
       {
         parent_node_id: 'rule:1272:005770:node-1',
         child_node_id: 'rule:1272:005770:node-3',
+        sort_order: 1,
+      },
+    ]);
+    assert.deepEqual(partialEdges, [
+      {
+        parent_node_id: 'rule:1272:005771:node-4',
+        child_node_id: 'rule:1272:005771:node-2',
+        sort_order: 0,
+      },
+      {
+        parent_node_id: 'rule:1272:005771:node-4',
+        child_node_id: 'rule:1272:005771:node-3',
         sort_order: 1,
       },
     ]);

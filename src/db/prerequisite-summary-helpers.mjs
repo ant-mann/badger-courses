@@ -413,13 +413,18 @@ function summarizeGroupedCoursePath(parsedRule) {
     return null;
   }
 
-  const courseSkeleton = stripOuterParentheses(topLevelOrClauses[courseClauseIndex]);
-  const hasExplicitGrouping = courseSkeleton !== topLevelOrClauses[courseClauseIndex] || /\bor\b/i.test(courseSkeleton);
+  const rawCourseClause = topLevelOrClauses[courseClauseIndex];
+  const courseSkeleton = stripOuterParentheses(rawCourseClause);
+  const groupClauses = splitTopLevel(courseSkeleton, 'and');
+  const hasTopLevelOrGroup = splitTopLevel(courseSkeleton, 'or').length > 1;
+  const hasExplicitGroupedPath = groupClauses.length > 1 && groupClauses.some((groupClause) => {
+    const strippedGroupClause = stripOuterParentheses(groupClause);
+    return strippedGroupClause !== groupClause || splitTopLevel(strippedGroupClause, 'or').length > 1;
+  });
+  const hasExplicitGrouping = hasTopLevelOrGroup || hasExplicitGroupedPath;
   if (!hasExplicitGrouping) {
     return null;
   }
-
-  const groupClauses = splitTopLevel(courseSkeleton, 'and');
 
   if (groupClauses.length === 0) {
     return null;
@@ -429,8 +434,13 @@ function summarizeGroupedCoursePath(parsedRule) {
   let courseIndex = 0;
 
   for (const groupClause of groupClauses) {
-    const optionClauses = splitTopLevel(stripOuterParentheses(groupClause), 'or');
+    const strippedGroupClause = stripOuterParentheses(groupClause);
+    const optionClauses = splitTopLevel(strippedGroupClause, 'or');
     if (optionClauses.length === 0) {
+      return null;
+    }
+
+    if (optionClauses.length === 1 && !isCoursePlaceholderListClause(strippedGroupClause)) {
       return null;
     }
 

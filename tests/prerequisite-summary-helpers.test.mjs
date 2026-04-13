@@ -52,6 +52,36 @@ test('summarizes a simple rooted AND tree into one required course group per sib
   });
 });
 
+test('summarizes unrooted grouped course-only clauses conservatively when placeholder groups are safe', () => {
+  const rawText = 'ART 212 and (ART 100, 108, or 208)';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.equal(parsed.rootNodeId, null);
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'structured',
+    courseGroups: [['ART 212'], ['ART 100', 'ART 108', 'ART 208']],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('keeps unrooted grouped clauses opaque when one grouped branch contains a non-course escape option', () => {
+  const rawText = 'CBE 310, (CBE 320 or concurrent registration), and STAT 324';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.equal(parsed.rootNodeId, null);
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
 test('summarizes a rooted partial AND tree with a required non-course sibling conservatively', () => {
   const rawText = 'MATH 221 and consent of instructor';
   const parsed = parsePrerequisiteText(rawText);
@@ -270,6 +300,19 @@ test('treats unresolved course-bearing grouped-path siblings as opaque instead o
   });
 });
 
+test('treats rooted OR summaries with a grouped course path, unresolved course-bearing alternative, and standing escape clause as opaque', () => {
+  const rawText = '((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or C&E SOC/SOC 181 or graduate/professional standing';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
 test('keeps shorthand numeric alternatives inside course groups instead of escape clauses', () => {
   const rawText = 'A A E 101 (215 prior to Fall 2024), ECON 101, or 111';
   const parsed = parsePrerequisiteText(rawText);
@@ -363,6 +406,19 @@ test('keeps rooted OR summaries opaque when a grouped course path is paired with
 
 test('keeps rooted OR summaries opaque when a grouped course path is paired with consent of instructor', () => {
   const rawText = '(MATH 221 or MATH 222) or consent of instructor';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('keeps parenthesized singleton course clauses from being salvaged as grouped paths', () => {
+  const rawText = '(MATH 221) or C&E SOC/SOC 181';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
