@@ -174,15 +174,22 @@ function hasUnsafeCourseBearingResidue(parsedRule, treeSummary) {
 
   const escapeClauseSet = new Set(treeSummary.escapeClauses.map((clause) => normalizeEscapeClauseText(clause).toLowerCase()));
   const residueClauses = splitTopLevel(normalizedText, 'or')
-    .map((clause) => normalizeEscapeClauseText(stripOuterParentheses(clause)))
-    .filter(Boolean);
+    .map((clause) => ({
+      rawClause: stripOuterParentheses(clause).trim(),
+      normalizedClause: normalizeEscapeClauseText(stripOuterParentheses(clause)),
+    }))
+    .filter(({ normalizedClause }) => Boolean(normalizedClause));
 
-  return residueClauses.some((clause) => {
-    if (escapeClauseSet.has(clause.toLowerCase())) {
+  return residueClauses.some(({ rawClause, normalizedClause }) => {
+    if (escapeClauseSet.has(normalizedClause.toLowerCase())) {
       return false;
     }
 
-    return /^\d{3}[A-Z]?$/i.test(clause);
+    if (/^\d{3}[A-Z]?$/i.test(normalizedClause)) {
+      return true;
+    }
+
+    return !/[,:;.]\s*$/.test(rawClause) && looksCourseBearingClause(normalizedClause);
   });
 }
 
@@ -223,9 +230,16 @@ function summarizeTreeNode(nodeId, treeIndex) {
       return { kind: 'opaqueCourseBearingLeaf' };
     }
 
+    if (/\bmember of\b/i.test(clause) || /\d/.test(clause)) {
+      return {
+        kind: 'escape',
+        escapeClauses: [clause],
+      };
+    }
+
     return {
-      kind: 'escape',
-      escapeClauses: [clause],
+      kind: 'opaqueNonCourseLeaf',
+      text: clause,
     };
   }
 

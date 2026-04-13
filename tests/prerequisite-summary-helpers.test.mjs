@@ -400,6 +400,32 @@ test('keeps rooted OR summaries partial without escape clauses when the opaque l
   });
 });
 
+test('keeps rooted OR summaries partial without escape clauses when generic text remains opaque', () => {
+  const rawText = 'MATH 221 or program admission';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'partial',
+    courseGroups: [['MATH 221']],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
+test('keeps rooted partial OR summaries opaque when unresolved subject-bearing residue remains beside an escape clause', () => {
+  const rawText = 'COMP SCI 240 or BIOLOGY/BOTANY 151 or concurrent enrollment';
+  const parsed = parsePrerequisiteText(rawText);
+  const summary = summarizePrerequisiteForAi(parsed, { rawText });
+
+  assert.deepEqual(summary, {
+    summaryStatus: 'opaque',
+    courseGroups: [],
+    escapeClauses: [],
+    rawText,
+  });
+});
+
 test('summarizes ANAT&PHY 338 conservatively while preserving alias and concurrent enrollment escape clause', () => {
   const rawText = 'ANAT&PHY 337 (KINES 337 before fall 2018), or ANATOMY/KINES 328, or concurrent enrollment';
   const parsed = parsePrerequisiteText(rawText);
