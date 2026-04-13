@@ -117,7 +117,7 @@ test('keeps partial nodes in source order', () => {
   );
 });
 
-test('parses repeated AND course clauses into a rooted tree', () => {
+test('parses repeated AND course clauses into a rooted AND tree', () => {
   const result = parsePrerequisiteText('MATH 221 and MATH 222', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
@@ -187,7 +187,7 @@ test('parses parenthesized explicit OR course clauses across subjects into a roo
   assert.equal(result.edges.length, 2);
 });
 
-test('parses repeated OR course clauses into a rooted tree', () => {
+test('parses repeated OR course clauses into a rooted OR tree', () => {
   const result = parsePrerequisiteText('MATH 221 or MATH 222 or MATH 223', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
@@ -207,7 +207,7 @@ test('parses repeated OR course clauses into a rooted tree', () => {
   assert.equal(result.edges.length, 3);
 });
 
-test('parses nested course-only expression mixing a structured subtree with a direct course leaf', () => {
+test('parses nested course-only expression mixing a structured subtree with a direct course leaf into nested rooted trees', () => {
   const result = parsePrerequisiteText('(MATH 221 or MATH 222) and MATH 223', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
