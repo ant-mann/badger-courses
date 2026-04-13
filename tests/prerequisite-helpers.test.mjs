@@ -405,7 +405,7 @@ test('keeps rooted partial trees when generic opaque text follows a recognized c
 });
 
 test('keeps connective text when opaque text follows a recognized course', () => {
-  const result = parsePrerequisiteText('MATH 221 and consent of instructor', {
+  const result = parsePrerequisiteText('MATH 221 and   consent   of   instructor', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
     courseId: '005500',
@@ -421,8 +421,37 @@ test('keeps connective text when opaque text follows a recognized course', () =>
     ['MATH 221'],
   );
   assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.nodes.find((node) => node.node_type === NODE_TYPE.CONSENT)?.raw_value, 'consent   of   instructor');
   assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '[COURSE] and consent of instructor');
+});
+
+test('keeps fully opaque special-clause OR expressions conservative', () => {
+  const result = parsePrerequisiteText('consent of instructor or concurrent enrollment', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.rootNodeId, null);
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, 'consent of instructor or concurrent enrollment');
+});
+
+test('keeps fully opaque parenthesized boolean prose conservative', () => {
+  const result = parsePrerequisiteText('(department permission) and (placement test)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.rootNodeId, null);
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, '(department permission) and (placement test)');
 });
 
 test('treats a lone recognized course as a fully parsed leaf with its own rootNodeId', () => {

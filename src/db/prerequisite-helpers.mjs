@@ -983,12 +983,23 @@ function isSimpleStructuredAnchorLeaf(result) {
   );
 }
 
+function hasCourseBearingStructuredAnchor(result) {
+  return isSingleLeafResult(result, NODE_TYPE.COURSE)
+    || isSingleLeafResult(result, NODE_TYPE.STANDING)
+    || isDirectSlashCourseLeaf(result)
+    || result?.nodes?.some((node) => node.node_type === NODE_TYPE.COURSE);
+}
+
 function canAttachStructuredExpression(splitExpression, childResults) {
   const allChildrenAttachable = splitExpression.operator === NODE_TYPE.OR
     ? childResults.every((result) => result.rootNodeId || isDirectSlashCourseLeaf(result))
     : childResults.every((result) => result.rootNodeId);
 
   if (!allChildrenAttachable) {
+    return false;
+  }
+
+  if (!childResults.some(hasCourseBearingStructuredAnchor)) {
     return false;
   }
 
@@ -1040,6 +1051,8 @@ function canFullyParseStructuredExpression(splitExpression, childResults) {
 }
 
 function parseOpaqueStructuredLeaf(text) {
+  const sourceText = text ?? '';
+  const rawText = sourceText.trim();
   const normalizedText = normalizeText(text ?? '');
   if (!normalizedText) {
     return null;
@@ -1056,7 +1069,7 @@ function parseOpaqueStructuredLeaf(text) {
     normalizedValue = 'Concurrent enrollment';
   }
 
-  const node = createNode(nodeType, normalizedValue, normalizedText);
+  const node = createNode(nodeType, normalizedValue, rawText);
   return createResult(PARSE_STATUS.PARTIAL, normalizedText, [node], [], node.id);
 }
 
