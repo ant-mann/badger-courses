@@ -110,45 +110,302 @@ test('keeps partial nodes in source order', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.equal(result.unparsedText, '[COURSE] and [STANDING]');
   assert.deepEqual(
-    result.nodes.map((node) => node.node_type),
+    result.nodes
+      .filter((node) => node.node_type !== NODE_TYPE.AND && node.node_type !== NODE_TYPE.OR)
+      .map((node) => node.node_type),
     [NODE_TYPE.COURSE, NODE_TYPE.STANDING],
   );
+  assert.equal(result.edges.length, 2);
 });
 
-test('keeps unresolved relation text for course-only partial cases', () => {
+test('keeps rooted partial trees when standing follows a recognized course', () => {
+  const result = parsePrerequisiteText('MATH 221 and graduate/professional standing', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] and [STANDING]');
+});
+
+test('keeps rooted partial trees when standing is an OR leaf with a recognized course', () => {
+  const result = parsePrerequisiteText('MATH 221 or graduate/professional standing', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] or [STANDING]');
+});
+
+test('keeps standing plus opaque AND expressions conservative without a course anchor', () => {
+  const result = parsePrerequisiteText('graduate/professional standing and department permission', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.rootNodeId, null);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 0);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, '[STANDING] and department permission');
+});
+
+test('keeps standing plus special-clause OR expressions conservative without a course anchor', () => {
+  const result = parsePrerequisiteText('graduate/professional standing or concurrent enrollment', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.rootNodeId, null);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONCURRENT).length, 0);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, '[STANDING] or concurrent enrollment');
+});
+
+test('keeps rooted partial trees when a nested non-course boolean subtree attaches to a course branch', () => {
+  const result = parsePrerequisiteText('(graduate/professional standing or consent of instructor) and MATH 221', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.OR).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([STANDING] or consent of instructor) and [COURSE]');
+});
+
+test('composes an existing mixed AND subtree with another course sibling into a rooted partial tree', () => {
+  const result = parsePrerequisiteText('(MATH 221 and graduate/professional standing) and MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.AND).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([COURSE] and [STANDING]) and [COURSE]');
+});
+
+test('composes a trailing mixed AND subtree with another course sibling into a rooted partial tree', () => {
+  const result = parsePrerequisiteText('MATH 222 and (MATH 221 and consent of instructor)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.AND).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '[COURSE] and ([COURSE] and consent of instructor)');
+});
+
+test('composes an existing mixed OR subtree with another course sibling into a rooted partial tree', () => {
+  const result = parsePrerequisiteText('(MATH 221 or consent of instructor) or MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.OR).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([COURSE] or consent of instructor) or [COURSE]');
+});
+
+test('parses repeated AND course clauses into a rooted AND tree', () => {
   const result = parsePrerequisiteText('MATH 221 and MATH 222', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
     courseId: '005500',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221', 'MATH 222'],
   );
-  assert.equal(result.unparsedText, '[COURSE] and [COURSE]');
+  assert.equal(result.edges.length, 2);
 });
 
-test('keeps unresolved repeated OR text for multi-course partial cases', () => {
+test('keeps unique node ids for parenthesized course leaf clauses', () => {
+  for (const [text, rootType] of [
+    ['(MATH 221) and (MATH 222)', NODE_TYPE.AND],
+    ['(MATH 221) or (MATH 222)', NODE_TYPE.OR],
+  ]) {
+    const result = parsePrerequisiteText(text, {
+      courseDesignation: 'MATH 500',
+      termCode: '1272',
+      courseId: '005500',
+    });
+
+    assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+    assert.equal(result.unparsedText, null);
+    assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, rootType);
+    assert.deepEqual(
+      result.nodes
+        .filter((node) => node.node_type === NODE_TYPE.COURSE)
+        .map((node) => node.normalized_value),
+      ['MATH 221', 'MATH 222'],
+    );
+    assert.equal(new Set(result.nodes.map((node) => node.id)).size, result.nodes.length);
+    assert.deepEqual(
+      result.edges.filter((edge) => edge.source === result.rootNodeId).map((edge) => edge.target).sort(),
+      result.nodes
+        .filter((node) => node.node_type === NODE_TYPE.COURSE)
+        .map((node) => node.id)
+        .sort(),
+    );
+  }
+});
+
+test('parses parenthesized explicit OR course clauses across subjects into a rooted tree', () => {
+  const result = parsePrerequisiteText('(MATH 221) or (LAW 742)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'LAW 742'],
+  );
+  assert.equal(result.edges.length, 2);
+});
+
+test('parses repeated OR course clauses into a rooted OR tree', () => {
   const result = parsePrerequisiteText('MATH 221 or MATH 222 or MATH 223', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
     courseId: '005500',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221', 'MATH 222', 'MATH 223'],
   );
-  assert.equal(result.unparsedText, '[COURSE] or [COURSE] or [COURSE]');
+  assert.equal(result.edges.length, 3);
+});
+
+test('parses nested course-only expression mixing a structured subtree with a direct course leaf into nested rooted trees', () => {
+  const result = parsePrerequisiteText('(MATH 221 or MATH 222) and MATH 223', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'MATH 222', 'MATH 223'],
+  );
+  assert.equal(result.edges.length, 4);
+});
+
+test('parses cross-subject course-only clauses into a rooted AND tree', () => {
+  const result = parsePrerequisiteText('MATH 221 and LAW 742', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'LAW 742'],
+  );
+  assert.equal(result.edges.length, 2);
+});
+
+test('parses cross-subject nested course-only clauses into nested rooted trees', () => {
+  for (const [text, expectedCourses, expectedEdges] of [
+    ['(MATH 221 and MATH 222) and LAW 742', ['MATH 221', 'MATH 222', 'LAW 742'], 4],
+    ['MATH 221 and (LAW 742 or LAW 650)', ['MATH 221', 'LAW 742', 'LAW 650'], 4],
+  ]) {
+    const result = parsePrerequisiteText(text, {
+      courseDesignation: 'MATH 500',
+      termCode: '1272',
+      courseId: '005500',
+    });
+
+    assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+    assert.ok(result.rootNodeId);
+    assert.equal(result.unparsedText, null);
+    assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+    assert.deepEqual(
+      result.nodes
+        .filter((node) => node.node_type === NODE_TYPE.COURSE)
+        .map((node) => node.normalized_value),
+      expectedCourses,
+    );
+    assert.equal(result.edges.length, expectedEdges);
+  }
 });
 
 test('keeps unresolved separator text for standing comma course partial cases', () => {
@@ -185,33 +442,118 @@ test('keeps connective text when opaque text precedes a recognized course', () =
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, 'Declared in program X or [COURSE]');
 });
 
-test('keeps connective text when opaque text follows a recognized course', () => {
-  const result = parsePrerequisiteText('MATH 221 and consent of instructor', {
+test('keeps rooted partial trees when generic opaque text follows a recognized course in AND clauses', () => {
+  const result = parsePrerequisiteText('MATH 221 and member of engineering guest students', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
     courseId: '005500',
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] and member of engineering guest students');
+});
+
+test('keeps rooted partial trees when generic opaque text follows a recognized course in OR clauses', () => {
+  const result = parsePrerequisiteText('MATH 221 or member of engineering guest students', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] or member of engineering guest students');
+});
+
+test('keeps rooted partial trees when generic opaque text follows a recognized course in other AND clauses', () => {
+  const result = parsePrerequisiteText('MATH 221 and department permission', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] and department permission');
+});
+
+test('keeps connective text when opaque text follows a recognized course', () => {
+  const result = parsePrerequisiteText('MATH 221 and   consent   of   instructor', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.nodes.find((node) => node.node_type === NODE_TYPE.CONSENT)?.raw_value, 'consent   of   instructor');
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '[COURSE] and consent of instructor');
 });
 
-test('treats a lone recognized course as a fully parsed leaf', () => {
+test('keeps fully opaque special-clause OR expressions conservative', () => {
+  const result = parsePrerequisiteText('consent of instructor or concurrent enrollment', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.rootNodeId, null);
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, 'consent of instructor or concurrent enrollment');
+});
+
+test('keeps fully opaque parenthesized boolean prose conservative', () => {
+  const result = parsePrerequisiteText('(department permission) and (placement test)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.UNPARSED);
+  assert.equal(result.rootNodeId, null);
+  assert.deepEqual(result.nodes, []);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, '(department permission) and (placement test)');
+});
+
+test('treats a lone recognized course as a fully parsed leaf with its own rootNodeId', () => {
   const result = parsePrerequisiteText('MATH 221', {
     courseDesignation: 'MATH 500',
     termCode: '1272',
@@ -219,6 +561,7 @@ test('treats a lone recognized course as a fully parsed leaf', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.equal(result.rootNodeId, result.nodes[0]?.id ?? null);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -237,12 +580,16 @@ test('keeps connective text for trailing parenthesized opaque partials', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '[COURSE] and (placement test)');
 });
 
@@ -254,12 +601,16 @@ test('keeps connective text for leading parenthesized opaque partials', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '(placement test) or [COURSE]');
 });
 
@@ -504,18 +855,17 @@ test('keeps three-way slash subject alternatives with a shared number as a conse
   assert.deepEqual(result.edges, []);
 });
 
-test('keeps grouped course-only slash alternatives conservative while recognizing each course leaf', () => {
+test('parses grouped COMP SCI 577 course-only clauses into nested rooted trees', () => {
   const result = parsePrerequisiteText('(COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)', {
     courseDesignation: 'COMP SCI 577',
     termCode: '1272',
     courseId: '005577',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
-  assert.equal(
-    result.unparsedText,
-    '([COURSE]/[COURSE] or [COURSE]/[COURSE]/[COURSE]) and ([COURSE] or [COURSE])',
-  );
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -530,10 +880,10 @@ test('keeps grouped course-only slash alternatives conservative while recognizin
       'COMP SCI 400',
     ],
   );
-  assert.deepEqual(result.edges, []);
+  assert.equal(result.edges.length, 9);
 });
 
-test('keeps CS 577 prerequisite text conservative when escape clauses remain', () => {
+test('keeps full comp sci 577 prerequisite text conservative when escape clauses remain', () => {
   const result = parsePrerequisiteText('((COMP SCI/MATH 240 or COMP SCI/MATH/STAT 475) and (COMP SCI 367 or 400)) or graduate/professional standing or member of engineering guest students', {
     courseDesignation: 'COMP SCI 577',
     termCode: '1272',
@@ -541,11 +891,15 @@ test('keeps CS 577 prerequisite text conservative when escape clauses remain', (
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.equal(
     result.unparsedText,
     '(([COURSE]/[COURSE] or [COURSE]/[COURSE]/[COURSE]) and ([COURSE] or [COURSE])) or [STANDING] or member of engineering guest students',
   );
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.STANDING));
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.TEXT && /engineering guest students/i.test(node.raw_value)));
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -560,7 +914,25 @@ test('keeps CS 577 prerequisite text conservative when escape clauses remain', (
       'COMP SCI 400',
     ],
   );
-  assert.deepEqual(result.edges, []);
+  assert.equal(result.edges.length, 12);
+});
+
+test('keeps rooted partial trees when recursive mixed branches include opaque leaves', () => {
+  const result = parsePrerequisiteText('(MATH 221 or consent of instructor) and concurrent enrollment', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.OR).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONCURRENT).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([COURSE] or consent of instructor) and concurrent enrollment');
 });
 
 test('treats multi-word subject text as a parsed course leaf', () => {
@@ -712,10 +1084,11 @@ test('recognizes multi-word subject courses inside mixed expressions', () => {
     courseId: '003300',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'COMP SCI 200'));
   assert.ok(result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'MATH 221'));
-  assert.equal(result.unparsedText, '[COURSE] and [COURSE]');
+  assert.equal(result.unparsedText, null);
 });
 
 test('replaces placeholders at accepted match spans for multi-word subject courses', () => {
@@ -725,14 +1098,15 @@ test('replaces placeholders at accepted match spans for multi-word subject cours
     courseId: '003300',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['COMP SCI 200', 'SCI 200'],
   );
-  assert.equal(result.unparsedText, '[COURSE] and [COURSE]');
+  assert.equal(result.unparsedText, null);
 });
 
 test('preserves raw spacing for a lone recognized course', () => {
@@ -847,8 +1221,9 @@ test('preserves connective text in partial skeletons when source spacing expands
     courseId: '005500',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
-  assert.equal(result.unparsedText, '[COURSE] and [COURSE]');
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
 });
 
 test('preserves full rhs raw slice when simple OR fast path has an explicit subject', () => {
@@ -912,7 +1287,8 @@ test('does not fabricate an OR-tail course node inside grouped mixed expressions
     courseId: '005500',
   });
 
-  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
@@ -920,7 +1296,7 @@ test('does not fabricate an OR-tail course node inside grouped mixed expressions
     ['MATH 221', 'ITALIAN 204', 'ITALIAN 205'],
   );
   assert.ok(!result.nodes.some((node) => node.node_type === NODE_TYPE.COURSE && node.normalized_value === 'OR 205'));
-  assert.equal(result.unparsedText, '[COURSE] and ([COURSE] OR [COURSE])');
+  assert.equal(result.unparsedText, null);
 });
 
 test('recognizes grouped shorthand courses inside standing partials', () => {

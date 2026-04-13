@@ -99,6 +99,271 @@ function isAliasLikeParentheticalNote(text) {
     || /\bequivalent\b/i.test(normalized);
 }
 
+function buildTreeIndex(parsedRule) {
+  const nodesById = new Map(parsedRule.nodes.map((node) => [node.id, node]));
+  const outgoingEdgesBySourceId = new Map();
+
+  for (const edge of parsedRule.edges) {
+    const edges = outgoingEdgesBySourceId.get(edge.source) ?? [];
+    edges.push(edge);
+    outgoingEdgesBySourceId.set(edge.source, edges);
+  }
+
+  const childrenBySourceId = new Map();
+  for (const [sourceId, edges] of outgoingEdgesBySourceId.entries()) {
+    childrenBySourceId.set(
+      sourceId,
+      edges
+        .slice()
+        .sort((leftEdge, rightEdge) => {
+          const leftOrder = leftEdge.sort_order ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder = rightEdge.sort_order ?? Number.MAX_SAFE_INTEGER;
+          return leftOrder - rightOrder;
+        })
+        .map((edge) => edge.target),
+    );
+  }
+
+  return {
+    nodesById,
+    childrenBySourceId,
+  };
+}
+
+function normalizePathReduction(reduction) {
+  if (reduction.kind === 'option') {
+    return {
+      kind: 'path',
+      courseGroups: [reduction.courses],
+      escapeClauses: [],
+      isPartial: false,
+    };
+  }
+
+  return reduction;
+}
+
+function createEscapeReduction(clauses, operator) {
+  const escapeClauses = clauses.filter(Boolean);
+  if (escapeClauses.length === 0) {
+    return { kind: 'opaque' };
+  }
+
+  if (escapeClauses.length === 1) {
+    return {
+      kind: 'escape',
+      escapeClauses,
+    };
+  }
+
+  return {
+    kind: 'escape',
+    escapeClauses: [normalizeEscapeClauseText(stripOuterParentheses(escapeClauses.join(` ${operator} `)))],
+  };
+}
+
+function hasUnsafeCourseBearingResidue(parsedRule, treeSummary) {
+  if (parsedRule.parseStatus !== PARSE_STATUS.PARTIAL || !parsedRule.unparsedText) {
+    return false;
+  }
+
+  const normalizedText = parsedRule.unparsedText.replace(/\[COURSE\]/g, '').trim();
+  if (!normalizedText) {
+    return false;
+  }
+
+  const escapeClauseSet = new Set(treeSummary.escapeClauses.map((clause) => normalizeEscapeClauseText(clause).toLowerCase()));
+  const residueClauses = splitTopLevel(normalizedText, 'or')
+    .map((clause) => ({
+      rawClause: stripOuterParentheses(clause).trim(),
+      normalizedClause: normalizeEscapeClauseText(stripOuterParentheses(clause)),
+    }))
+    .filter(({ normalizedClause }) => Boolean(normalizedClause));
+
+  return residueClauses.some(({ rawClause, normalizedClause }) => {
+    if (escapeClauseSet.has(normalizedClause.toLowerCase())) {
+      return false;
+    }
+
+    if (/^\d{3}[A-Z]?$/i.test(normalizedClause)) {
+      return true;
+    }
+
+    return !/[,:;.]\s*$/.test(rawClause) && looksCourseBearingClause(normalizedClause);
+  });
+}
+
+function summarizeTreeNode(nodeId, treeIndex) {
+  const node = treeIndex.nodesById.get(nodeId);
+  if (!node) {
+    return { kind: 'opaque' };
+  }
+
+  if (node.node_type === NODE_TYPE.COURSE) {
+    return {
+      kind: 'option',
+      courses: [node.normalized_value],
+    };
+  }
+
+  if (![NODE_TYPE.AND, NODE_TYPE.OR].includes(node.node_type)) {
+    const clause = normalizeEscapeClauseText(node.raw_value ?? node.normalized_value ?? '');
+    if (!clause) {
+      return { kind: 'opaque' };
+    }
+
+    if ([NODE_TYPE.STANDING, NODE_TYPE.CONCURRENT].includes(node.node_type)) {
+      return {
+        kind: 'escape',
+        escapeClauses: [clause],
+      };
+    }
+
+    if (node.node_type === NODE_TYPE.CONSENT || /\bapproval\b/i.test(clause)) {
+      return {
+        kind: 'opaqueNonCourseLeaf',
+        text: clause,
+      };
+    }
+
+    if (looksCourseBearingClause(clause) || /^\d{3}[A-Z]?$/i.test(clause)) {
+      return { kind: 'opaqueCourseBearingLeaf' };
+    }
+
+    if (/\bmember of\b/i.test(clause) || /\d/.test(clause)) {
+      return {
+        kind: 'escape',
+        escapeClauses: [clause],
+      };
+    }
+
+    return {
+      kind: 'opaqueNonCourseLeaf',
+      text: clause,
+    };
+  }
+
+  const childIds = treeIndex.childrenBySourceId.get(nodeId) ?? [];
+  if (childIds.length === 0) {
+    return { kind: 'opaque' };
+  }
+
+  const childReductions = childIds.map((childId) => summarizeTreeNode(childId, treeIndex));
+  if (childReductions.some((reduction) => reduction.kind === 'opaque')) {
+    return { kind: 'opaque' };
+  }
+
+  const operator = (node.raw_value ?? node.normalized_value ?? node.node_type).toLowerCase();
+
+  if (node.node_type === NODE_TYPE.AND) {
+    if (childReductions.every((reduction) => ['escape', 'opaqueNonCourseLeaf'].includes(reduction.kind))) {
+      return createEscapeReduction(
+        childReductions.flatMap((reduction) => reduction.kind === 'escape'
+          ? reduction.escapeClauses
+          : [reduction.text]),
+        operator,
+      );
+    }
+
+    if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
+      return { kind: 'opaque' };
+    }
+
+    const pathChildren = childReductions
+      .filter((reduction) => reduction.kind !== 'escape')
+      .filter((reduction) => reduction.kind !== 'opaqueNonCourseLeaf')
+      .map(normalizePathReduction);
+
+    if (pathChildren.length === 0) {
+      return { kind: 'opaque' };
+    }
+
+    if (pathChildren.some((reduction) => reduction.escapeClauses.length > 0)) {
+      return { kind: 'opaque' };
+    }
+
+    return {
+      kind: 'path',
+      courseGroups: pathChildren.flatMap((reduction) => reduction.courseGroups),
+      escapeClauses: [],
+      isPartial: childReductions.some((reduction) => ['escape', 'opaqueNonCourseLeaf'].includes(reduction.kind))
+        || pathChildren.some((reduction) => reduction.isPartial),
+    };
+  }
+
+  if (childReductions.every((reduction) => reduction.kind === 'escape')) {
+    return createEscapeReduction(
+      childReductions.flatMap((reduction) => reduction.escapeClauses),
+      operator,
+    );
+  }
+
+  if (childReductions.every((reduction) => reduction.kind === 'option')) {
+    return {
+      kind: 'option',
+      courses: childReductions.flatMap((reduction) => reduction.courses),
+    };
+  }
+
+  if (childReductions.some((reduction) => reduction.kind === 'opaqueNonCourseLeaf')) {
+    return { kind: 'opaque' };
+  }
+
+  if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
+    return { kind: 'opaque' };
+  }
+
+  const pathChildren = childReductions
+    .filter((reduction) => reduction.kind !== 'escape')
+    .filter((reduction) => reduction.kind !== 'opaqueCourseBearingLeaf')
+    .map(normalizePathReduction);
+
+  if (pathChildren.length !== 1) {
+    return { kind: 'opaque' };
+  }
+
+  return {
+    kind: 'path',
+    courseGroups: pathChildren[0].courseGroups,
+    escapeClauses: [
+      ...pathChildren[0].escapeClauses,
+      ...childReductions.flatMap((reduction) => reduction.kind === 'escape' ? reduction.escapeClauses : []),
+    ],
+    isPartial: true,
+  };
+}
+
+function summarizeTreeRoot(parsedRule) {
+  if (!parsedRule.rootNodeId) {
+    return null;
+  }
+
+  const reduction = normalizePathReduction(summarizeTreeNode(parsedRule.rootNodeId, buildTreeIndex(parsedRule)));
+  if (reduction.kind === 'escape') {
+    return {
+      courseGroups: [],
+      escapeClauses: reduction.escapeClauses,
+      summaryStatus: 'partial',
+    };
+  }
+
+  if (reduction.kind !== 'path' || reduction.courseGroups.length === 0) {
+    return null;
+  }
+
+  const treeSummary = {
+    courseGroups: reduction.courseGroups,
+    escapeClauses: reduction.escapeClauses,
+    summaryStatus: reduction.escapeClauses.length > 0 || reduction.isPartial ? 'partial' : 'structured',
+  };
+
+  if (hasUnsafeCourseBearingResidue(parsedRule, treeSummary)) {
+    return null;
+  }
+
+  return treeSummary;
+}
+
 function summarizeParsedCourseGraph(parsedRule) {
   const courseNodes = parsedRule.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE);
 
@@ -139,13 +404,25 @@ function summarizeGroupedCoursePath(parsedRule) {
     return null;
   }
 
-  const courseSkeleton = stripOuterParentheses(topLevelOrClauses[courseClauseIndex]);
-  const hasExplicitGrouping = courseSkeleton !== topLevelOrClauses[courseClauseIndex] || /\bor\b/i.test(courseSkeleton);
-  if (!hasExplicitGrouping) {
+  if (siblingClauses.some((clause) => {
+    const strippedClause = stripOuterParentheses(clause);
+    return splitTopLevel(strippedClause, 'and').length > 1 || splitTopLevel(strippedClause, 'or').length > 1;
+  })) {
     return null;
   }
 
+  const rawCourseClause = topLevelOrClauses[courseClauseIndex];
+  const courseSkeleton = stripOuterParentheses(rawCourseClause);
   const groupClauses = splitTopLevel(courseSkeleton, 'and');
+  const hasTopLevelOrGroup = splitTopLevel(courseSkeleton, 'or').length > 1;
+  const hasExplicitGroupedPath = groupClauses.length > 1 && groupClauses.some((groupClause) => {
+    const strippedGroupClause = stripOuterParentheses(groupClause);
+    return strippedGroupClause !== groupClause || splitTopLevel(strippedGroupClause, 'or').length > 1;
+  });
+  const hasExplicitGrouping = hasTopLevelOrGroup || hasExplicitGroupedPath;
+  if (!hasExplicitGrouping) {
+    return null;
+  }
 
   if (groupClauses.length === 0) {
     return null;
@@ -155,8 +432,13 @@ function summarizeGroupedCoursePath(parsedRule) {
   let courseIndex = 0;
 
   for (const groupClause of groupClauses) {
-    const optionClauses = splitTopLevel(stripOuterParentheses(groupClause), 'or');
+    const strippedGroupClause = stripOuterParentheses(groupClause);
+    const optionClauses = splitTopLevel(strippedGroupClause, 'or');
     if (optionClauses.length === 0) {
+      return null;
+    }
+
+    if (optionClauses.length === 1 && !isCoursePlaceholderListClause(strippedGroupClause)) {
       return null;
     }
 
@@ -377,6 +659,20 @@ export function summarizePrerequisiteForAi(parsedRule, { rawText } = {}) {
   };
 
   if (!parsedRule) {
+    return summary;
+  }
+
+  if (parsedRule.rootNodeId) {
+    const treeSummary = summarizeTreeRoot(parsedRule);
+    if (treeSummary) {
+      return {
+        ...summary,
+        summaryStatus: treeSummary.summaryStatus,
+        courseGroups: treeSummary.courseGroups,
+        escapeClauses: treeSummary.escapeClauses,
+      };
+    }
+
     return summary;
   }
 

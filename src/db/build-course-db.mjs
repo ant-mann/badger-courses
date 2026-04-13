@@ -64,10 +64,7 @@ function buildPrerequisiteRows(courseRows) {
 
     const parsed = parsePrerequisiteText(rawText);
     const ruleId = `rule:${courseRow.term_code}:${courseRow.course_id}`;
-    const rootNodeId =
-      parsed.parseStatus === PARSE_STATUS.PARSED && parsed.nodes.length > 0
-        ? parsed.nodes[0].id
-        : null;
+    const rootNodeId = parsed.rootNodeId ?? null;
 
     rules.push(
       makePrerequisiteRuleRow({
