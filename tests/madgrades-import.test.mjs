@@ -691,7 +691,6 @@ test('runMadgradesImport loads the latest saved snapshot into SQLite overview vi
         same_course_prior_offering_count,
         same_course_student_count,
         same_course_gpa,
-        instructor_overall_gpa,
         course_historical_gpa,
         instructor_match_status
       FROM current_term_section_instructor_grade_overview_v
@@ -704,7 +703,6 @@ test('runMadgradesImport loads the latest saved snapshot into SQLite overview vi
       same_course_prior_offering_count: 2,
       same_course_student_count: 60,
       same_course_gpa: 3.433333333333333,
-      instructor_overall_gpa: 3.3,
       course_historical_gpa: 3.433333333333333,
       instructor_match_status: 'matched',
     });
