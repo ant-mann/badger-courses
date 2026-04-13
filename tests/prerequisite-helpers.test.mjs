@@ -202,6 +202,57 @@ test('keeps rooted partial trees when a nested non-course boolean subtree attach
   assert.equal(result.unparsedText, '([STANDING] or consent of instructor) and [COURSE]');
 });
 
+test('composes an existing mixed AND subtree with another course sibling into a rooted partial tree', () => {
+  const result = parsePrerequisiteText('(MATH 221 and graduate/professional standing) and MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.AND).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([COURSE] and [STANDING]) and [COURSE]');
+});
+
+test('composes a trailing mixed AND subtree with another course sibling into a rooted partial tree', () => {
+  const result = parsePrerequisiteText('MATH 222 and (MATH 221 and consent of instructor)', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.AND).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '[COURSE] and ([COURSE] and consent of instructor)');
+});
+
+test('composes an existing mixed OR subtree with another course sibling into a rooted partial tree', () => {
+  const result = parsePrerequisiteText('(MATH 221 or consent of instructor) or MATH 222', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.OR).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 2);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONSENT).length, 1);
+  assert.equal(result.edges.length, 4);
+  assert.equal(result.unparsedText, '([COURSE] or consent of instructor) or [COURSE]');
+});
+
 test('parses repeated AND course clauses into a rooted AND tree', () => {
   const result = parsePrerequisiteText('MATH 221 and MATH 222', {
     courseDesignation: 'MATH 500',

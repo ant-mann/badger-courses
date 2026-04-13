@@ -997,6 +997,13 @@ function isAttachableNonCourseStructuredSubtree(result) {
     && !hasCourseBearingStructuredAnchor(result);
 }
 
+function isStructuredBooleanSubtree(result) {
+  return Boolean(result?.rootNodeId)
+    && result.nodes.some((node) => node.id === result.rootNodeId && (
+      node.node_type === NODE_TYPE.AND || node.node_type === NODE_TYPE.OR
+    ));
+}
+
 function hasPotentialCourseBearingSiblingPart(rawText) {
   const structuredChild = parseStructuredCourseExpression(rawText);
   if (structuredChild && hasCourseBearingStructuredAnchor(structuredChild)) {
@@ -1077,6 +1084,27 @@ function parseGroupedNonCourseStructuredSubtree(text) {
   );
 }
 
+function parseGroupedStructuredSubtree(text) {
+  const sourceText = text ?? '';
+  const unwrappedText = stripOneOuterParenthesisPair(sourceText);
+  if (!unwrappedText) {
+    return null;
+  }
+
+  const groupedResult = parseStructuredCourseExpression(unwrappedText.rawInnerText);
+  if (!groupedResult?.rootNodeId) {
+    return null;
+  }
+
+  return createResult(
+    groupedResult.parseStatus,
+    getStructuredDisplayText(sourceText),
+    groupedResult.nodes,
+    groupedResult.edges,
+    groupedResult.rootNodeId,
+  );
+}
+
 function canAttachStructuredExpression(splitExpression, childResults) {
   const allChildrenAttachable = splitExpression.operator === NODE_TYPE.OR
     ? childResults.every((result) => result.rootNodeId || isDirectSlashCourseLeaf(result))
@@ -1088,6 +1116,10 @@ function canAttachStructuredExpression(splitExpression, childResults) {
 
   if (!childResults.some(hasCourseBearingStructuredAnchor)) {
     return false;
+  }
+
+  if (childResults.some(isStructuredBooleanSubtree)) {
+    return true;
   }
 
   if (childResults.some(isAttachableNonCourseStructuredSubtree)) {
@@ -1262,9 +1294,15 @@ function parseStructuredCourseExpression(text) {
 
     const part = splitExpression.parts[index];
     if (hasCourseBearingSibling) {
-      const groupedStructuredChild = parseGroupedNonCourseStructuredSubtree(part.rawText);
+      const groupedStructuredChild = parseGroupedStructuredSubtree(part.rawText);
       if (groupedStructuredChild) {
         childResults[index] = groupedStructuredChild;
+        continue;
+      }
+
+      const groupedNonCourseStructuredChild = parseGroupedNonCourseStructuredSubtree(part.rawText);
+      if (groupedNonCourseStructuredChild) {
+        childResults[index] = groupedNonCourseStructuredChild;
         continue;
       }
     }
