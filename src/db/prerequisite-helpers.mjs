@@ -875,7 +875,7 @@ function parseRecognizedPrerequisiteText(text) {
   );
 
   if (recognizedMatches.length === 1 && (!unparsedText || isSingleRecognizedPlaceholder(unparsedText))) {
-    return createResult(PARSE_STATUS.PARSED, null, nodes, []);
+    return createResult(PARSE_STATUS.PARSED, null, nodes, [], nodes[0].id);
   }
 
   return createResult(
@@ -931,8 +931,7 @@ function canStructureCourseExpression(splitExpression, childResults) {
   }
 
   if (splitExpression.operator === NODE_TYPE.AND && childResults.every(isParsedCourseOnlyResult)) {
-    const subjects = childResults.flatMap(getCourseSubjectsFromResult);
-    return subjects.length > 0 && new Set(subjects).size === 1;
+    return true;
   }
 
   if (splitExpression.operator === NODE_TYPE.OR && childResults.every(isDirectSlashCourseLeaf)) {
