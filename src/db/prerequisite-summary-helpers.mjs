@@ -292,7 +292,24 @@ function summarizeTreeNode(nodeId, treeIndex) {
   }
 
   if (childReductions.some((reduction) => reduction.kind === 'opaqueNonCourseLeaf')) {
-    return { kind: 'opaque' };
+    if (childReductions.some((reduction) => reduction.kind === 'escape' || reduction.kind === 'opaqueCourseBearingLeaf')) {
+      return { kind: 'opaque' };
+    }
+
+    const pathChildren = childReductions
+      .filter((reduction) => reduction.kind !== 'opaqueNonCourseLeaf')
+      .map(normalizePathReduction);
+
+    if (pathChildren.length !== 1 || pathChildren[0].escapeClauses.length > 0) {
+      return { kind: 'opaque' };
+    }
+
+    return {
+      kind: 'path',
+      courseGroups: pathChildren[0].courseGroups,
+      escapeClauses: [],
+      isPartial: true,
+    };
   }
 
   if (childReductions.some((reduction) => reduction.kind === 'opaqueCourseBearingLeaf')) {
