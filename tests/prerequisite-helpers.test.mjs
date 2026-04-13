@@ -207,6 +207,26 @@ test('parses repeated OR course clauses into a rooted tree', () => {
   assert.equal(result.edges.length, 3);
 });
 
+test('parses nested course-only expression mixing a structured subtree with a direct course leaf', () => {
+  const result = parsePrerequisiteText('(MATH 221 or MATH 222) and MATH 223', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.unparsedText, null);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.deepEqual(
+    result.nodes
+      .filter((node) => node.node_type === NODE_TYPE.COURSE)
+      .map((node) => node.normalized_value),
+    ['MATH 221', 'MATH 222', 'MATH 223'],
+  );
+  assert.equal(result.edges.length, 4);
+});
+
 test('keeps unresolved separator text for standing comma course partial cases', () => {
   const result = parsePrerequisiteText('Graduate/professional standing, LAW 742', {
     courseDesignation: 'ACCT I S 724',

@@ -898,6 +898,22 @@ function isSafeStructuredCourseLeaf(result) {
   return /^\[COURSE\](?:\s*\/\s*\[COURSE\])*$/.test(result.unparsedText ?? '');
 }
 
+function isParsedCourseOnlyResult(result) {
+  return result?.parseStatus === PARSE_STATUS.PARSED
+    && result.nodes.every((node) => (
+      node.node_type === NODE_TYPE.COURSE
+      || node.node_type === NODE_TYPE.AND
+      || node.node_type === NODE_TYPE.OR
+    ));
+}
+
+function getCourseSubjectsFromResult(result) {
+  return result.nodes
+    .filter((node) => node.node_type === NODE_TYPE.COURSE)
+    .map((node) => getCourseSubject(node.normalized_value))
+    .filter(Boolean);
+}
+
 function isDirectSingleCourseLeaf(result) {
   return result.parseStatus === PARSE_STATUS.PARSED
     && !result.rootNodeId
@@ -912,6 +928,11 @@ function isDirectSlashCourseLeaf(result) {
 function canStructureCourseExpression(splitExpression, childResults) {
   if (childResults.every((result) => result.rootNodeId)) {
     return true;
+  }
+
+  if (splitExpression.operator === NODE_TYPE.AND && childResults.every(isParsedCourseOnlyResult)) {
+    const subjects = childResults.flatMap(getCourseSubjectsFromResult);
+    return subjects.length > 0 && new Set(subjects).size === 1;
   }
 
   if (splitExpression.operator === NODE_TYPE.OR && childResults.every(isDirectSlashCourseLeaf)) {
