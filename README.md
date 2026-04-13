@@ -25,24 +25,47 @@ The long-term goal is a **web application** that lets any UW–Madison student m
 ```
 uw-madison-courses/
 ├── data/
-│   ├── fall-2026-courses.json          # Raw course records (extracted)
-│   └── fall-2026.sqlite                # Built SQLite database
+│   ├── fall-2026-courses.json                  # Raw course records (extracted)
+│   ├── fall-2026-enrollment-packages.json      # Per-course package snapshots (optional)
+│   ├── fall-2026.sqlite                        # Built SQLite database
+│   └── madgrades/                              # Cached Madgrades API snapshots
+│       └── <snapshot-id>/                      # One folder per snapshot run
 ├── docs/
-│   ├── querying-course-db.md           # SQL reference and example queries
-│   └── superpowers/                    # Agent plans and specs
+│   ├── querying-course-db.md                   # SQL reference and example queries
+│   └── superpowers/                            # Agent plans and specs
 ├── scripts/
-│   ├── extract-fall-2026-courses.mjs   # Playwright-based course extractor
-│   └── schedule-options.mjs            # Schedule combination generator
+│   ├── extract-fall-2026-courses.mjs           # Playwright-based course extractor
+│   ├── import-madgrades.mjs                    # Madgrades historical grade importer
+│   └── schedule-options.mjs                    # Schedule combination generator
 ├── src/
-│   ├── extractor-helpers.mjs           # API request/response utilities
-│   └── db/
-│       ├── build-course-db.mjs         # Database builder (JSON → SQLite)
-│       ├── import-helpers.mjs          # Row-normalization helpers
-│       ├── schedule-helpers.mjs        # Time/day/distance utilities
-│       └── schema.sql                  # Full DB schema (tables, views, indexes)
+│   ├── extractor-helpers.mjs                   # API request/response utilities
+│   ├── db/
+│   │   ├── build-course-db.mjs                 # Database builder (JSON → SQLite)
+│   │   ├── import-helpers.mjs                  # Row-normalization helpers
+│   │   ├── prerequisite-helpers.mjs            # Prerequisite text parser
+│   │   ├── prerequisite-summary-helpers.mjs    # AI-friendly prerequisite summaries
+│   │   ├── schedule-helpers.mjs                # Time/day/distance utilities
+│   │   └── schema.sql                          # Full DB schema (tables, views, indexes)
+│   └── madgrades/
+│       ├── api-client.mjs                      # Madgrades REST API client
+│       ├── import-helpers.mjs                  # Madgrades row-normalization helpers
+│       ├── import-runner.mjs                   # Orchestrates the full Madgrades import
+│       ├── match-helpers.mjs                   # Course/instructor fuzzy-matching logic
+│       └── snapshot-helpers.mjs                # Snapshot read/write utilities
 └── tests/
-    ├── extractor.test.mjs
     ├── db-import.test.mjs
+    ├── extractor.test.mjs
+    ├── helpers/
+    │   └── madgrades-db-fixture.mjs            # Shared DB fixture for Madgrades tests
+    ├── madgrades-api-client.test.mjs
+    ├── madgrades-cli.test.mjs
+    ├── madgrades-db.test.mjs
+    ├── madgrades-import.test.mjs
+    ├── madgrades-match-helpers.test.mjs
+    ├── madgrades-snapshot-helpers.test.mjs
+    ├── prerequisite-helpers.test.mjs
+    ├── prerequisite-summary-helpers.test.mjs
+    ├── schedule-helpers.test.mjs
     └── schedule-options.test.mjs
 ```
 
@@ -83,7 +106,21 @@ npm run build:course-db
 
 This creates all tables, canonical de-duplication views, and pre-computes schedule-planning fields (timezone-aware start/end minutes, days bitmasks, meeting summaries, etc.).
 
-### 3. Generate schedule options
+### 3. Import Madgrades historical grade data *(optional)*
+
+Enriches the database with historical GPA data from [Madgrades](https://madgrades.com/). Requires a free Madgrades API token.
+
+```bash
+# Re-import from the latest saved snapshot (no API call needed after the first run)
+npm run import:madgrades
+
+# Fetch a fresh snapshot from the Madgrades API and import it
+MADGRADES_API_TOKEN=<your-token> npm run import:madgrades -- --refresh-api
+```
+
+Snapshots are cached under `data/madgrades/` and can be re-imported at any time after rebuilding `data/fall-2026.sqlite`. Once imported, historical GPA data is available via `course_grade_overview_v`, `instructor_course_history_overview_v`, and `current_term_section_instructor_grade_overview_v`.
+
+### 4. Generate schedule options
 
 Finds conflict-free section combinations for a set of courses and ranks them.
 
@@ -129,7 +166,7 @@ Schedules are ranked by (in priority order): fewest campus days → latest start
 
 ## Using an AI with the Local Data
 
-After running steps 1 and 2 above you have everything an AI assistant needs to answer questions about UW–Madison courses.
+After running steps 1–2 (and optionally 3) above you have everything an AI assistant needs to answer questions about UW–Madison courses.
 
 **Recommended approach**
 
@@ -155,6 +192,7 @@ The SQLite database (`data/fall-2026.sqlite`) contains the following key tables 
 | Table | Description |
 |-------|-------------|
 | `courses` | One row per course (term + course ID) |
+| `course_cross_listings` | Cross-listing aliases for each course |
 | `packages` | Enrollment packages (section bundles) |
 | `sections` | Individual sections within a package |
 | `meetings` | Per-section meeting times and locations |
@@ -164,17 +202,39 @@ The SQLite database (`data/fall-2026.sqlite`) contains the following key tables 
 | `canonical_meetings` | De-duplicated meetings with precomputed local times |
 | `schedulable_packages` | Pre-aggregated package rows for fast schedule search |
 | `refresh_runs` | Snapshot metadata (when the DB was last built) |
+| `prerequisite_rules` | Raw prerequisite text + parse status |
+| `prerequisite_nodes` / `prerequisite_edges` | Parsed prerequisite AST |
+| `prerequisite_course_summaries` | AI-friendly course-group summaries |
+
+### Madgrades Tables *(populated after `npm run import:madgrades`)*
+
+| Table | Description |
+|-------|-------------|
+| `madgrades_courses` | Madgrades course records |
+| `madgrades_instructors` | Madgrades instructor records |
+| `madgrades_course_grades` | Per-term course-level GPA summaries |
+| `madgrades_course_offerings` | Per-term instructor-section grade rows |
+| `madgrades_course_grade_distributions` / `madgrades_instructor_grade_distributions` | Letter-grade breakdowns |
+| `madgrades_instructor_grades` | Per-term instructor-level GPA summaries |
+| `madgrades_course_matches` / `madgrades_instructor_matches` | Match links between local and Madgrades records |
+| `madgrades_refresh_runs` | Madgrades snapshot metadata |
 
 ### Views
 
 | View | Description |
 |------|-------------|
 | `course_overview_v` | Course-level summary with section/availability counts |
+| `course_cross_listing_overview_v` | Cross-list alias → canonical course lookup |
 | `section_overview_v` | Canonical section rows with enrollment state |
 | `availability_v` | Package-level seat and waitlist status |
 | `schedule_planning_v` | Section + meeting + building joined for planning queries |
 | `online_courses_v` | Courses with any online/asynchronous package |
 | `schedule_candidates_v` | Alias of `schedulable_packages`; primary input to the schedule generator |
+| `prerequisite_rule_overview_v` | Raw prerequisite parse inspection |
+| `prerequisite_course_summary_overview_v` | AI-friendly prerequisite course groups |
+| `course_grade_overview_v` | Historical GPA baseline per course *(requires Madgrades import)* |
+| `instructor_course_history_overview_v` | Instructor history for a specific local course *(requires Madgrades import)* |
+| `current_term_section_instructor_grade_overview_v` | Current sections joined with instructor grade history *(requires Madgrades import)* |
 
 See [`docs/querying-course-db.md`](docs/querying-course-db.md) for example SQL queries.
 
