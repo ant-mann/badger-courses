@@ -348,27 +348,27 @@ test('summarizes a rooted partial OR case into course groups plus escape clauses
   });
 });
 
-test('keeps rooted OR summaries partial when a grouped course path is paired with instructor approval', () => {
+test('keeps rooted OR summaries opaque when a grouped course path is paired with instructor approval', () => {
   const rawText = '(MATH 221 or MATH 222) or instructor approval';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
   assert.deepEqual(summary, {
-    summaryStatus: 'partial',
-    courseGroups: [['MATH 221', 'MATH 222']],
+    summaryStatus: 'opaque',
+    courseGroups: [],
     escapeClauses: [],
     rawText,
   });
 });
 
-test('keeps rooted OR summaries partial when a grouped course path is paired with consent of instructor', () => {
+test('keeps rooted OR summaries opaque when a grouped course path is paired with consent of instructor', () => {
   const rawText = '(MATH 221 or MATH 222) or consent of instructor';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
   assert.deepEqual(summary, {
-    summaryStatus: 'partial',
-    courseGroups: [['MATH 221', 'MATH 222']],
+    summaryStatus: 'opaque',
+    courseGroups: [],
     escapeClauses: [],
     rawText,
   });
@@ -387,40 +387,40 @@ test('keeps rooted partial OR summaries opaque when unresolved course-bearing re
   });
 });
 
-test('keeps rooted OR summaries partial without escape clauses when the opaque leaf is consent', () => {
+test('keeps rooted OR summaries opaque when the opaque leaf is consent', () => {
   const rawText = 'MATH 221 or consent of instructor';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
   assert.deepEqual(summary, {
-    summaryStatus: 'partial',
-    courseGroups: [['MATH 221']],
+    summaryStatus: 'opaque',
+    courseGroups: [],
     escapeClauses: [],
     rawText,
   });
 });
 
-test('keeps rooted OR summaries partial without escape clauses when the opaque leaf is generic text', () => {
+test('keeps rooted OR summaries opaque when the opaque leaf is generic text', () => {
   const rawText = 'MATH 221 or instructor approval';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
   assert.deepEqual(summary, {
-    summaryStatus: 'partial',
-    courseGroups: [['MATH 221']],
+    summaryStatus: 'opaque',
+    courseGroups: [],
     escapeClauses: [],
     rawText,
   });
 });
 
-test('keeps rooted OR summaries partial without escape clauses when generic text remains opaque', () => {
+test('keeps rooted OR summaries opaque when generic text remains opaque', () => {
   const rawText = 'MATH 221 or program admission';
   const parsed = parsePrerequisiteText(rawText);
   const summary = summarizePrerequisiteForAi(parsed, { rawText });
 
   assert.deepEqual(summary, {
-    summaryStatus: 'partial',
-    courseGroups: [['MATH 221']],
+    summaryStatus: 'opaque',
+    courseGroups: [],
     escapeClauses: [],
     rawText,
   });
