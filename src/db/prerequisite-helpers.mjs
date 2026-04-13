@@ -821,7 +821,7 @@ function parseRecognizedPrerequisiteText(text) {
 
   const unwrappedText = stripOneOuterParenthesisPair(sourceText);
   if (unwrappedText) {
-    const innerResult = parsePrerequisiteText(unwrappedText.rawInnerText);
+    const innerResult = parsePrerequisiteTextInternal(unwrappedText.rawInnerText);
 
     if (innerResult.parseStatus === PARSE_STATUS.PARSED) {
       return innerResult;

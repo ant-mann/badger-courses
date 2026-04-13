@@ -137,6 +137,37 @@ test('parses repeated AND course clauses into a rooted tree', () => {
   assert.equal(result.edges.length, 2);
 });
 
+test('keeps unique node ids for parenthesized course leaf clauses', () => {
+  for (const [text, rootType] of [
+    ['(MATH 221) and (MATH 222)', NODE_TYPE.AND],
+    ['(MATH 221) or (MATH 222)', NODE_TYPE.OR],
+  ]) {
+    const result = parsePrerequisiteText(text, {
+      courseDesignation: 'MATH 500',
+      termCode: '1272',
+      courseId: '005500',
+    });
+
+    assert.equal(result.parseStatus, PARSE_STATUS.PARSED);
+    assert.equal(result.unparsedText, null);
+    assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, rootType);
+    assert.deepEqual(
+      result.nodes
+        .filter((node) => node.node_type === NODE_TYPE.COURSE)
+        .map((node) => node.normalized_value),
+      ['MATH 221', 'MATH 222'],
+    );
+    assert.equal(new Set(result.nodes.map((node) => node.id)).size, result.nodes.length);
+    assert.deepEqual(
+      result.edges.filter((edge) => edge.source === result.rootNodeId).map((edge) => edge.target).sort(),
+      result.nodes
+        .filter((node) => node.node_type === NODE_TYPE.COURSE)
+        .map((node) => node.id)
+        .sort(),
+    );
+  }
+});
+
 test('parses repeated OR course clauses into a rooted tree', () => {
   const result = parsePrerequisiteText('MATH 221 or MATH 222 or MATH 223', {
     courseDesignation: 'MATH 500',
