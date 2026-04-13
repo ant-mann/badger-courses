@@ -941,8 +941,9 @@ function isStructuredCourseRoot(result) {
     ));
 }
 
-function isStructuredBooleanResult(result) {
-  return Boolean(result?.rootNodeId)
+function isParsedStructuredBooleanResult(result) {
+  return result?.parseStatus === PARSE_STATUS.PARSED
+    && Boolean(result?.rootNodeId)
     && result.nodes.some((node) => node.id === result.rootNodeId && (
       node.node_type === NODE_TYPE.AND || node.node_type === NODE_TYPE.OR
     ));
@@ -959,6 +960,29 @@ function isParenthesizedOpaqueStructuredLeaf(result) {
     && Boolean(stripOneOuterParenthesisPair(result.nodes[0].raw_value));
 }
 
+function isPlainOpaqueStructuredLeaf(result) {
+  return isSingleLeafResult(result, NODE_TYPE.TEXT)
+    && !Boolean(stripOneOuterParenthesisPair(result.nodes[0].raw_value));
+}
+
+function isProseLikeOpaqueTextLeaf(result) {
+  if (!isPlainOpaqueStructuredLeaf(result)) {
+    return false;
+  }
+
+  const normalizedValue = result.nodes[0].normalized_value ?? '';
+  return /[a-z]/.test(normalizedValue) && normalizedValue.trim().split(/\s+/).length >= 2;
+}
+
+function isSimpleStructuredAnchorLeaf(result) {
+  return result?.rootNodeId && (
+    isSingleLeafResult(result, NODE_TYPE.COURSE)
+    || isSingleLeafResult(result, NODE_TYPE.STANDING)
+    || isSingleLeafResult(result, NODE_TYPE.CONSENT)
+    || isSingleLeafResult(result, NODE_TYPE.CONCURRENT)
+  );
+}
+
 function canAttachStructuredExpression(splitExpression, childResults) {
   const allChildrenAttachable = splitExpression.operator === NODE_TYPE.OR
     ? childResults.every((result) => result.rootNodeId || isDirectSlashCourseLeaf(result))
@@ -972,9 +996,19 @@ function canAttachStructuredExpression(splitExpression, childResults) {
     return true;
   }
 
-  return childResults.some(isStructuredBooleanResult)
+  if (
+    childResults.some(isParsedStructuredBooleanResult)
     || childResults.some(isSpecificOpaqueStructuredLeaf)
-    || childResults.some(isParenthesizedOpaqueStructuredLeaf);
+    || childResults.some(isParenthesizedOpaqueStructuredLeaf)
+  ) {
+    return true;
+  }
+
+  const plainOpaqueLeaves = childResults.filter(isProseLikeOpaqueTextLeaf);
+  return splitExpression.parts.length === 2
+    && plainOpaqueLeaves.length === 1
+    && childResults.filter((result) => !isProseLikeOpaqueTextLeaf(result)).length === 1
+    && childResults.filter((result) => !isProseLikeOpaqueTextLeaf(result)).every(isSimpleStructuredAnchorLeaf);
 }
 
 function canFullyParseStructuredExpression(splitExpression, childResults) {

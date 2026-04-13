@@ -343,13 +343,65 @@ test('keeps connective text when opaque text precedes a recognized course', () =
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, 'Declared in program X or [COURSE]');
+});
+
+test('keeps rooted partial trees when generic opaque text follows a recognized course in AND clauses', () => {
+  const result = parsePrerequisiteText('MATH 221 and member of engineering guest students', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] and member of engineering guest students');
+});
+
+test('keeps rooted partial trees when generic opaque text follows a recognized course in OR clauses', () => {
+  const result = parsePrerequisiteText('MATH 221 or member of engineering guest students', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] or member of engineering guest students');
+});
+
+test('keeps rooted partial trees when generic opaque text follows a recognized course in other AND clauses', () => {
+  const result = parsePrerequisiteText('MATH 221 and department permission', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.COURSE).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
+  assert.equal(result.unparsedText, '[COURSE] and department permission');
 });
 
 test('keeps connective text when opaque text follows a recognized course', () => {
