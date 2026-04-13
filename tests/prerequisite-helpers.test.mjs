@@ -363,12 +363,16 @@ test('keeps connective text for trailing parenthesized opaque partials', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.AND);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '[COURSE] and (placement test)');
 });
 
@@ -380,12 +384,16 @@ test('keeps connective text for leading parenthesized opaque partials', () => {
   });
 
   assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.ok(result.rootNodeId);
+  assert.equal(result.nodes.find((node) => node.id === result.rootNodeId)?.node_type, NODE_TYPE.OR);
   assert.deepEqual(
     result.nodes
       .filter((node) => node.node_type === NODE_TYPE.COURSE)
       .map((node) => node.normalized_value),
     ['MATH 221'],
   );
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 1);
+  assert.equal(result.edges.length, 2);
   assert.equal(result.unparsedText, '(placement test) or [COURSE]');
 });
 

@@ -953,6 +953,11 @@ function isSpecificOpaqueStructuredLeaf(result) {
     || isSingleLeafResult(result, NODE_TYPE.CONCURRENT);
 }
 
+function isParenthesizedOpaqueStructuredLeaf(result) {
+  return isSingleLeafResult(result, NODE_TYPE.TEXT)
+    && Boolean(stripOneOuterParenthesisPair(result.nodes[0].raw_value));
+}
+
 function canAttachStructuredExpression(splitExpression, childResults) {
   const allChildrenAttachable = splitExpression.operator === NODE_TYPE.OR
     ? childResults.every((result) => result.rootNodeId || isDirectSlashCourseLeaf(result))
@@ -966,7 +971,9 @@ function canAttachStructuredExpression(splitExpression, childResults) {
     return true;
   }
 
-  return childResults.some(isStructuredBooleanResult) || childResults.some(isSpecificOpaqueStructuredLeaf);
+  return childResults.some(isStructuredBooleanResult)
+    || childResults.some(isSpecificOpaqueStructuredLeaf)
+    || childResults.some(isParenthesizedOpaqueStructuredLeaf);
 }
 
 function canFullyParseStructuredExpression(splitExpression, childResults) {
