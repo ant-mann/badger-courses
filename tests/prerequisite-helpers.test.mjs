@@ -154,6 +154,36 @@ test('keeps rooted partial trees when standing is an OR leaf with a recognized c
   assert.equal(result.unparsedText, '[COURSE] or [STANDING]');
 });
 
+test('keeps standing plus opaque AND expressions conservative without a course anchor', () => {
+  const result = parsePrerequisiteText('graduate/professional standing and department permission', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.rootNodeId, null);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.TEXT).length, 0);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, '[STANDING] and department permission');
+});
+
+test('keeps standing plus special-clause OR expressions conservative without a course anchor', () => {
+  const result = parsePrerequisiteText('graduate/professional standing or concurrent enrollment', {
+    courseDesignation: 'MATH 500',
+    termCode: '1272',
+    courseId: '005500',
+  });
+
+  assert.equal(result.parseStatus, PARSE_STATUS.PARTIAL);
+  assert.equal(result.rootNodeId, null);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.STANDING).length, 1);
+  assert.equal(result.nodes.filter((node) => node.node_type === NODE_TYPE.CONCURRENT).length, 0);
+  assert.deepEqual(result.edges, []);
+  assert.equal(result.unparsedText, '[STANDING] or concurrent enrollment');
+});
+
 test('parses repeated AND course clauses into a rooted AND tree', () => {
   const result = parsePrerequisiteText('MATH 221 and MATH 222', {
     courseDesignation: 'MATH 500',

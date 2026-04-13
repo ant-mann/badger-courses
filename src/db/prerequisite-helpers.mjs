@@ -985,7 +985,6 @@ function isSimpleStructuredAnchorLeaf(result) {
 
 function hasCourseBearingStructuredAnchor(result) {
   return isSingleLeafResult(result, NODE_TYPE.COURSE)
-    || isSingleLeafResult(result, NODE_TYPE.STANDING)
     || isDirectSlashCourseLeaf(result)
     || result?.nodes?.some((node) => node.node_type === NODE_TYPE.COURSE);
 }
