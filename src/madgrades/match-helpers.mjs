@@ -31,6 +31,11 @@ function matchesSubjectCatalogPair(course, pair) {
     && normalizeMadgradesText(course?.number) === normalizeMadgradesText(pair?.catalogNumber);
 }
 
+function hasMatchingAlternateTitle(course, normalizedTitle) {
+  return Array.isArray(course?.names)
+    && course.names.some((name) => normalizeMadgradesText(name) === normalizedTitle);
+}
+
 export function matchLocalCourse(localCourse, madgradesCourses) {
   const subjectCatalogPairs = Array.isArray(localCourse.subjectCatalogPairs)
     ? localCourse.subjectCatalogPairs
@@ -48,7 +53,11 @@ export function matchLocalCourse(localCourse, madgradesCourses) {
   }
 
   if (pairCandidates.length === 1) {
-    if (normalizeMadgradesText(pairCandidates[0]?.name) !== normalizedTitle) {
+    const candidate = pairCandidates[0];
+    const titleMatches = normalizeMadgradesText(candidate?.name) === normalizedTitle;
+    const alternateTitleMatches = hasMatchingAlternateTitle(candidate, normalizedTitle);
+
+    if (!titleMatches && !alternateTitleMatches) {
       return buildCourseResult(localCourse, {
         matchStatus: 'unmatched',
         matchNote: 'Unique subject/code candidate did not match the normalized title',
@@ -58,7 +67,7 @@ export function matchLocalCourse(localCourse, madgradesCourses) {
     return buildCourseResult(localCourse, {
       matchStatus: 'matched',
       matchMethod: 'subject-code+catalog-number',
-      madgradesCourseUuid: pairCandidates[0].uuid,
+      madgradesCourseUuid: candidate.uuid,
     });
   }
 
