@@ -85,10 +85,14 @@ function loadCurrentSourceTermCode(db) {
 
 function normalizeMadgradesCourseForMatching(course) {
   const primarySubject = Array.isArray(course?.subjects) ? course.subjects[0] : null;
+  const normalizedSubjectAliases = Array.isArray(course?.subjects)
+    ? [...new Set(course.subjects.flatMap((subject) => [subject?.abbreviation, subject?.code].filter(Boolean)))]
+    : null;
 
   return {
     ...course,
     subject: course?.subject ?? primarySubject?.code ?? null,
+    subjectAliases: normalizedSubjectAliases,
     number: course?.number != null ? String(course.number) : null,
     name: course?.name ?? null,
   };

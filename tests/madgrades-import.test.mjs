@@ -2707,6 +2707,205 @@ test('runMadgradesImport with refreshApi matches cross-listed local courses thro
   }
 });
 
+test('runMadgradesImport with refreshApi preserves live subject metadata for secondary-subject matches', async () => {
+  const fixture = buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '017821',
+        subjectCode: '530',
+        catalogNumber: '532',
+        courseDesignation: 'ATM OCN 532',
+        title: 'Environmental Biophysics',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: '530',
+            courseId: '017821',
+          },
+          packages: [
+            {
+              id: 'atm-ocn-532-main',
+              termCode: '1272',
+              subjectCode: '530',
+              courseId: '017821',
+              enrollmentClassNumber: 53201,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 3,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 3,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 27,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 53201 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'IN PERSON',
+                  sessionCode: '1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 3,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 27,
+                  },
+                  instructors: [
+                    {
+                      name: { first: 'Ada', last: 'Lovelace' },
+                      email: 'ada@example.edu',
+                    },
+                  ],
+                  classMeetings: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-secondary-subject-live-'));
+  const { runMadgradesImport } = await loadImportRunner();
+  const fetchCalls = [];
+
+  const fetchImpl = async (url) => {
+    fetchCalls.push(url);
+
+    if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            uuid: 'course-atm-ocn-532',
+            number: '532',
+            name: 'Environmental Biophysics',
+            subjects: [
+              { code: '006', abbreviation: 'AGRONOMY' },
+              { code: '530', abbreviation: 'ATM OCN' },
+              { code: '900', abbreviation: 'SOIL SCI' },
+            ],
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+      return createJsonResponse({
+        results: [
+          {
+            id: 99,
+            name: 'Ada Lovelace',
+            url: 'https://example.test/api/instructors/99',
+          },
+        ],
+        currentPage: 1,
+        totalPages: 1,
+      });
+    }
+
+    if (url === 'https://example.test/api/courses/course-atm-ocn-532/grades') {
+      return createJsonResponse({
+        courseUuid: 'course-atm-ocn-532',
+        cumulative: { total: 30, aCount: 18, abCount: 6, bCount: 6 },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            cumulative: { total: 30, aCount: 18, abCount: 6, bCount: 6 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 18,
+                abCount: 6,
+                bCount: 6,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (url === 'https://example.test/api/instructors/99/grades') {
+      return createJsonResponse({
+        instructorId: 99,
+        cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+        courseOfferings: [
+          {
+            termCode: '1264',
+            courseUuid: 'course-atm-ocn-532',
+            courseOfferingUuid: 'offering-atm-ocn-532-1264',
+            cumulative: { total: 30, aCount: 15, abCount: 10, bCount: 5 },
+            sections: [
+              {
+                sectionNumber: 1,
+                instructors: [{ id: 99, name: 'Ada Lovelace' }],
+                total: 30,
+                aCount: 15,
+                abCount: 10,
+                bCount: 5,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  try {
+    const result = await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T08:15:00.000Z'),
+    });
+
+    assert.equal(result.courses, 1);
+    assert.equal(result.courseMatches, 1);
+    assert.deepEqual(fetchCalls, [
+      'https://example.test/api/courses?per_page=200&page=1',
+      'https://example.test/api/instructors?per_page=200&page=1',
+      'https://example.test/api/courses/course-atm-ocn-532/grades',
+      'https://example.test/api/instructors/99/grades',
+    ]);
+    assert.deepEqual(
+      fixture.db.prepare(`
+        SELECT subject_code, catalog_number, course_designation
+        FROM madgrades_courses
+        WHERE madgrades_course_id = 1
+      `).get(),
+      {
+        subject_code: '006',
+        catalog_number: '532',
+        course_designation: 'AGRONOMY 532',
+      },
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
 test('runMadgradesImport with refreshApi dedupes normalized course offerings at the schema grain', async () => {
   const fixture = buildFixture();
   const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-refresh-offering-dedupe-'));
