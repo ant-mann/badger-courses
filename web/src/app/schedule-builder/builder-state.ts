@@ -310,20 +310,6 @@ function parseExcludedSection(value: string): ExcludedSection | null {
   };
 }
 
-function normalizePackageIds(values: Array<string | null | undefined>): string[] {
-  const packageIds: string[] = [];
-
-  for (const value of values) {
-    const normalizedValue = normalizePackageId(value);
-
-    if (normalizedValue && !packageIds.includes(normalizedValue)) {
-      packageIds.push(normalizedValue);
-    }
-  }
-
-  return packageIds;
-}
-
 function normalizePackageId(value: string | null | undefined): string | null {
   const normalizedValue = value?.trim() ?? "";
   return normalizedValue ? normalizedValue : null;

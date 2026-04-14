@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 
 export default function ScheduleBuilderPage() {
@@ -19,7 +19,9 @@ export default function ScheduleBuilderPage() {
           </div>
         </section>
 
-        <ScheduleBuilder />
+        <Suspense>
+          <ScheduleBuilder />
+        </Suspense>
       </div>
     </main>
   );

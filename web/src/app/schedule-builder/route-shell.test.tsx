@@ -15,8 +15,8 @@ type ScheduleBuilderPageModule = {
 
 async function renderScheduleBuilderPage(): Promise<string> {
   try {
-    const module = (await import("./page")) as ScheduleBuilderPageModule;
-    const Page = typeof module.default === "function" ? module.default : module.default.default;
+    const pageModule = (await import("./page")) as ScheduleBuilderPageModule;
+    const Page = typeof pageModule.default === "function" ? pageModule.default : pageModule.default.default;
     const page = await Page();
     const layout = (page.props as { children?: React.ReactElement }).children;
 
@@ -28,6 +28,16 @@ async function renderScheduleBuilderPage(): Promise<string> {
     return intro ? renderToStaticMarkup(intro) : "";
   } catch {
     return "";
+  }
+}
+
+async function loadScheduleBuilderPage(): Promise<React.ReactElement | null> {
+  try {
+    const pageModule = (await import("./page")) as ScheduleBuilderPageModule;
+    const Page = typeof pageModule.default === "function" ? pageModule.default : pageModule.default.default;
+    return await Page();
+  } catch {
+    return null;
   }
 }
 
@@ -46,4 +56,15 @@ test("schedule builder page renders the dedicated heading and intro copy", async
     markup,
     /Add courses, lock or exclude section combinations, and compare ranked schedules with a weekly calendar/i,
   );
+});
+
+test("schedule builder page wraps the interactive builder in suspense", async () => {
+  const page = await loadScheduleBuilderPage();
+  const layout = page ? (page.props as { children?: React.ReactElement }).children : null;
+  const children = layout
+    ? React.Children.toArray((layout.props as { children?: React.ReactNode }).children)
+    : [];
+  const builderShell = children[1] as React.ReactElement | undefined;
+
+  assert.equal(builderShell?.type, React.Suspense);
 });

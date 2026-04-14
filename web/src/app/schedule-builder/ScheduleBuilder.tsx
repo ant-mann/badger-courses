@@ -9,7 +9,6 @@ import { ScheduleResults } from "@/app/components/ScheduleResults";
 import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
 import { SelectedCourseList } from "@/app/components/SelectedCourseList";
 import {
-  buildScheduleRequestPayload,
   buildScheduleRequestSignature,
   parseBuilderState,
   removeCourse,
