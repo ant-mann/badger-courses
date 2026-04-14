@@ -71,3 +71,27 @@ test("splitSchedulePackageNotes groups repeated note fragments even when package
     ],
   );
 });
+
+test("splitSchedulePackageNotes only splits restriction notes on persisted delimiters", () => {
+  const result = splitSchedulePackageNotes([
+    makeSchedulePackage("pkg-1", "Department says A|B option is allowed."),
+    makeSchedulePackage("pkg-2", "Department says A|B option is allowed."),
+    makeSchedulePackage(
+      "pkg-3",
+      "Department says A|B option is allowed. | Instructor consent required.",
+    ),
+  ]);
+
+  assert.deepEqual(result.sharedNotes, ["Department says A|B option is allowed."]);
+  assert.deepEqual(
+    result.packages.map((schedulePackage) => ({
+      id: schedulePackage.sourcePackageId,
+      packageNote: schedulePackage.packageNote,
+    })),
+    [
+      { id: "pkg-1", packageNote: null },
+      { id: "pkg-2", packageNote: null },
+      { id: "pkg-3", packageNote: "Instructor consent required." },
+    ],
+  );
+});

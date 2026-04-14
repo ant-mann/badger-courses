@@ -10,7 +10,7 @@ function splitNoteFragments(restrictionNote: string | null): string[] {
   }
 
   return restrictionNote
-    .split("|")
+    .split(" | ")
     .map((fragment) => fragment.trim())
     .filter(Boolean);
 }
