@@ -218,7 +218,7 @@ export function getCourseDetail(designation: string): CourseDetail | null {
   let normalizedDesignation: string;
 
   try {
-    normalizedDesignation = normalizeDesignation(designation);
+    normalizedDesignation = normalizeDesignation(decodeURIComponent(designation));
   } catch {
     return null;
   }
