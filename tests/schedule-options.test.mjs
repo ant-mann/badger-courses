@@ -638,36 +638,8 @@ function buildSharedLecturePackageFixture() {
   };
 }
 
-async function loadScheduleOptionsModule() {
-  const fixtureRoot = fs.mkdtempSync(path.join(repoRoot, '.tmp-schedule-options-module-'));
-  const fixtureScriptsDir = path.join(fixtureRoot, 'scripts');
-  const fixtureDbDir = path.join(fixtureRoot, 'src', 'db');
-
-  fs.mkdirSync(fixtureScriptsDir, { recursive: true });
-  fs.mkdirSync(fixtureDbDir, { recursive: true });
-
-  fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
-
-  const sourcePath = path.join(repoRoot, 'scripts', 'schedule-options.mjs');
-  const source = fs.readFileSync(sourcePath, 'utf8');
-  const instrumentedSource = source.replace(/\nmain\(\);\s*$/, '\nexport { buildSchedules, compareSchedules };\n');
-
-  if (instrumentedSource === source) {
-    throw new Error('Failed to expose schedule-options module exports for testing');
-  }
-
-  const modulePath = path.join(fixtureScriptsDir, 'schedule-options.mjs');
-  fs.writeFileSync(modulePath, instrumentedSource);
-
-  const moduleUrl = `${pathToFileURL(modulePath).href}?cacheBust=${Date.now()}`;
-  const loaded = await import(moduleUrl);
-
-  return {
-    ...loaded,
-    cleanup() {
-      fs.rmSync(fixtureRoot, { recursive: true, force: true });
-    },
-  };
+async function loadScheduleEngineModule() {
+  return import(`${pathToFileURL(path.join(repoRoot, 'src', 'schedule', 'engine.mjs')).href}?cacheBust=${Date.now()}`);
 }
 
 function makeTestCandidate(packageId, overrides = {}) {
@@ -738,47 +710,78 @@ test('schedule-options returns only conflict-free ranked schedules', () => {
 });
 
 test('buildSchedules still returns the best-ranked schedule when limit is 1', async () => {
-  const scheduleOptions = await loadScheduleOptionsModule();
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-early', {
+            courseDesignation: 'COURSE A',
+            earliestStartMinuteLocal: 480,
+            meetings: [{ days_mask: 1, start_minute_local: 480, end_minute_local: 540, is_online: 0 }],
+          }),
+          makeTestCandidate('a-best', {
+            courseDesignation: 'COURSE A',
+            earliestStartMinuteLocal: 720,
+            meetings: [{ days_mask: 1, start_minute_local: 720, end_minute_local: 780, is_online: 0 }],
+          }),
+        ],
+      },
+      {
+        courseDesignation: 'COURSE B',
+        candidates: [
+          makeTestCandidate('b-1', {
+            courseDesignation: 'COURSE B',
+            earliestStartMinuteLocal: 840,
+            meetings: [{ days_mask: 2, start_minute_local: 840, end_minute_local: 900, is_online: 0 }],
+          }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    limit: 1,
+  });
+
+  assert.equal(schedules.length, 1);
+  assert.deepEqual(schedules[0].package_ids, ['a-best', 'b-1']);
+});
+
+test('generateSchedules returns the same schedule payload as the CLI inputs expect', async () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
 
   try {
-    const schedules = scheduleOptions.buildSchedules({
-      orderedGroups: [
-        {
-          courseDesignation: 'COURSE A',
-          candidates: [
-            makeTestCandidate('a-early', {
-              courseDesignation: 'COURSE A',
-              earliestStartMinuteLocal: 480,
-              meetings: [{ days_mask: 1, start_minute_local: 480, end_minute_local: 540, is_online: 0 }],
-            }),
-            makeTestCandidate('a-best', {
-              courseDesignation: 'COURSE A',
-              earliestStartMinuteLocal: 720,
-              meetings: [{ days_mask: 1, start_minute_local: 720, end_minute_local: 780, is_online: 0 }],
-            }),
-          ],
-        },
-        {
-          courseDesignation: 'COURSE B',
-          candidates: [
-            makeTestCandidate('b-1', {
-              courseDesignation: 'COURSE B',
-              earliestStartMinuteLocal: 840,
-              meetings: [{ days_mask: 2, start_minute_local: 840, end_minute_local: 900, is_online: 0 }],
-            }),
-          ],
-        },
-      ],
-      lockedByCourse: new Map(),
-      conflicts: new Map(),
-      transitions: new Map(),
-      limit: 1,
+    const { generateSchedules } = await loadScheduleEngineModule();
+    const schedules = generateSchedules(fixture.db, {
+      courses: ['STAT 340', 'ENGL 462', 'COMP SCI 577'],
+      lockPackages: ['1272:220:003210:stat340-alt'],
+      excludePackages: [],
+      limit: 25,
     });
 
-    assert.equal(schedules.length, 1);
-    assert.deepEqual(schedules[0].package_ids, ['a-best', 'b-1']);
+    assert.equal(schedules.length > 0, true);
+    assert.equal(schedules.every((schedule) => schedule.conflict_count === 0), true);
+    assert.deepEqual(schedules[0].package_ids, [
+      '1272:220:003210:stat340-alt',
+      '1272:302:005770:cs577-main',
+      '1272:350:004620:engl462-main',
+    ]);
   } finally {
-    scheduleOptions.cleanup();
+    fixture.cleanup();
+  }
+});
+
+test('generateSchedules returns no schedules when courses is empty', async () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
+
+  try {
+    const { generateSchedules } = await loadScheduleEngineModule();
+
+    assert.deepEqual(generateSchedules(fixture.db, { courses: [] }), []);
+  } finally {
+    fixture.cleanup();
   }
 });
 
@@ -1015,4 +1018,18 @@ test('schedule-options derives candidate-local conflicts and date-aware transiti
   } finally {
     fixture.cleanup();
   }
+});
+
+test('root package.json includes a repeatable web test command', async () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
+  );
+  const webPackageJson = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, 'web', 'package.json'), 'utf8'),
+  );
+
+  assert.equal(typeof packageJson.scripts?.['test:web'], 'string');
+  assert.match(packageJson.scripts?.test ?? '', /test:web/);
+  assert.equal(typeof webPackageJson.scripts?.test, 'string');
+  assert.match(webPackageJson.scripts.test, /tsx --test/);
 });

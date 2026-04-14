@@ -1,0 +1,9 @@
+node_modules
+web/node_modules
+.next
+web/.next
+.env.local
+web/.env.local
+npm-debug.log*
+.git
+.worktrees
