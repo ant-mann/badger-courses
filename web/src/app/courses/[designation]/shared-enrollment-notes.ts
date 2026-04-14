@@ -28,12 +28,27 @@ const INSTRUCTOR_DESCRIPTION_PATTERNS = [
   /final exam/i,
 ];
 
+const ADMIN_METADATA_PATTERNS = [
+  /\bcareers?\b/i,
+  /\bcontact us\b/i,
+  /\bphone\b/i,
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+];
+
 function isLongFormNote(note: string): boolean {
   return note.length >= 160 || /\n/.test(note);
 }
 
 function matchesAnyPattern(note: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(note));
+}
+
+function normalizeEnrollmentNote(note: string): string {
+  if (/^All careers,\s*except Grads$/i.test(note.trim())) {
+    return "Open to all student careers except graduate students.";
+  }
+
+  return note;
 }
 
 export function organizeSharedEnrollmentNotes(notes: string[]): {
@@ -43,9 +58,16 @@ export function organizeSharedEnrollmentNotes(notes: string[]): {
   const sectionNotes = new Map<CollapsibleEnrollmentSection["title"], string[]>();
   const visibleNotes: string[] = [];
 
-  for (const note of notes) {
+  for (const rawNote of notes) {
+    const note = normalizeEnrollmentNote(rawNote);
+
     if (matchesAnyPattern(note, TEXTBOOK_PATTERNS)) {
       sectionNotes.set("Textbooks", [...(sectionNotes.get("Textbooks") ?? []), note]);
+      continue;
+    }
+
+    if (matchesAnyPattern(note, ADMIN_METADATA_PATTERNS)) {
+      sectionNotes.set("Notes", [...(sectionNotes.get("Notes") ?? []), note]);
       continue;
     }
 

@@ -54,7 +54,6 @@ export function PrerequisiteSummary({
 
       {enrollmentPrerequisites ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-black/70 dark:text-white/70">Catalog text</p>
           <p className="text-sm leading-7 text-black/75 dark:text-white/75">{enrollmentPrerequisites}</p>
         </div>
       ) : null}

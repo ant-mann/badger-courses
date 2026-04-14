@@ -47,7 +47,14 @@ export function SectionTable({ sections }: SectionTableProps) {
             {sections.map((section) => (
               <tr key={`${section.sectionType}-${section.sectionNumber}-${section.sectionClassNumber ?? "na"}`}>
                 <td className="px-4 py-3 align-top font-medium">
-                  {section.sectionType} {section.sectionNumber}
+                  <div className="flex flex-col gap-1">
+                    <span>
+                      {section.sectionType} {section.sectionNumber}
+                    </span>
+                    {section.sectionTitle ? (
+                      <span className="font-normal text-black/62 dark:text-white/62">{section.sectionTitle}</span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-3 align-top text-black/68 dark:text-white/68">
                   {section.instructionMode ?? "Unknown"}

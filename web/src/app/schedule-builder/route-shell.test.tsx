@@ -45,7 +45,7 @@ test("home page links to the schedule builder", async () => {
   const markup = renderToStaticMarkup(await Home({ searchParams: Promise.resolve({}) }));
 
   assert.match(markup, /href="\/schedule-builder"/i);
-  assert.match(markup, /Open schedule builder/i);
+  assert.match(markup, /Build your schedule/i);
 });
 
 test("schedule builder page renders the dedicated heading and intro copy", async () => {

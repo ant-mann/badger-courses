@@ -52,7 +52,7 @@ export default async function Home({ searchParams }: HomePageProps) {
               href="/schedule-builder"
               className="inline-flex min-h-11 items-center rounded-full border border-black/10 bg-black px-5 text-sm font-medium text-white transition hover:bg-black/90 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-white/90"
             >
-              Open schedule builder
+              Build your schedule
             </Link>
           </div>
         </section>
