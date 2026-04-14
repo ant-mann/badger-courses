@@ -87,6 +87,10 @@ export function buildScheduleRequestPayload(state: ScheduleBuilderState): Schedu
   };
 }
 
+export function buildScheduleRequestSignature(state: ScheduleBuilderState): string {
+  return JSON.stringify(buildScheduleRequestPayload(state));
+}
+
 export function setLockedSection(
   state: ScheduleBuilderState,
   courseDesignation: string,

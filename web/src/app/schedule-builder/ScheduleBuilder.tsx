@@ -10,10 +10,12 @@ import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
 import { SelectedCourseList } from "@/app/components/SelectedCourseList";
 import {
   buildScheduleRequestPayload,
+  buildScheduleRequestSignature,
   parseBuilderState,
   serializeBuilderState,
   setExcludedSection,
   setLockedSection,
+  type ScheduleRequestPayload,
   type ScheduleBuilderState,
 } from "@/app/schedule-builder/builder-state";
 import {
@@ -88,8 +90,7 @@ export function ScheduleBuilder() {
   const searchParams = useSearchParams();
   const [isRoutingPending, startTransition] = useTransition();
   const builderState = parseBuilderState(new URLSearchParams(searchParams.toString()));
-  const schedulePayload = buildScheduleRequestPayload(builderState);
-  const schedulePayloadKey = JSON.stringify(schedulePayload);
+  const scheduleRequestSignature = buildScheduleRequestSignature(builderState);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CourseListItem[]>([]);
@@ -226,6 +227,8 @@ export function ScheduleBuilder() {
   }, [builderState.courses, courseDetails]);
 
   useEffect(() => {
+    const schedulePayload = JSON.parse(scheduleRequestSignature) as ScheduleRequestPayload;
+
     if (schedulePayload.courses.length === 0) {
       setSchedules([]);
       setRequestState("idle");
@@ -273,7 +276,7 @@ export function ScheduleBuilder() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [retryNonce, schedulePayload, schedulePayloadKey]);
+  }, [retryNonce, scheduleRequestSignature]);
 
   useEffect(() => {
     setSelectedScheduleIndex((currentIndex) => {

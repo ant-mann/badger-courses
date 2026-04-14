@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildScheduleRequestPayload,
+  buildScheduleRequestSignature,
   parseBuilderState,
   serializeBuilderState,
   setExcludedSection,
@@ -88,6 +89,34 @@ test("buildScheduleRequestPayload uses schedule api field names", () => {
     exclude_packages: ["pkg-2", "pkg-3"],
     limit: 10,
   });
+});
+
+test("buildScheduleRequestSignature stays stable for equivalent builder inputs", () => {
+  const firstSignature = buildScheduleRequestSignature(
+    makeState({
+      courses: [" comp sci 577 ", "MATH 240"],
+      lockedSections: [
+        { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+      ],
+      excludedSectionIds: ["pkg-2", "pkg-3", "pkg-3"],
+      limit: 999,
+    }),
+  );
+
+  const secondSignature = buildScheduleRequestSignature(
+    makeState({
+      courses: ["COMP SCI 577", "MATH 240"],
+      lockedSections: [
+        { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+      ],
+      excludedSectionIds: ["pkg-2", "pkg-3"],
+      limit: 50,
+    }),
+  );
+
+  assert.equal(firstSignature, secondSignature);
 });
 
 test("setLockedSection keeps only one locked section per course", () => {
