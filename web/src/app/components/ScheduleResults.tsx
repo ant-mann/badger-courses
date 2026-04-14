@@ -129,8 +129,8 @@ export function ScheduleResults({
 
       {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && !zeroLimit ? (
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
-          <p>No conflict-free schedules match your current courses and section choices.</p>
-          <p>Relax your locked or excluded sections and try again.</p>
+          <p>No conflict-free schedules matched these courses and section constraints.</p>
+          <p>Try unlocking or excluding fewer sections.</p>
         </div>
       ) : null}
 

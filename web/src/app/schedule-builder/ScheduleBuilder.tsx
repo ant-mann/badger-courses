@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useTransition } from "react";
+import React, { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { CoursePicker } from "@/app/components/CoursePicker";
@@ -104,6 +104,11 @@ export function ScheduleBuilder() {
   const [generationErrorMessage, setGenerationErrorMessage] = useState<string | null>(null);
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState(0);
   const [retryNonce, setRetryNonce] = useState(0);
+  const courseDetailsRef = useRef(courseDetails);
+
+  useEffect(() => {
+    courseDetailsRef.current = courseDetails;
+  }, [courseDetails]);
 
   useEffect(() => {
     const trimmedQuery = searchQuery.trim();
@@ -155,7 +160,10 @@ export function ScheduleBuilder() {
   }, [searchQuery]);
 
   useEffect(() => {
-    const designationsToFetch = builderState.courses.filter((designation) => !courseDetails[designation]);
+    const requestedCourses = JSON.parse(courseDetailsRequestSignature) as string[];
+    const designationsToFetch = requestedCourses.filter(
+      (designation) => !courseDetailsRef.current[designation],
+    );
 
     if (designationsToFetch.length === 0) {
       return;

@@ -121,8 +121,8 @@ test("ScheduleResults explains how to recover when no schedules match", () => {
     />,
   );
 
-  assert.match(markup, /No conflict-free schedules match your current courses and section choices/i);
-  assert.match(markup, /Relax your locked or excluded sections and try again/i);
+  assert.match(markup, /No conflict-free schedules matched these courses and section constraints/i);
+  assert.match(markup, /Try unlocking or excluding fewer sections/i);
 });
 
 test("ScheduleResults explains intentional zero-result limits separately from no-match results", () => {
