@@ -1,9 +1,13 @@
 {
-  "name": "madgrades-fall-2026-extractor",
+  "name": "uw-madison-courses",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
-    "test": "node --test",
+    "test": "node --test && npm run test:web",
+    "test:web": "npm run test --workspace=web",
     "test:prerequisite-helpers": "node --test tests/prerequisite-helpers.test.mjs",
     "extract:fall-2026": "node scripts/extract-fall-2026-courses.mjs",
     "build:course-db": "node src/db/build-course-db.mjs",
