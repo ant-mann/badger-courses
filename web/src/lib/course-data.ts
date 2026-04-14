@@ -259,6 +259,7 @@ export function getCourseDetail(designation: string): CourseDetail | null {
         SELECT summary_status, course_groups_json, escape_clauses_json, raw_text, unparsed_text
         FROM prerequisite_course_summary_overview_v
         WHERE term_code = ? AND course_id = ?
+        ORDER BY rule_id ASC
         LIMIT 1
       `,
     )

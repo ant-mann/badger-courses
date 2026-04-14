@@ -1,4 +1,4 @@
-app = "madgrades"
+app = "uw-madison-courses"
 primary_region = "ord"
 
 [build]

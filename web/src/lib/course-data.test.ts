@@ -232,12 +232,6 @@ seedCourseDetailRows(fixture.db);
 process.env.MADGRADES_DB_PATH = fixture.dbPath;
 after(() => fixture.cleanup());
 
-import {
-  normalizeDesignation,
-  parseCourseGroupsJson,
-  parseStringArrayJson,
-} from "./course-data";
-
 test("normalizeDesignation uppercases and trims values", () => {
   assert.equal(normalizeDesignation("  Comp Sci 577  "), "COMP SCI 577");
 });

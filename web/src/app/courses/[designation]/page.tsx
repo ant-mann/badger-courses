@@ -115,7 +115,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
 
         <section className="flex flex-col gap-4">
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">Instructor history</h2>
-          {detail.instructorHistory.length === 0 ? (
+          {detail.instructorGrades.length === 0 ? (
             <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
               Historical instructor data is unavailable in the current database snapshot.
             </div>
@@ -134,7 +134,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black/8 dark:divide-white/8">
-                    {detail.instructorHistory.map((item) => (
+                    {detail.instructorGrades.map((item) => (
                       <tr
                         key={`${item.sectionType}-${item.sectionNumber}-${item.instructorDisplayName ?? "unknown"}`}
                       >
