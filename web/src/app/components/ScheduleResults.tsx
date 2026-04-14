@@ -3,13 +3,16 @@ import React from "react";
 import type { GeneratedSchedule } from "@/app/schedule-builder/schedule-data";
 
 type ScheduleResultsView = "cards" | "calendar";
+type ScheduleResultsRequestState = "idle" | "loading" | "ready" | "error";
 
 type ScheduleResultsProps = {
   schedules: GeneratedSchedule[];
   selectedScheduleIndex: number;
+  requestState: ScheduleResultsRequestState;
   loading: boolean;
   errorMessage: string | null;
   view: ScheduleResultsView;
+  onRetry?: () => void;
   onSelectSchedule: (index: number) => void;
   onViewChange: (view: ScheduleResultsView) => void;
 };
@@ -37,9 +40,11 @@ function formatMinutes(totalMinutes: number): string {
 export function ScheduleResults({
   schedules,
   selectedScheduleIndex,
+  requestState,
   loading,
   errorMessage,
   view,
+  onRetry,
   onSelectSchedule,
   onViewChange,
 }: ScheduleResultsProps) {
@@ -92,11 +97,28 @@ export function ScheduleResults({
 
       {errorMessage ? (
         <div className="rounded-3xl border border-red-500/20 bg-red-500/8 p-4 text-sm leading-7 text-red-900 dark:text-red-100">
-          {errorMessage}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p>{errorMessage}</p>
+            {onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="min-h-11 rounded-full border border-red-500/25 px-4 text-sm font-medium transition hover:bg-red-500/10"
+              >
+                Retry
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
-      {!loading && !errorMessage && schedules.length === 0 ? (
+      {!loading && !errorMessage && requestState === "idle" && schedules.length === 0 ? (
+        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+          <p>Add courses and section constraints to generate schedules.</p>
+        </div>
+      ) : null}
+
+      {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 ? (
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           <p>No conflict-free schedules match your current courses and section choices.</p>
           <p>Relax your locked or excluded sections and try again.</p>
