@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { generateSchedules } from '@madgrades/schedule';
 
-import { normalizeDesignation } from '@/lib/course-data';
+import {
+  clampScheduleLimit,
+  normalizeUniqueCourseDesignations,
+} from '@/lib/course-designation';
 import { getDb } from '@/lib/db';
-
-const DEFAULT_LIMIT = 25;
-const MAX_COURSES = 8;
-const MAX_LIMIT = 50;
 
 type ScheduleRequestBody = {
   courses?: unknown;
@@ -41,21 +40,11 @@ function normalizeCourses(value: unknown): string[] | null {
     return null;
   }
 
-  let normalized: string[];
-
   try {
-    normalized = value
-      .map((course) => normalizeDesignation(course))
-      .filter((course, index, allCourses) => allCourses.indexOf(course) === index);
+    return normalizeUniqueCourseDesignations(value);
   } catch {
     return null;
   }
-
-  if (normalized.length === 0 || normalized.length > MAX_COURSES) {
-    return null;
-  }
-
-  return normalized;
 }
 
 function normalizePackageIds(value: unknown): string[] | null {
@@ -72,14 +61,14 @@ function normalizePackageIds(value: unknown): string[] | null {
 
 function normalizeLimit(value: unknown): number | null {
   if (value === undefined) {
-    return DEFAULT_LIMIT;
+    return clampScheduleLimit(undefined);
   }
 
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     return null;
   }
 
-  return Math.min(value, MAX_LIMIT);
+  return clampScheduleLimit(value);
 }
 
 export async function POST(request: Request) {

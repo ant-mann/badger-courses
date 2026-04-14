@@ -285,6 +285,8 @@ test("getCourseDetail returns sections meetings prerequisites grades and schedul
   assert.equal(detail.prerequisites.length, 1);
   assert.equal(detail.instructorGrades.length, 1);
   assert.equal(detail.schedulePackages.length, 1);
+  assert.equal(detail.meetings[0].meetingTimeStart, 54000000);
+  assert.equal(detail.meetings[0].meetingTimeEnd, 59400000);
   assert.deepEqual(detail.prerequisites[0], {
     ruleId: "rule:comp-sci-577",
     parseStatus: "partial",
