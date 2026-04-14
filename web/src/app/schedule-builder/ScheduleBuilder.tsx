@@ -210,6 +210,16 @@ export function ScheduleBuilder() {
         })
         .catch((error) => {
           if (controller.signal.aborted) {
+            setCourseDetails((currentDetails) => {
+              const existingDetails = currentDetails[designation];
+
+              if (!existingDetails?.loading) {
+                return currentDetails;
+              }
+
+              const { [designation]: _abortedDesignation, ...nextDetails } = currentDetails;
+              return nextDetails;
+            });
             return;
           }
 
