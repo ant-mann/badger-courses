@@ -215,7 +215,14 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
 
 export function getCourseDetail(designation: string): CourseDetail | null {
   const db = getDb();
-  const normalizedDesignation = normalizeDesignation(designation);
+  let normalizedDesignation: string;
+
+  try {
+    normalizedDesignation = normalizeDesignation(designation);
+  } catch {
+    return null;
+  }
+
   const canonical = resolveCanonicalCourse(db, normalizedDesignation);
 
   if (!canonical) {

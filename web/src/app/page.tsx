@@ -6,15 +6,19 @@ import { searchCourses, type CourseListItem } from "@/lib/course-data";
 
 type HomePageProps = {
   searchParams?: Promise<{
-    q?: string;
-    subject?: string;
+    q?: string | string[];
+    subject?: string | string[];
   }>;
 };
 
+function firstParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
+}
+
 export default async function Home({ searchParams }: HomePageProps) {
   const resolvedSearchParams = await searchParams;
-  const query = resolvedSearchParams?.q?.trim() ?? "";
-  const subject = resolvedSearchParams?.subject?.trim() ?? "";
+  const query = firstParam(resolvedSearchParams?.q).trim();
+  const subject = firstParam(resolvedSearchParams?.subject).trim();
   const hasSearch = query.length > 0 || subject.length > 0;
 
   let courses: CourseListItem[] = [];
