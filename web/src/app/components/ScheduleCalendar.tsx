@@ -22,6 +22,8 @@ const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
   U: "Sun",
 };
 
+const HOUR_HEIGHT_REM = 4;
+
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   if (!schedule) {
     return (
@@ -58,6 +60,9 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   const visibleWeekdays = getVisibleWeekdays(entries).filter((weekday) =>
     entries.some((entry) => entry.weekday === weekday),
   );
+  const timeWindow = deriveTimeWindow(entries);
+  const timeLabels = buildTimeLabels(timeWindow.startMinutes, timeWindow.endMinutes);
+  const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
 
   return (
     <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
@@ -71,48 +76,106 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {visibleWeekdays.map((weekday) => {
-          const weekdayEntries = entries.filter((entry) => entry.weekday === weekday);
+      <div className="overflow-x-auto rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04]">
+        <div className="grid min-w-[42rem] grid-cols-[4.5rem_repeat(var(--calendar-columns),minmax(0,1fr))] gap-3" style={{ ["--calendar-columns" as string]: visibleWeekdays.length }}>
+          <div />
+          {visibleWeekdays.map((weekday) => (
+            <div key={weekday} className="rounded-2xl bg-white/70 px-3 py-2 text-center text-sm font-semibold dark:bg-white/[0.05]">
+              {WEEKDAY_LABELS[weekday]}
+            </div>
+          ))}
 
-          return (
-            <section
-              key={weekday}
-              aria-label={WEEKDAY_LABELS[weekday]}
-              className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04]"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold">{WEEKDAY_LABELS[weekday]}</h3>
-                <span className="text-xs uppercase tracking-[0.18em] text-black/50 dark:text-white/50">
-                  {weekdayEntries.length} meeting{weekdayEntries.length === 1 ? "" : "s"}
-                </span>
-              </div>
+          <div className="relative" style={{ height: `${calendarHeightRem}rem` }}>
+            {timeLabels.map((labelMinute) => {
+              const top = getOffsetPercent(labelMinute, timeWindow.startMinutes, timeWindow.endMinutes);
 
-              <div className="flex flex-col gap-3">
-                {weekdayEntries.map((entry) => (
-                  <article
-                    key={`${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}-${entry.meetingType ?? "meeting"}`}
-                    className="rounded-2xl border border-black/10 bg-white/80 p-3 dark:border-white/10 dark:bg-white/[0.05]"
-                  >
-                    <div className="flex flex-col gap-1">
-                      <p className="text-sm font-semibold">{entry.courseDesignation}</p>
-                      <p className="text-sm text-black/68 dark:text-white/68">{entry.sectionBundleLabel}</p>
-                      <p className="text-sm text-black/60 dark:text-white/60">
-                        {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
-                      </p>
-                      <p className="text-sm text-black/60 dark:text-white/60">
-                        {[entry.meetingType, entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
-                      </p>
-                    </div>
-                  </article>
-                ))}
+              return (
+                <div
+                  key={labelMinute}
+                  className="absolute left-0 right-0 -translate-y-1/2 text-xs text-black/50 dark:text-white/50"
+                  style={{ top: `${top}%` }}
+                >
+                  {formatMinutes(labelMinute)}
+                </div>
+              );
+            })}
+          </div>
+
+          {visibleWeekdays.map((weekday) => {
+            const weekdayEntries = entries.filter((entry) => entry.weekday === weekday);
+
+            return (
+              <div
+                key={weekday}
+                aria-label={WEEKDAY_LABELS[weekday]}
+                className="relative rounded-2xl border border-black/10 bg-white/70 dark:border-white/10 dark:bg-white/[0.05]"
+                style={{ height: `${calendarHeightRem}rem` }}
+              >
+                {timeLabels.map((labelMinute) => {
+                  const top = getOffsetPercent(labelMinute, timeWindow.startMinutes, timeWindow.endMinutes);
+
+                  return (
+                    <div
+                      key={labelMinute}
+                      className="absolute left-0 right-0 border-t border-dashed border-black/8 dark:border-white/10"
+                      style={{ top: `${top}%` }}
+                    />
+                  );
+                })}
+
+                {weekdayEntries.map((entry) => {
+                  const top = getOffsetPercent(entry.startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
+                  const height = getOffsetPercent(entry.endMinutes, entry.startMinutes, timeWindow.endMinutes);
+
+                  return (
+                    <article
+                      key={`${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}-${entry.meetingType ?? "meeting"}`}
+                      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-black/10 bg-black/[0.06] p-2 dark:border-white/10 dark:bg-white/[0.1]"
+                      style={{ top: `${top}%`, height: `${Math.max(height, 6)}%`, position: "absolute" }}
+                    >
+                      <div className="flex flex-col gap-1 text-xs leading-5">
+                        <p className="font-semibold">{entry.courseDesignation}</p>
+                        <p className="text-black/72 dark:text-white/72">{entry.sectionBundleLabel}</p>
+                        <p className="text-black/60 dark:text-white/60">{formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}</p>
+                        <p className="text-black/60 dark:text-white/60">
+                          {[entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
-            </section>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </section>
   );
+}
+
+function deriveTimeWindow(entries: ScheduleCalendarEntry[]): { startMinutes: number; endMinutes: number } {
+  const earliestStart = Math.min(...entries.map((entry) => entry.startMinutes));
+  const latestEnd = Math.max(...entries.map((entry) => entry.endMinutes));
+
+  return {
+    startMinutes: Math.floor(earliestStart / 60) * 60,
+    endMinutes: Math.ceil(latestEnd / 60) * 60,
+  };
+}
+
+function buildTimeLabels(startMinutes: number, endMinutes: number): number[] {
+  const labels: number[] = [];
+
+  for (let minutes = startMinutes; minutes <= endMinutes; minutes += 60) {
+    labels.push(minutes);
+  }
+
+  return labels;
+}
+
+function getOffsetPercent(minutes: number, startMinutes: number, endMinutes: number): number {
+  const totalRange = Math.max(endMinutes - startMinutes, 60);
+  return ((minutes - startMinutes) / totalRange) * 100;
 }
 
 function formatMinutes(totalMinutes: number): string {
