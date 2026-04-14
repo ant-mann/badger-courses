@@ -752,6 +752,140 @@ test('runMadgradesImport rejects saved snapshots with broken foreign-key referen
   }
 });
 
+test('runMadgradesImport ignores stale saved course matches that no longer exist in the local DB', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-stale-course-match-'));
+  const { writeMadgradesSnapshot } = await loadSnapshotHelpers();
+  const { runMadgradesImport } = await loadImportRunner();
+
+  try {
+    const snapshot = buildSnapshot({ generatedAt: '2026-04-12T09:10:11.000Z' });
+    snapshot.matchReport.courseMatches.push({
+      termCode: '1272',
+      courseId: '999999',
+      madgradesCourseId: 1,
+      matchStatus: 'matched',
+      matchedAt: '2026-04-12T09:10:11.000Z',
+    });
+
+    await writeMadgradesSnapshot({
+      snapshotRoot,
+      snapshotId: '20260412T091011Z',
+      snapshot,
+    });
+
+    const result = await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: false,
+    });
+
+    assert.equal(result.snapshotId, '20260412T091011Z');
+    assert.equal(result.courseMatches, 1);
+    assert.deepEqual(
+      fixture.db.prepare(`
+        SELECT term_code, course_id, madgrades_course_id, match_status
+        FROM madgrades_course_matches
+      `).all(),
+      [
+        {
+          term_code: '1272',
+          course_id: '005770',
+          madgrades_course_id: 1,
+          match_status: 'matched',
+        },
+      ],
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport ignores stale saved instructor matches that no longer exist in the local DB', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-stale-instructor-match-'));
+  const { writeMadgradesSnapshot } = await loadSnapshotHelpers();
+  const { runMadgradesImport } = await loadImportRunner();
+
+  try {
+    const snapshot = buildSnapshot({ generatedAt: '2026-04-12T09:12:13.000Z' });
+    snapshot.matchReport.instructorMatches.push({
+      instructorKey: 'email:missing@example.edu',
+      madgradesInstructorId: 1,
+      matchStatus: 'matched',
+      matchedAt: '2026-04-12T09:12:13.000Z',
+    });
+
+    await writeMadgradesSnapshot({
+      snapshotRoot,
+      snapshotId: '20260412T091213Z',
+      snapshot,
+    });
+
+    const result = await runMadgradesImport({
+      dbPath: fixture.dbPath,
+      snapshotRoot,
+      refreshApi: false,
+    });
+
+    assert.equal(result.snapshotId, '20260412T091213Z');
+    assert.equal(result.instructorMatches, 1);
+    assert.deepEqual(
+      fixture.db.prepare(`
+        SELECT instructor_key, madgrades_instructor_id, match_status
+        FROM madgrades_instructor_matches
+      `).all(),
+      [
+        {
+          instructor_key: 'email:ada@example.edu',
+          madgrades_instructor_id: 1,
+          match_status: 'matched',
+        },
+      ],
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
+test('runMadgradesImport still rejects malformed saved course matches', async () => {
+  const fixture = buildFixture();
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-malformed-course-match-'));
+  const { writeMadgradesSnapshot } = await loadSnapshotHelpers();
+  const { runMadgradesImport } = await loadImportRunner();
+
+  try {
+    const snapshot = buildSnapshot({ generatedAt: '2026-04-12T09:14:15.000Z' });
+    snapshot.matchReport.courseMatches.push({
+      termCode: '1272',
+      courseId: null,
+      madgradesCourseId: 1,
+      matchStatus: 'matched',
+      matchedAt: '2026-04-12T09:14:15.000Z',
+    });
+
+    await writeMadgradesSnapshot({
+      snapshotRoot,
+      snapshotId: '20260412T091415Z',
+      snapshot,
+    });
+
+    await assert.rejects(
+      runMadgradesImport({
+        dbPath: fixture.dbPath,
+        snapshotRoot,
+        refreshApi: false,
+      }),
+      /NOT NULL constraint failed/,
+    );
+  } finally {
+    fixture.cleanup();
+    await rm(snapshotRoot, { recursive: true, force: true });
+  }
+});
+
 test('runMadgradesImport rehydrates Madgrades tables into a rebuilt base DB from a saved snapshot', async () => {
   const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-rehydrate-'));
   const { writeMadgradesSnapshot } = await loadSnapshotHelpers();
