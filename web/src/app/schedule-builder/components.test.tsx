@@ -161,6 +161,15 @@ test("ScheduleCalendar renders only the weekdays used by the selected schedule",
   assert.doesNotMatch(markup, />F<|>Fri<|Friday/);
 });
 
+test("ScheduleCalendar shows an accurate empty state when a selected schedule has no entries", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar entries={[]} schedule={makeSchedule()} />,
+  );
+
+  assert.match(markup, /No calendar meetings are available for this selected schedule/i);
+  assert.doesNotMatch(markup, /Select a generated schedule to see its meetings laid out across the week/i);
+});
+
 test("CoursePicker stays prop-driven and presentational", () => {
   const markup = renderToStaticMarkup(
     <CoursePicker

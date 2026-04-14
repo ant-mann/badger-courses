@@ -23,7 +23,7 @@ const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
 };
 
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
-  if (!schedule || entries.length === 0) {
+  if (!schedule) {
     return (
       <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
         <div className="flex flex-col gap-2">
@@ -34,6 +34,22 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
         </div>
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           Select a generated schedule to see its meetings laid out across the week.
+        </div>
+      </section>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+            Weekly Calendar
+          </p>
+          <h2 className="text-2xl font-semibold tracking-[-0.02em]">Selected schedule layout</h2>
+        </div>
+        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+          No calendar meetings are available for this selected schedule.
         </div>
       </section>
     );
