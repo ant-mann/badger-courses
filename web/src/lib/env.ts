@@ -1,33 +1,59 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 function resolveFromCwd(value: string, cwd = process.cwd()): string {
   return path.resolve(cwd, value);
 }
 
-function getRequiredEnv(name: string): string {
+const DEFAULT_DATABASE_PATHS = [
+  'web/data/fall-2026.sqlite',
+  'data/fall-2026.sqlite',
+  '../data/fall-2026.sqlite',
+  '../web/data/fall-2026.sqlite',
+];
+
+function getEnv(name: string): string | null {
   const value = process.env[name]?.trim();
 
-  if (!value) {
-    throw new Error(`${name} environment variable is required`);
+  return value || null;
+}
+
+function resolveFirstExistingPath(paths: string[], cwd = process.cwd()): string | null {
+  for (const candidate of paths) {
+    const resolvedCandidate = resolveFromCwd(candidate, cwd);
+
+    if (fs.existsSync(resolvedCandidate)) {
+      return resolvedCandidate;
+    }
   }
 
-  return value;
+  return null;
 }
 
 export function getDatabasePath(cwd = process.cwd()): string {
-  const dbPath = getRequiredEnv('MADGRADES_DB_PATH');
+  const dbPath = getEnv('MADGRADES_DB_PATH');
 
-  return resolveFromCwd(dbPath, cwd);
+  if (dbPath) {
+    return resolveFromCwd(dbPath, cwd);
+  }
+
+  const fallbackPath = resolveFirstExistingPath(DEFAULT_DATABASE_PATHS, cwd);
+
+  if (fallbackPath) {
+    return fallbackPath;
+  }
+
+  throw new Error('MADGRADES_DB_PATH environment variable is required');
 }
 
 export function getDatabaseSourcePath(cwd = process.cwd()): string | null {
-  const sourcePath = process.env.MADGRADES_DB_SOURCE_PATH?.trim();
+  const sourcePath = getEnv('MADGRADES_DB_SOURCE_PATH');
 
   return sourcePath ? resolveFromCwd(sourcePath, cwd) : null;
 }
 
 export function getDatabaseSourceUrl(): string | null {
-  const sourceUrl = process.env.MADGRADES_DB_URL?.trim();
+  const sourceUrl = getEnv('MADGRADES_DB_URL');
 
   return sourceUrl || null;
 }
