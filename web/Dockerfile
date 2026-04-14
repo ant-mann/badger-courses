@@ -32,7 +32,6 @@ ENV MADGRADES_DB_PATH=/app/web/data/fall-2026.sqlite
 COPY --from=base /app/package.json /app/package-lock.json ./
 COPY --from=base /app/web/package.json ./web/
 COPY --from=base /app/node_modules ./node_modules
-COPY --from=base /app/web/node_modules ./web/node_modules
 
 COPY --from=base /app/web/.next ./web/.next
 COPY --from=base /app/web/public ./web/public
