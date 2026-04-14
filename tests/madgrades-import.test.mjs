@@ -850,7 +850,7 @@ test('runMadgradesImport ignores stale saved instructor matches that no longer e
   }
 });
 
-test('runMadgradesImport still rejects malformed saved course matches', async () => {
+test('runMadgradesImport still rejects malformed saved course matches with non-null keys', async () => {
   const fixture = buildFixture();
   const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), 'madgrades-import-malformed-course-match-'));
   const { writeMadgradesSnapshot } = await loadSnapshotHelpers();
@@ -860,7 +860,7 @@ test('runMadgradesImport still rejects malformed saved course matches', async ()
     const snapshot = buildSnapshot({ generatedAt: '2026-04-12T09:14:15.000Z' });
     snapshot.matchReport.courseMatches.push({
       termCode: '1272',
-      courseId: null,
+      courseId: 'bad-course-id',
       madgradesCourseId: 1,
       matchStatus: 'matched',
       matchedAt: '2026-04-12T09:14:15.000Z',
@@ -878,7 +878,7 @@ test('runMadgradesImport still rejects malformed saved course matches', async ()
         snapshotRoot,
         refreshApi: false,
       }),
-      /NOT NULL constraint failed/,
+      /FOREIGN KEY constraint failed/,
     );
   } finally {
     fixture.cleanup();

@@ -216,6 +216,38 @@ function hasLocalInstructor(db, instructorKey) {
   `).pluck().get(instructorKey));
 }
 
+function hasLikelyCourseMatchKey(termCode, courseId) {
+  return /^\d{4}$/.test(String(termCode ?? '')) && /^\d{6}$/.test(String(courseId ?? ''));
+}
+
+function hasLikelyInstructorMatchKey(instructorKey) {
+  return /^(?:email|netid):.+/.test(String(instructorKey ?? ''));
+}
+
+function shouldKeepCourseMatchRow(db, row) {
+  if (row.term_code == null || row.course_id == null) {
+    return true;
+  }
+
+  if (!hasLikelyCourseMatchKey(row.term_code, row.course_id)) {
+    return true;
+  }
+
+  return hasLocalCourse(db, row.term_code, row.course_id);
+}
+
+function shouldKeepInstructorMatchRow(db, row) {
+  if (row.instructor_key == null) {
+    return true;
+  }
+
+  if (!hasLikelyInstructorMatchKey(row.instructor_key)) {
+    return true;
+  }
+
+  return hasLocalInstructor(db, row.instructor_key);
+}
+
 export function replaceMadgradesTables(db, snapshot, importedAt) {
   const importedAtIso = normalizeImportedAt(importedAt);
   const refreshRunRow = {
@@ -290,10 +322,10 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
   const courseOfferingRows = (snapshot?.courseOfferings ?? []).map(makeMadgradesCourseOfferingRow);
   const courseMatchRows = (snapshot?.matchReport?.courseMatches ?? [])
     .map(makeMadgradesCourseMatchRow)
-    .filter((row) => row.term_code == null || row.course_id == null || hasLocalCourse(db, row.term_code, row.course_id));
+    .filter((row) => shouldKeepCourseMatchRow(db, row));
   const instructorMatchRows = (snapshot?.matchReport?.instructorMatches ?? [])
     .map(makeMadgradesInstructorMatchRow)
-    .filter((row) => row.instructor_key == null || hasLocalInstructor(db, row.instructor_key));
+    .filter((row) => shouldKeepInstructorMatchRow(db, row));
 
   let nextCourseDistributionId = 1;
   const courseDistributionRows = (snapshot?.courseGradeDistributions ?? []).flatMap((distribution) => {
