@@ -12,6 +12,7 @@ function makeSchedulePackage(
   return {
     sourcePackageId,
     sectionBundleLabel: sourcePackageId,
+    sectionTitle: null,
     openSeats: 5,
     isFull: false,
     hasWaitlist: false,
@@ -94,4 +95,27 @@ test("splitSchedulePackageNotes only splits restriction notes on persisted delim
       { id: "pkg-3", packageNote: "Instructor consent required." },
     ],
   );
+});
+
+test("splitSchedulePackageNotes promotes prerequisite and global admin notes out of package cards", () => {
+  const result = splitSchedulePackageNotes(
+    [
+      makeSchedulePackage(
+        "pkg-1",
+        "Catalog prerequisite text. | Courses taught and managed by the Computer Sciences department often have enrollment restrictions that give students in UW-Madison Computer Sciences programs priority access during initial enrollment periods. Those restrictions are removed after the conclusion of sophomore enrollment. | All careers, except Grads | This course requires a Windows or Mac laptop computer. | You may contact us at enrollment@ischool.wisc.edu or by phone at (608) 263-2900.",
+      ),
+    ],
+    {
+      promotedNotes: ["Catalog prerequisite text."],
+    },
+  );
+
+  assert.deepEqual(result.sharedNotes, [
+    "Catalog prerequisite text.",
+    "Courses taught and managed by the Computer Sciences department often have enrollment restrictions that give students in UW-Madison Computer Sciences programs priority access during initial enrollment periods. Those restrictions are removed after the conclusion of sophomore enrollment.",
+    "All careers, except Grads",
+    "This course requires a Windows or Mac laptop computer.",
+    "You may contact us at enrollment@ischool.wisc.edu or by phone at (608) 263-2900.",
+  ]);
+  assert.equal(result.packages[0].packageNote, null);
 });

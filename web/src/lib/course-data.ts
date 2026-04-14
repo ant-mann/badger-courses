@@ -6,6 +6,11 @@ import { getDb } from "./db";
 type SqlitePrimitive = string | number | null;
 type Row = Record<string, SqlitePrimitive>;
 
+type CourseSectionRow = CourseSection & {
+  sessionCode: string | null;
+  sourcePackageId: string;
+};
+
 export type CourseListItem = {
   designation: string;
   title: string;
@@ -22,6 +27,7 @@ export type CourseSection = {
   sectionClassNumber: number | null;
   sectionNumber: string;
   sectionType: string;
+  sectionTitle?: string | null;
   instructionMode: string | null;
   openSeats: number | null;
   waitlistCurrentSize: number | null;
@@ -85,6 +91,7 @@ export type PrerequisiteRule = {
 export type SchedulePackage = {
   sourcePackageId: string;
   sectionBundleLabel: string;
+  sectionTitle?: string | null;
   openSeats: number | null;
   isFull: boolean | null;
   hasWaitlist: boolean | null;
@@ -156,6 +163,159 @@ export function parseCourseGroupsJson(value: string | null): string[][] {
   }
 }
 
+function parseSourcePackageSubjectCode(sourcePackageId: string): string | null {
+  const parts = sourcePackageId.split(":", 4);
+  return parts.length >= 2 ? parts[1] : null;
+}
+
+function parseSourcePackageCourseId(sourcePackageId: string): string | null {
+  const parts = sourcePackageId.split(":", 4);
+  return parts.length >= 3 ? parts[2] : null;
+}
+
+function isPreferredSourcePackage(
+  candidateSourcePackageId: string,
+  currentSourcePackageId: string,
+  primarySubjectCode: string,
+): boolean {
+  const candidateSubjectCode = parseSourcePackageSubjectCode(candidateSourcePackageId);
+  const currentSubjectCode = parseSourcePackageSubjectCode(currentSourcePackageId);
+  const candidateMatchesPrimary = candidateSubjectCode === primarySubjectCode;
+  const currentMatchesPrimary = currentSubjectCode === primarySubjectCode;
+
+  if (candidateMatchesPrimary !== currentMatchesPrimary) {
+    return candidateMatchesPrimary;
+  }
+
+  return candidateSourcePackageId.localeCompare(currentSourcePackageId) < 0;
+}
+
+function mergeRestrictionNotes(...notes: Array<string | null>): string | null {
+  const fragments = new Set<string>();
+
+  for (const note of notes) {
+    if (!note) {
+      continue;
+    }
+
+    for (const fragment of note.split(" | ").map((value) => value.trim()).filter(Boolean)) {
+      fragments.add(fragment);
+    }
+  }
+
+  return fragments.size > 0 ? [...fragments].join(" | ") : null;
+}
+
+function buildCourseTitleLookup(
+  db: Database.Database,
+  termCode: string,
+  sourcePackageIds: string[],
+): Map<string, string> {
+  const courseIds = [...new Set(sourcePackageIds.map(parseSourcePackageCourseId).filter(Boolean))];
+
+  if (courseIds.length === 0) {
+    return new Map();
+  }
+
+  const placeholders = courseIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `
+        SELECT DISTINCT course_id, title
+        FROM courses
+        WHERE term_code = ? AND course_id IN (${placeholders})
+      `,
+    )
+    .all(termCode, ...courseIds) as Row[];
+
+  return new Map(
+    rows
+      .map((row) => [asString(row.course_id), asString(row.title)] as const)
+      .filter((entry) => entry[1].length > 0),
+  );
+}
+
+function dedupeSections(sections: CourseSectionRow[], primarySubjectCode: string): CourseSection[] {
+  const groupedSections = new Map<string, CourseSectionRow>();
+
+  for (const section of sections) {
+    const key = [section.sectionType, section.sectionNumber, section.sessionCode ?? ""].join("|");
+    const current = groupedSections.get(key);
+
+    if (!current) {
+      groupedSections.set(key, section);
+      continue;
+    }
+
+    const preferred = isPreferredSourcePackage(
+      section.sourcePackageId,
+      current.sourcePackageId,
+      primarySubjectCode,
+    )
+      ? section
+      : current;
+    const fallback = preferred === section ? current : section;
+
+    groupedSections.set(key, {
+      ...fallback,
+      ...preferred,
+      sectionClassNumber: preferred.sectionClassNumber ?? fallback.sectionClassNumber,
+      sectionTitle: preferred.sectionTitle ?? fallback.sectionTitle,
+      instructionMode: preferred.instructionMode ?? fallback.instructionMode,
+      openSeats: preferred.openSeats ?? fallback.openSeats,
+      waitlistCurrentSize: preferred.waitlistCurrentSize ?? fallback.waitlistCurrentSize,
+      capacity: preferred.capacity ?? fallback.capacity,
+      currentlyEnrolled: preferred.currentlyEnrolled ?? fallback.currentlyEnrolled,
+      hasOpenSeats: preferred.hasOpenSeats ?? fallback.hasOpenSeats,
+      hasWaitlist: preferred.hasWaitlist ?? fallback.hasWaitlist,
+      isFull: preferred.isFull ?? fallback.isFull,
+    });
+  }
+
+  return [...groupedSections.values()].map(({ sessionCode: _sessionCode, sourcePackageId: _sourcePackageId, ...section }) => section);
+}
+
+function dedupeSchedulePackages(
+  schedulePackages: SchedulePackage[],
+  primarySubjectCode: string,
+): SchedulePackage[] {
+  const groupedPackages = new Map<string, SchedulePackage>();
+
+  for (const schedulePackage of schedulePackages) {
+    const key = [schedulePackage.sectionBundleLabel, schedulePackage.meetingSummaryLocal ?? ""].join("|");
+    const current = groupedPackages.get(key);
+
+    if (!current) {
+      groupedPackages.set(key, schedulePackage);
+      continue;
+    }
+
+    const preferred = isPreferredSourcePackage(
+      schedulePackage.sourcePackageId,
+      current.sourcePackageId,
+      primarySubjectCode,
+    )
+      ? schedulePackage
+      : current;
+    const fallback = preferred === schedulePackage ? current : schedulePackage;
+
+    groupedPackages.set(key, {
+      ...fallback,
+      ...preferred,
+      sourcePackageId: preferred.sourcePackageId,
+      sectionTitle: preferred.sectionTitle ?? fallback.sectionTitle,
+      openSeats: preferred.openSeats ?? fallback.openSeats,
+      isFull: preferred.isFull ?? fallback.isFull,
+      hasWaitlist: preferred.hasWaitlist ?? fallback.hasWaitlist,
+      campusDayCount: preferred.campusDayCount ?? fallback.campusDayCount,
+      meetingSummaryLocal: preferred.meetingSummaryLocal ?? fallback.meetingSummaryLocal,
+      restrictionNote: mergeRestrictionNotes(preferred.restrictionNote, fallback.restrictionNote),
+    });
+  }
+
+  return [...groupedPackages.values()];
+}
+
 export function searchCourses(params: CourseSearchParams = {}): CourseListItem[] {
   const db = getDb();
   const query = params.query?.trim() ?? "";
@@ -180,11 +340,32 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
     bindings.push(`${escapeLike(subject.toUpperCase())}%`);
   }
 
-  bindings.push(limit);
-
   const rows = db
     .prepare(
       `
+        WITH ranked_courses AS (
+          SELECT
+            course_designation,
+            title,
+            minimum_credits,
+            maximum_credits,
+            cross_list_designations_json,
+            section_count,
+            has_any_open_seats,
+            has_any_waitlist,
+            has_any_full_section,
+            ROW_NUMBER() OVER (
+              PARTITION BY course_designation
+              ORDER BY
+                COALESCE(section_count, 0) DESC,
+                COALESCE(has_any_open_seats, 0) DESC,
+                COALESCE(has_any_full_section, 0) DESC,
+                title ASC,
+                course_id ASC
+            ) AS designation_rank
+          FROM course_overview_v
+          ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+        )
         SELECT
           course_designation,
           title,
@@ -195,13 +376,13 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
           has_any_open_seats,
           has_any_waitlist,
           has_any_full_section
-        FROM course_overview_v
-        ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
-        ORDER BY has_any_open_seats DESC, course_designation ASC
+        FROM ranked_courses
+        WHERE designation_rank = 1
+        ORDER BY COALESCE(has_any_open_seats, 0) DESC, COALESCE(section_count, 0) DESC, course_designation ASC
         LIMIT ?
       `,
     )
-    .all(...bindings) as Row[];
+    .all(...bindings, limit) as Row[];
 
   return rows.map(mapCourseListItem);
 }
@@ -291,9 +472,11 @@ export function getCourseDetail(designation: string): CourseDetail | null {
       `
         SELECT
           section_class_number,
+          source_package_id,
           section_number,
           section_type,
           instruction_mode,
+          session_code,
           open_seats,
           waitlist_current_size,
           capacity,
@@ -357,6 +540,66 @@ export function getCourseDetail(designation: string): CourseDetail | null {
 
   const instructorGrades = getInstructorHistory(db, canonical.termCode, canonical.courseId);
   const prerequisites = prerequisiteRows.map(mapPrerequisiteRule);
+  const courseTitleLookup = buildCourseTitleLookup(
+    db,
+    canonical.termCode,
+    [
+      ...sections.map((row) => asString(row.source_package_id)),
+      ...schedulePackages.map((row) => asString(row.source_package_id)),
+    ],
+  );
+  const mappedSections: CourseSectionRow[] = sections.map((row) => ({
+    sectionClassNumber: asNullableNumber(row.section_class_number),
+    sectionNumber: asString(row.section_number),
+    sectionType: asString(row.section_type),
+    sectionTitle: (() => {
+      const sourceCourseId = parseSourcePackageCourseId(asString(row.source_package_id));
+      const sourceTitle = sourceCourseId ? courseTitleLookup.get(sourceCourseId) ?? null : null;
+      return sourceTitle && sourceTitle !== asString(courseRow.title) ? sourceTitle : null;
+    })(),
+    instructionMode: asNullableString(row.instruction_mode),
+    openSeats: asNullableNumber(row.open_seats),
+    waitlistCurrentSize: asNullableNumber(row.waitlist_current_size),
+    capacity: asNullableNumber(row.capacity),
+    currentlyEnrolled: asNullableNumber(row.currently_enrolled),
+    hasOpenSeats: asNullableBoolean(row.has_open_seats),
+    hasWaitlist: asNullableBoolean(row.has_waitlist),
+    isFull: asNullableBoolean(row.is_full),
+    sessionCode: asNullableString(row.session_code),
+    sourcePackageId: asString(row.source_package_id),
+  }));
+  const mappedSchedulePackages = schedulePackages.map((row) => ({
+    sourcePackageId: asString(row.source_package_id),
+    sectionBundleLabel: asString(row.section_bundle_label),
+    sectionTitle: (() => {
+      const sourceCourseId = parseSourcePackageCourseId(asString(row.source_package_id));
+      const sourceTitle = sourceCourseId ? courseTitleLookup.get(sourceCourseId) ?? null : null;
+      return sourceTitle && sourceTitle !== asString(courseRow.title) ? sourceTitle : null;
+    })(),
+    openSeats: asNullableNumber(row.open_seats),
+    isFull: asNullableBoolean(row.is_full),
+    hasWaitlist: asNullableBoolean(row.has_waitlist),
+    campusDayCount: asNullableNumber(row.campus_day_count),
+    meetingSummaryLocal: asNullableString(row.meeting_summary_local),
+    restrictionNote: asNullableString(row.restriction_note),
+  }));
+  const dedupedSections = dedupeSections(mappedSections, asString(courseRow.subject_code));
+  const dedupedSchedulePackages = dedupeSchedulePackages(
+    mappedSchedulePackages,
+    asString(courseRow.subject_code),
+  );
+  const sectionLabelToTitle = new Map(
+    dedupedSections
+      .filter((section) => section.sectionTitle)
+      .map((section) => [
+        `${asString(courseRow.course_designation)} ${section.sectionType} ${section.sectionNumber}`,
+        section.sectionTitle as string,
+      ]),
+  );
+  const enrichedSchedulePackages = dedupedSchedulePackages.map((schedulePackage) => ({
+    ...schedulePackage,
+    sectionTitle: schedulePackage.sectionTitle ?? sectionLabelToTitle.get(schedulePackage.sectionBundleLabel) ?? null,
+  }));
 
   return {
     course: {
@@ -366,6 +609,7 @@ export function getCourseDetail(designation: string): CourseDetail | null {
       catalogNumber: asString(courseRow.catalog_number),
       courseId: asString(courseRow.course_id),
       enrollmentPrerequisites: asNullableString(courseRow.enrollment_prerequisites),
+      sectionCount: dedupedSections.length,
     },
     meetings: meetings.map((row) => ({
       sectionClassNumber: asNullableNumber(row.section_class_number),
@@ -397,29 +641,8 @@ export function getCourseDetail(designation: string): CourseDetail | null {
           unparsedText: asNullableString(prerequisiteRow.unparsed_text),
         }
       : null,
-    sections: sections.map((row) => ({
-      sectionClassNumber: asNullableNumber(row.section_class_number),
-      sectionNumber: asString(row.section_number),
-      sectionType: asString(row.section_type),
-      instructionMode: asNullableString(row.instruction_mode),
-      openSeats: asNullableNumber(row.open_seats),
-      waitlistCurrentSize: asNullableNumber(row.waitlist_current_size),
-      capacity: asNullableNumber(row.capacity),
-      currentlyEnrolled: asNullableNumber(row.currently_enrolled),
-      hasOpenSeats: asNullableBoolean(row.has_open_seats),
-      hasWaitlist: asNullableBoolean(row.has_waitlist),
-      isFull: asNullableBoolean(row.is_full),
-    })),
-    schedulePackages: schedulePackages.map((row) => ({
-      sourcePackageId: asString(row.source_package_id),
-      sectionBundleLabel: asString(row.section_bundle_label),
-      openSeats: asNullableNumber(row.open_seats),
-      isFull: asNullableBoolean(row.is_full),
-      hasWaitlist: asNullableBoolean(row.has_waitlist),
-      campusDayCount: asNullableNumber(row.campus_day_count),
-      meetingSummaryLocal: asNullableString(row.meeting_summary_local),
-      restrictionNote: asNullableString(row.restriction_note),
-    })),
+    sections: dedupedSections,
+    schedulePackages: enrichedSchedulePackages,
   };
 }
 
@@ -501,6 +724,12 @@ function resolveCanonicalCourse(
         SELECT term_code, course_id
         FROM course_overview_v
         WHERE course_designation = ?
+        ORDER BY
+          COALESCE(section_count, 0) DESC,
+          COALESCE(has_any_open_seats, 0) DESC,
+          COALESCE(has_any_full_section, 0) DESC,
+          title ASC,
+          course_id ASC
         LIMIT 1
       `,
     )

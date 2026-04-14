@@ -35,7 +35,9 @@ export default async function CoursePage({ params }: CoursePageProps) {
     notFound();
   }
 
-  const schedulePackageNotes = splitSchedulePackageNotes(detail.schedulePackages);
+  const schedulePackageNotes = splitSchedulePackageNotes(detail.schedulePackages, {
+    promotedNotes: detail.course.enrollmentPrerequisites ? [detail.course.enrollmentPrerequisites] : [],
+  });
   const sharedEnrollmentNotes = schedulePackageNotes.sharedNotes.filter(
     (note) => note !== detail.course.enrollmentPrerequisites?.trim(),
   );
@@ -135,6 +137,11 @@ export default async function CoursePage({ params }: CoursePageProps) {
                   >
                     <div className="flex flex-col gap-2">
                       <h3 className="text-base font-semibold">{schedulePackage.sectionBundleLabel}</h3>
+                      {schedulePackage.sectionTitle ? (
+                        <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+                          {schedulePackage.sectionTitle}
+                        </p>
+                      ) : null}
                       <p className="text-sm leading-7 text-black/72 dark:text-white/72">
                         {schedulePackage.meetingSummaryLocal ?? "Meeting summary unavailable."}
                       </p>
@@ -173,7 +180,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
                     <tr>
                       <th className="px-4 py-3 font-medium">Section</th>
                       <th className="px-4 py-3 font-medium">Instructor</th>
-                      <th className="px-4 py-3 font-medium">Prior offerings</th>
+                      <th className="px-4 py-3 font-medium">Previous times taught</th>
                       <th className="px-4 py-3 font-medium">Students</th>
                       <th className="px-4 py-3 font-medium">Same-course GPA</th>
                       <th className="px-4 py-3 font-medium">Course GPA</th>

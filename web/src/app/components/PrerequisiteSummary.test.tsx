@@ -25,7 +25,8 @@ test("PrerequisiteSummary does not repeat raw prerequisite text when catalog tex
   );
 
   const normalizedMarkup = collapseWhitespace(markup);
-  assert.match(normalizedMarkup, /Catalog text/i);
+  assert.match(normalizedMarkup, /graduate\/professional standing/i);
+  assert.doesNotMatch(normalizedMarkup, /Catalog text/i);
   assert.match(normalizedMarkup, /Parsed with partial coverage\./i);
   assert.doesNotMatch(normalizedMarkup, /Parsed with partial coverage\. Raw prerequisite text:/i);
 });

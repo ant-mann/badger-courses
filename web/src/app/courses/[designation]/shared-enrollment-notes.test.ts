@@ -59,3 +59,21 @@ Bring examples from prior studio work to the critique sessions.`,
     },
   ]);
 });
+
+test("organizeSharedEnrollmentNotes collapses short admin metadata instead of surfacing it as primary guidance", () => {
+  const result = organizeSharedEnrollmentNotes([
+    "All careers, except Grads",
+    "You may contact us at enrollment@ischool.wisc.edu or by phone at (608) 263-2900.",
+  ]);
+
+  assert.deepEqual(result.visibleNotes, []);
+  assert.deepEqual(result.collapsibleSections, [
+    {
+      title: "Notes",
+      notes: [
+        "Open to all student careers except graduate students.",
+        "You may contact us at enrollment@ischool.wisc.edu or by phone at (608) 263-2900.",
+      ],
+    },
+  ]);
+});
