@@ -105,7 +105,6 @@ export type CourseDetail = {
   instructorGrades: InstructorHistoryItem[];
   prerequisite: PrerequisiteSummary | null;
   sections: CourseSection[];
-  instructorHistory: InstructorHistoryItem[];
   schedulePackages: SchedulePackage[];
 };
 
@@ -410,7 +409,6 @@ export function getCourseDetail(designation: string): CourseDetail | null {
       hasWaitlist: asNullableBoolean(row.has_waitlist),
       isFull: asNullableBoolean(row.is_full),
     })),
-    instructorHistory: instructorGrades,
     schedulePackages: schedulePackages.map((row) => ({
       sourcePackageId: asString(row.source_package_id),
       sectionBundleLabel: asString(row.section_bundle_label),

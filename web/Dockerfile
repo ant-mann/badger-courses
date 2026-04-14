@@ -10,7 +10,6 @@ COPY web/package.json ./web/
 RUN npm ci
 
 COPY src ./src
-COPY tests ./tests
 COPY data ./data
 COPY web ./web
 
@@ -25,8 +24,6 @@ RUN npm run build --workspace=web
 
 FROM node:22-slim AS runner
 
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -34,7 +31,8 @@ ENV MADGRADES_DB_PATH=/app/web/data/fall-2026.sqlite
 
 COPY --from=base /app/package.json /app/package-lock.json ./
 COPY --from=base /app/web/package.json ./web/
-RUN npm ci --omit=dev
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/web/node_modules ./web/node_modules
 
 COPY --from=base /app/web/.next ./web/.next
 COPY --from=base /app/web/public ./web/public

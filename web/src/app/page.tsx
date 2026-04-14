@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { CourseCard } from "@/app/components/CourseCard";
 import { SearchBar } from "@/app/components/SearchBar";
 import { searchCourses, type CourseListItem } from "@/lib/course-data";
@@ -41,7 +43,9 @@ export default async function Home({ searchParams }: HomePageProps) {
           </div>
         </section>
 
-        <SearchBar initialQuery={query} />
+        <Suspense>
+          <SearchBar initialQuery={query} />
+        </Suspense>
 
         {!hasSearch ? (
           <section className="rounded-3xl border border-black/10 bg-black/[0.02] p-6 text-sm leading-7 text-black/70 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/70">
