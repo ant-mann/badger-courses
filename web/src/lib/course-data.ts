@@ -57,8 +57,8 @@ export type CourseMeeting = {
   meetingIndex: number | null;
   meetingType: string | null;
   meetingDays: string | null;
-  meetingTimeStart: string | null;
-  meetingTimeEnd: string | null;
+  meetingTimeStart: string | number | null;
+  meetingTimeEnd: string | number | null;
   startDate: string | null;
   endDate: string | null;
   examDate: string | null;
@@ -373,8 +373,8 @@ export function getCourseDetail(designation: string): CourseDetail | null {
       meetingIndex: asNullableNumber(row.meeting_index),
       meetingType: asNullableString(row.meeting_type),
       meetingDays: asNullableString(row.meeting_days),
-      meetingTimeStart: asNullableString(row.meeting_time_start),
-      meetingTimeEnd: asNullableString(row.meeting_time_end),
+      meetingTimeStart: asNullableStringOrNumber(row.meeting_time_start),
+      meetingTimeEnd: asNullableStringOrNumber(row.meeting_time_end),
       startDate: asNullableString(row.start_date),
       endDate: asNullableString(row.end_date),
       examDate: asNullableString(row.exam_date),
@@ -571,6 +571,10 @@ function asNullableString(value: SqlitePrimitive): string | null {
 
 function asNullableNumber(value: SqlitePrimitive): number | null {
   return typeof value === "number" ? value : null;
+}
+
+function asNullableStringOrNumber(value: SqlitePrimitive): string | number | null {
+  return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
 function asNullableBoolean(value: SqlitePrimitive): boolean | null {

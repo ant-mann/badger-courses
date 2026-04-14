@@ -7,6 +7,14 @@ import type {
   SchedulePackage,
 } from "@/lib/course-data";
 
+const SCHEDULE_TIMEZONE = "America/Chicago";
+const localTimePartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: SCHEDULE_TIMEZONE,
+  hour: "numeric",
+  minute: "numeric",
+  hour12: false,
+});
+
 export type GeneratedSchedulePackage = {
   source_package_id: string;
   course_designation: string;
@@ -148,7 +156,23 @@ export function expandMeetingDays(meetingDays: string | null): VisibleWeekday[] 
   return expandedDays;
 }
 
-export function parseTimeToMinutes(value: string | null): number | null {
+export function parseTimeToMinutes(value: string | number | null): number | null {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const parts = localTimePartsFormatter.formatToParts(new Date(value));
+    const hour = Number.parseInt(parts.find((part) => part.type === "hour")?.value ?? "", 10);
+    const minute = Number.parseInt(parts.find((part) => part.type === "minute")?.value ?? "", 10);
+
+    if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+      return null;
+    }
+
+    return (hour * 60) + minute;
+  }
+
   if (typeof value !== "string") {
     return null;
   }

@@ -42,6 +42,8 @@ function makeCourseDetail(
 test("parseTimeToMinutes converts HH:MM values into minutes", () => {
   assert.equal(parseTimeToMinutes("09:15"), 555);
   assert.equal(parseTimeToMinutes("17:05"), 1025);
+  assert.equal(parseTimeToMinutes(54000000), 540);
+  assert.equal(parseTimeToMinutes(59400000), 590);
   assert.equal(parseTimeToMinutes("9:15"), null);
   assert.equal(parseTimeToMinutes(null), null);
 });
@@ -130,8 +132,8 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
           meetingIndex: 1,
           meetingType: "CLASS",
           meetingDays: "MWF",
-          meetingTimeStart: "09:00",
-          meetingTimeEnd: "09:50",
+          meetingTimeStart: 54000000,
+          meetingTimeEnd: 59400000,
           startDate: null,
           endDate: null,
           examDate: null,
@@ -169,8 +171,8 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
           meetingIndex: 1,
           meetingType: "CLASS",
           meetingDays: "T",
-          meetingTimeStart: "13:00",
-          meetingTimeEnd: "13:50",
+          meetingTimeStart: 46800000,
+          meetingTimeEnd: 49800000,
           startDate: null,
           endDate: null,
           examDate: null,
@@ -208,8 +210,8 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
           meetingIndex: 1,
           meetingType: "CLASS",
           meetingDays: "S",
-          meetingTimeStart: "11:00",
-          meetingTimeEnd: "11:50",
+          meetingTimeStart: 39600000,
+          meetingTimeEnd: 42600000,
           startDate: null,
           endDate: null,
           examDate: null,
