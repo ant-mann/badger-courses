@@ -125,7 +125,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
 
                 {weekdayEntries.map((entry) => {
                   const top = getOffsetPercent(entry.startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
-                  const height = getOffsetPercent(entry.endMinutes, entry.startMinutes, timeWindow.endMinutes);
+                  const height = getOffsetPercent(entry.endMinutes, timeWindow.startMinutes, timeWindow.endMinutes) - top;
 
                   return (
                     <article

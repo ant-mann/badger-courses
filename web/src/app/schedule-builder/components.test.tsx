@@ -244,6 +244,45 @@ test("ScheduleCalendar shows an accurate empty state when a selected schedule ha
   assert.doesNotMatch(markup, /Select a generated schedule to see its meetings laid out across the week/i);
 });
 
+test("ScheduleCalendar gives equal-duration meetings equal heights", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[
+        {
+          weekday: "M",
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionBundleLabel: "LEC 001",
+          meetingType: "CLASS",
+          startMinutes: 540,
+          endMinutes: 600,
+          room: "140",
+          buildingName: "Grainger Hall",
+        },
+        {
+          weekday: "W",
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+          sectionBundleLabel: "LEC 002",
+          meetingType: "CLASS",
+          startMinutes: 780,
+          endMinutes: 840,
+          room: "B203",
+          buildingName: "Van Vleck Hall",
+        },
+      ]}
+    />,
+  );
+
+  const heightMatches = [...markup.matchAll(/height:([0-9.]+)%/g)].map((match) => match[1]);
+
+  assert.equal(heightMatches.length >= 2, true);
+  assert.equal(heightMatches[0], heightMatches[1]);
+});
+
 test("CoursePicker stays prop-driven and presentational", () => {
   const markup = renderToStaticMarkup(
     <CoursePicker
