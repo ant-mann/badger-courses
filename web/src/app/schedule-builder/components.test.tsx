@@ -107,6 +107,603 @@ test("SectionOptionPanel uses section language in controls", () => {
   assert.doesNotMatch(markup, /package/i);
 });
 
+test("SectionOptionPanel shows long notes behind a disclosure", () => {
+  const restrictionNote =
+    "Reserved for declared majors. | Contact chemistry@wisc.edu for enrollment help.";
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail({
+        schedule_packages: [
+          {
+            ...makeCourseDetail().schedule_packages[0],
+            restrictionNote,
+          },
+        ],
+      })}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.match(markup, /<summary[^>]*>.*More details.*\+.*<\/summary>/i);
+  assert.match(markup, /<details(?:(?!\sopen).)*>/i);
+  assert.equal(markup.split(restrictionNote).length - 1, 1);
+});
+
+test("SectionOptionPanel omits the disclosure when no note exists", () => {
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail()}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /More details/i);
+  assert.doesNotMatch(markup, /<details/);
+});
+
+test("SectionOptionPanel renders separate LEC, LAB, and DIS meeting rows from section details", () => {
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail({
+        sections: [
+          {
+            sectionClassNumber: 2002,
+            sectionNumber: "002",
+            sectionType: "LEC",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+          {
+            sectionClassNumber: 2727,
+            sectionNumber: "727",
+            sectionType: "LAB",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+          {
+            sectionClassNumber: 2427,
+            sectionNumber: "427",
+            sectionType: "DIS",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+        ],
+        meetings: [
+          {
+            sectionClassNumber: 2002,
+            sourcePackageId: "pkg-lec-002",
+            meetingIndex: 0,
+            meetingType: "CLASS",
+            meetingDays: "TR",
+            meetingTimeStart: "13:00",
+            meetingTimeEnd: "14:15",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2727,
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            meetingIndex: 0,
+            meetingType: "LAB",
+            meetingDays: "R",
+            meetingTimeStart: "14:25",
+            meetingTimeEnd: "17:25",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2427,
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            meetingIndex: 0,
+            meetingType: "DIS",
+            meetingDays: "T",
+            meetingTimeStart: "14:30",
+            meetingTimeEnd: "15:45",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+        ],
+        schedule_packages: [
+          {
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            sectionBundleLabel: "LEC 002 + LAB 727 + DIS 427",
+            sectionTitle: null,
+            openSeats: 4,
+            isFull: false,
+            hasWaitlist: false,
+            campusDayCount: 2,
+            meetingSummaryLocal:
+              "TR 1:00 PM-2:15 PM @ Chemistry Building; R 2:25 PM-5:25 PM @ Chemistry Building; T 2:30 PM-3:45 PM @ Chemistry Building",
+            restrictionNote: null,
+          },
+        ],
+      })}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.match(markup, />LEC</);
+  assert.match(markup, />LAB</);
+  assert.match(markup, />DIS</);
+  assert.match(markup, /TR 1:00 PM-2:15 PM @ Chemistry Building/);
+  assert.match(markup, /R 2:25 PM-5:25 PM @ Chemistry Building/);
+  assert.match(markup, /T 2:30 PM-3:45 PM @ Chemistry Building/);
+});
+
+test("SectionOptionPanel derives labeled meeting rows from course-prefixed bundle labels", () => {
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail({
+        sections: [
+          {
+            sectionClassNumber: 2002,
+            sectionNumber: "002",
+            sectionType: "LEC",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+          {
+            sectionClassNumber: 2727,
+            sectionNumber: "727",
+            sectionType: "LAB",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+          {
+            sectionClassNumber: 2427,
+            sectionNumber: "427",
+            sectionType: "DIS",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+        ],
+        meetings: [
+          {
+            sectionClassNumber: 2002,
+            sourcePackageId: "pkg-lec-002",
+            meetingIndex: 0,
+            meetingType: "CLASS",
+            meetingDays: "TR",
+            meetingTimeStart: "13:00",
+            meetingTimeEnd: "14:15",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2727,
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            meetingIndex: 0,
+            meetingType: "LAB",
+            meetingDays: "R",
+            meetingTimeStart: "14:25",
+            meetingTimeEnd: "17:25",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2427,
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            meetingIndex: 0,
+            meetingType: "DIS",
+            meetingDays: "T",
+            meetingTimeStart: "14:30",
+            meetingTimeEnd: "15:45",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+        ],
+        schedule_packages: [
+          {
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            sectionBundleLabel: "COMP SCI 577 LEC 002 + LAB 727 + DIS 427",
+            sectionTitle: null,
+            openSeats: 4,
+            isFull: false,
+            hasWaitlist: false,
+            campusDayCount: 2,
+            meetingSummaryLocal:
+              "TR 1:00 PM-2:15 PM @ Chemistry Building; R 2:25 PM-5:25 PM @ Chemistry Building; T 2:30 PM-3:45 PM @ Chemistry Building",
+            restrictionNote: null,
+          },
+        ],
+      })}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.match(markup, />LEC</);
+  assert.match(markup, />LAB</);
+  assert.match(markup, />DIS</);
+  assert.match(markup, /TR 1:00 PM-2:15 PM @ Chemistry Building/);
+  assert.match(markup, /R 2:25 PM-5:25 PM @ Chemistry Building/);
+  assert.match(markup, /T 2:30 PM-3:45 PM @ Chemistry Building/);
+});
+
+test("SectionOptionPanel renders labeled meeting rows when meeting times are numeric timestamps", () => {
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail({
+        sections: [
+          {
+            sectionClassNumber: 2002,
+            sectionNumber: "002",
+            sectionType: "LEC",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+          {
+            sectionClassNumber: 2727,
+            sectionNumber: "727",
+            sectionType: "LAB",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+          {
+            sectionClassNumber: 2427,
+            sectionNumber: "427",
+            sectionType: "DIS",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 4,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+        ],
+        meetings: [
+          {
+            sectionClassNumber: 2002,
+            sourcePackageId: "pkg-lec-002",
+            meetingIndex: 0,
+            meetingType: "CLASS",
+            meetingDays: "TR",
+            meetingTimeStart: Date.UTC(2026, 0, 6, 19, 0),
+            meetingTimeEnd: Date.UTC(2026, 0, 6, 20, 15),
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2727,
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            meetingIndex: 0,
+            meetingType: "LAB",
+            meetingDays: "R",
+            meetingTimeStart: Date.UTC(2026, 0, 8, 20, 25),
+            meetingTimeEnd: Date.UTC(2026, 0, 8, 23, 25),
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2427,
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            meetingIndex: 0,
+            meetingType: "DIS",
+            meetingDays: "T",
+            meetingTimeStart: Date.UTC(2026, 0, 6, 20, 30),
+            meetingTimeEnd: Date.UTC(2026, 0, 6, 21, 45),
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+        ],
+        schedule_packages: [
+          {
+            sourcePackageId: "pkg-chem-104-002-727-427",
+            sectionBundleLabel: "LEC 002 + LAB 727 + DIS 427",
+            sectionTitle: null,
+            openSeats: 4,
+            isFull: false,
+            hasWaitlist: false,
+            campusDayCount: 2,
+            meetingSummaryLocal:
+              "TR 1:00 PM-2:15 PM @ Chemistry Building; R 2:25 PM-5:25 PM @ Chemistry Building; T 2:30 PM-3:45 PM @ Chemistry Building",
+            restrictionNote: null,
+          },
+        ],
+      })}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.match(markup, />LEC</);
+  assert.match(markup, />LAB</);
+  assert.match(markup, />DIS</);
+  assert.match(markup, /TR 1:00 PM-2:15 PM @ Chemistry Building/);
+  assert.match(markup, /R 2:25 PM-5:25 PM @ Chemistry Building/);
+  assert.match(markup, /T 2:30 PM-3:45 PM @ Chemistry Building/);
+});
+
+test("SectionOptionPanel renders repeated section types without duplicate key warnings", () => {
+  const originalError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    renderToStaticMarkup(
+      <SectionOptionPanel
+        course={makeCourseDetail({
+          sections: [
+            {
+              sectionClassNumber: 3101,
+              sectionNumber: "301",
+              sectionType: "DIS",
+              sectionTitle: null,
+              instructionMode: null,
+              openSeats: 4,
+              waitlistCurrentSize: null,
+              capacity: null,
+              currentlyEnrolled: null,
+              hasOpenSeats: true,
+              hasWaitlist: false,
+              isFull: false,
+            },
+            {
+              sectionClassNumber: 3102,
+              sectionNumber: "302",
+              sectionType: "DIS",
+              sectionTitle: null,
+              instructionMode: null,
+              openSeats: 4,
+              waitlistCurrentSize: null,
+              capacity: null,
+              currentlyEnrolled: null,
+              hasOpenSeats: true,
+              hasWaitlist: false,
+              isFull: false,
+            },
+          ],
+          meetings: [
+            {
+              sectionClassNumber: 3101,
+              sourcePackageId: "pkg-discussions",
+              meetingIndex: 0,
+              meetingType: "DIS",
+              meetingDays: "T",
+              meetingTimeStart: "09:00",
+              meetingTimeEnd: "09:50",
+              startDate: null,
+              endDate: null,
+              examDate: null,
+              room: null,
+              buildingCode: null,
+              buildingName: "Van Vleck Hall",
+              streetAddress: null,
+              latitude: null,
+              longitude: null,
+              locationKnown: true,
+            },
+            {
+              sectionClassNumber: 3102,
+              sourcePackageId: "pkg-discussions",
+              meetingIndex: 0,
+              meetingType: "DIS",
+              meetingDays: "R",
+              meetingTimeStart: "10:00",
+              meetingTimeEnd: "10:50",
+              startDate: null,
+              endDate: null,
+              examDate: null,
+              room: null,
+              buildingCode: null,
+              buildingName: "Van Vleck Hall",
+              streetAddress: null,
+              latitude: null,
+              longitude: null,
+              locationKnown: true,
+            },
+          ],
+          schedule_packages: [
+            {
+              sourcePackageId: "pkg-discussions",
+              sectionBundleLabel: "DIS 301 + DIS 302",
+              sectionTitle: null,
+              openSeats: 4,
+              isFull: false,
+              hasWaitlist: false,
+              campusDayCount: 2,
+              meetingSummaryLocal: "T 9:00 AM-9:50 AM @ Van Vleck Hall; R 10:00 AM-10:50 AM @ Van Vleck Hall",
+              restrictionNote: null,
+            },
+          ],
+        })}
+        excludedSectionIds={[]}
+        loading={false}
+        lockedSectionId={null}
+        errorMessage={null}
+        onExcludeSection={() => {}}
+        onLockSection={() => {}}
+      />,
+    );
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(errors.length, 0);
+});
+
+test("SectionOptionPanel falls back to the merged meeting summary when labeled rows cannot be derived", () => {
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail({
+        sections: [],
+        meetings: [],
+        schedule_packages: [
+          {
+            ...makeCourseDetail().schedule_packages[0],
+            meetingSummaryLocal: "TR 11:00-12:15",
+          },
+        ],
+      })}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.match(markup, /TR 11:00-12:15/);
+  assert.doesNotMatch(markup, />LEC</);
+});
+
 test("ScheduleResults explains how to recover when no schedules match", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults

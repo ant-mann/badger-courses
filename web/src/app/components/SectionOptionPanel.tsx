@@ -1,6 +1,6 @@
 import React from "react";
 
-import type { SchedulePackage } from "@/lib/course-data";
+import type { CourseMeeting, SchedulePackage } from "@/lib/course-data";
 
 import type { ScheduleBuilderCourseDetailResponse } from "@/app/schedule-builder/schedule-data";
 
@@ -12,6 +12,11 @@ type SectionOptionPanelProps = {
   errorMessage: string | null;
   onLockSection: (sourcePackageId: string | null) => void;
   onExcludeSection: (sourcePackageId: string, excluded: boolean) => void;
+};
+
+type MeetingLine = {
+  label: string;
+  detail: string;
 };
 
 function isExcluded(excludedSectionIds: string[], sourcePackageId: string): boolean {
@@ -28,6 +33,128 @@ function seatsLabel(schedulePackage: SchedulePackage): string {
   }
 
   return "Seat availability unavailable";
+}
+
+function parseBundleSections(sectionBundleLabel: string): Array<{
+  sectionType: string;
+  sectionNumber: string;
+}> {
+  return sectionBundleLabel
+    .split("+")
+    .map((part) => part.trim())
+    .map((part) => /(?:^|\s)([A-Z]+)\s+([A-Z0-9]+)$/.exec(part))
+    .flatMap((match) =>
+      match
+        ? [
+            {
+              sectionType: match[1],
+              sectionNumber: match[2],
+            },
+          ]
+        : [],
+    );
+}
+
+function formatLocalTime(value: string | number | null): string | null {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(value));
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+
+  if (hour > 23 || minute > 59) {
+    return null;
+  }
+
+  const meridiem = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+
+  return `${displayHour}:${match[2]} ${meridiem}`;
+}
+
+function formatMeetingDetail(meeting: CourseMeeting): string | null {
+  if (!meeting.meetingDays) {
+    return null;
+  }
+
+  const meetingTimeStart = formatLocalTime(meeting.meetingTimeStart);
+  const meetingTimeEnd = formatLocalTime(meeting.meetingTimeEnd);
+
+  if (!meetingTimeStart || !meetingTimeEnd) {
+    return null;
+  }
+
+  const location = meeting.buildingName ?? meeting.room;
+  const timeRange = `${meeting.meetingDays} ${meetingTimeStart}-${meetingTimeEnd}`;
+
+  return location ? `${timeRange} @ ${location}` : timeRange;
+}
+
+function buildMeetingLines(
+  course: ScheduleBuilderCourseDetailResponse,
+  schedulePackage: SchedulePackage,
+): MeetingLine[] | null {
+  const bundleSections = parseBundleSections(schedulePackage.sectionBundleLabel);
+
+  if (bundleSections.length === 0) {
+    return null;
+  }
+
+  const meetingLines: MeetingLine[] = [];
+
+  for (const bundleSection of bundleSections) {
+    const section = course.sections.find(
+      (candidateSection) =>
+        candidateSection.sectionType === bundleSection.sectionType &&
+        candidateSection.sectionNumber === bundleSection.sectionNumber,
+    );
+
+    if (!section || section.sectionClassNumber === null) {
+      return null;
+    }
+
+    const meeting = course.meetings
+      .filter((candidateMeeting) => candidateMeeting.sectionClassNumber === section.sectionClassNumber)
+      .sort((left, right) => (left.meetingIndex ?? Number.MAX_SAFE_INTEGER) - (right.meetingIndex ?? Number.MAX_SAFE_INTEGER))
+      .find((candidateMeeting) => formatMeetingDetail(candidateMeeting) !== null);
+
+    if (!meeting) {
+      return null;
+    }
+
+    const detail = formatMeetingDetail(meeting);
+
+    if (!detail) {
+      return null;
+    }
+
+    meetingLines.push({
+      label: bundleSection.sectionType,
+      detail,
+    });
+  }
+
+  return meetingLines;
 }
 
 export function SectionOptionPanel({
@@ -72,6 +199,7 @@ export function SectionOptionPanel({
           {course.schedule_packages.map((schedulePackage) => {
             const excluded = isExcluded(excludedSectionIds, schedulePackage.sourcePackageId);
             const locked = lockedSectionId === schedulePackage.sourcePackageId;
+            const meetingLines = buildMeetingLines(course, schedulePackage);
 
             return (
               <article
@@ -93,17 +221,37 @@ export function SectionOptionPanel({
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-sm leading-7 text-black/68 dark:text-white/68">
-                      {schedulePackage.meetingSummaryLocal ?? "Meeting summary unavailable."}
-                    </p>
+                    {meetingLines ? (
+                      <div className="flex flex-col gap-1 text-sm leading-7 text-black/68 dark:text-white/68">
+                        {meetingLines.map((meetingLine, index) => (
+                          <div
+                            key={`${schedulePackage.sourcePackageId}-${meetingLine.label}-${meetingLine.detail}-${index}`}
+                            className="flex flex-wrap gap-2"
+                          >
+                            <span className="font-medium text-black/78 dark:text-white/78">{meetingLine.label}</span>
+                            <span>{meetingLine.detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+                        {schedulePackage.meetingSummaryLocal ?? "Meeting summary unavailable."}
+                      </p>
+                    )}
                     <p className="text-sm text-black/60 dark:text-white/60">
                       {seatsLabel(schedulePackage)}
                       {schedulePackage.campusDayCount !== null ? `, ${schedulePackage.campusDayCount} campus days` : ""}
                     </p>
                     {schedulePackage.restrictionNote ? (
-                      <p className="text-sm leading-7 text-black/60 dark:text-white/60">
-                        {schedulePackage.restrictionNote}
-                      </p>
+                      <details className="rounded-2xl border border-black/10 bg-white/45 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-black/72 marker:content-none dark:text-white/72">
+                          <span>More details</span>
+                          <span aria-hidden="true">+</span>
+                        </summary>
+                        <p className="mt-3 text-sm leading-7 text-black/60 dark:text-white/60">
+                          {schedulePackage.restrictionNote}
+                        </p>
+                      </details>
                     ) : null}
                   </div>
 
