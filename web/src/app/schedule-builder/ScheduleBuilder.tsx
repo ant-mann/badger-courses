@@ -9,6 +9,7 @@ import { ScheduleResults } from "@/app/components/ScheduleResults";
 import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
 import { SelectedCourseList } from "@/app/components/SelectedCourseList";
 import {
+  buildCourseDetailsRequestSignature,
   buildScheduleRequestSignature,
   parseBuilderState,
   removeCourse,
@@ -90,6 +91,7 @@ export function ScheduleBuilder() {
   const searchParams = useSearchParams();
   const [isRoutingPending, startTransition] = useTransition();
   const builderState = parseBuilderState(new URLSearchParams(searchParams.toString()));
+  const courseDetailsRequestSignature = buildCourseDetailsRequestSignature(builderState.courses);
   const scheduleRequestSignature = buildScheduleRequestSignature(builderState);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -224,7 +226,7 @@ export function ScheduleBuilder() {
         controller.abort();
       }
     };
-  }, [builderState.courses, courseDetails]);
+  }, [courseDetailsRequestSignature]);
 
   useEffect(() => {
     const schedulePayload = JSON.parse(scheduleRequestSignature) as ScheduleRequestPayload;

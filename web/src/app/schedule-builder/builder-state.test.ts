@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCourseDetailsRequestSignature,
   buildScheduleRequestPayload,
   buildScheduleRequestSignature,
   parseBuilderState,
@@ -128,6 +129,13 @@ test("buildScheduleRequestSignature stays stable for equivalent builder inputs",
       limit: 50,
     }),
   );
+
+  assert.equal(firstSignature, secondSignature);
+});
+
+test("buildCourseDetailsRequestSignature stays stable across equivalent course arrays", () => {
+  const firstSignature = buildCourseDetailsRequestSignature([" comp sci 577 ", "MATH 240"]);
+  const secondSignature = buildCourseDetailsRequestSignature(["COMP SCI 577", "MATH 240"]);
 
   assert.equal(firstSignature, secondSignature);
 });

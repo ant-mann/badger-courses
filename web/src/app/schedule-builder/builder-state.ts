@@ -114,6 +114,10 @@ export function buildScheduleRequestSignature(state: ScheduleBuilderState): stri
   return JSON.stringify(buildScheduleRequestPayload(state));
 }
 
+export function buildCourseDetailsRequestSignature(courses: string[]): string {
+  return JSON.stringify(normalizeCourses(courses));
+}
+
 export function setLockedSection(
   state: ScheduleBuilderState,
   courseDesignation: string,
