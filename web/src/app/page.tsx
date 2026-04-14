@@ -1,4 +1,6 @@
+import React from "react";
 import { Suspense } from "react";
+import Link from "next/link";
 
 import { CourseCard } from "@/app/components/CourseCard";
 import { SearchBar } from "@/app/components/SearchBar";
@@ -44,6 +46,14 @@ export default async function Home({ searchParams }: HomePageProps) {
             <p className="max-w-2xl text-base leading-7 text-black/65 dark:text-white/65">
               Start with a designation, title, or subject prefix like <span className="font-medium">COMP SCI 577</span> or <span className="font-medium">MATH</span>.
             </p>
+          </div>
+          <div>
+            <Link
+              href="/schedule-builder"
+              className="inline-flex min-h-11 items-center rounded-full border border-black/10 bg-black px-5 text-sm font-medium text-white transition hover:bg-black/90 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-white/90"
+            >
+              Build schedules
+            </Link>
           </div>
         </section>
 
