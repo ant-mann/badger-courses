@@ -123,6 +123,23 @@ test("ScheduleResults explains how to recover when no schedules match", () => {
   assert.match(markup, /Relax your locked or excluded sections and try again/i);
 });
 
+test("ScheduleResults changes mobile output when calendar view is selected", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[makeSchedule()]}
+      selectedScheduleIndex={0}
+      loading={false}
+      errorMessage={null}
+      view="calendar"
+      onSelectSchedule={() => {}}
+      onViewChange={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Calendar preview/i);
+  assert.doesNotMatch(markup, /Selected schedule/i);
+});
+
 test("ScheduleCalendar renders only the weekdays used by the selected schedule", () => {
   const entries: ScheduleCalendarEntry[] = [
     {

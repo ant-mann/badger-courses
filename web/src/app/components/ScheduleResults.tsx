@@ -43,6 +43,8 @@ export function ScheduleResults({
   onSelectSchedule,
   onViewChange,
 }: ScheduleResultsProps) {
+  const selectedSchedule = schedules[selectedScheduleIndex] ?? null;
+
   return (
     <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -95,7 +97,7 @@ export function ScheduleResults({
         </div>
       ) : null}
 
-      {!loading && !errorMessage && schedules.length > 0 ? (
+      {!loading && !errorMessage && schedules.length > 0 && view === "cards" ? (
         <div className="flex flex-col gap-3">
           {schedules.map((schedule, index) => {
             const isSelected = index === selectedScheduleIndex;
@@ -136,6 +138,36 @@ export function ScheduleResults({
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {!loading && !errorMessage && schedules.length > 0 && view === "calendar" ? (
+        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 dark:border-white/10 dark:bg-white/[0.04]">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold">Calendar preview</h3>
+              <span className="rounded-full bg-black/[0.05] px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-black/60 dark:bg-white/[0.06] dark:text-white/60">
+                Schedule {selectedScheduleIndex + 1}
+              </span>
+            </div>
+            {selectedSchedule ? (
+              <>
+                <p className="text-sm text-black/60 dark:text-white/60">
+                  {selectedSchedule.packages.length} section choice{selectedSchedule.packages.length === 1 ? "" : "s"} • {formatTimeRange(selectedSchedule)}
+                </p>
+                <div className="flex flex-col gap-1 text-sm leading-7 text-black/68 dark:text-white/68">
+                  {selectedSchedule.packages.map((schedulePackage) => (
+                    <p key={schedulePackage.source_package_id}>
+                      <span className="font-medium">{schedulePackage.course_designation}</span>: {schedulePackage.section_bundle_label}
+                    </p>
+                  ))}
+                </div>
+                <p className="text-sm text-black/60 dark:text-white/60">
+                  Open the full calendar below to inspect the weekly layout for this selection.
+                </p>
+              </>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </section>
