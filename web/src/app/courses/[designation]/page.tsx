@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { PrerequisiteSummary } from "@/app/components/PrerequisiteSummary";
 import { SectionTable } from "@/app/components/SectionTable";
 import { getCourseDetail } from "@/lib/course-data";
+import { getInstructorHistoryRowsForDisplay } from "./instructor-history";
+import { splitSchedulePackageNotes } from "./schedule-package-notes";
+import { organizeSharedEnrollmentNotes } from "./shared-enrollment-notes";
 
 type CoursePageProps = {
   params: Promise<{
@@ -31,6 +34,13 @@ export default async function CoursePage({ params }: CoursePageProps) {
   if (!detail) {
     notFound();
   }
+
+  const schedulePackageNotes = splitSchedulePackageNotes(detail.schedulePackages);
+  const sharedEnrollmentNotes = schedulePackageNotes.sharedNotes.filter(
+    (note) => note !== detail.course.enrollmentPrerequisites?.trim(),
+  );
+  const organizedEnrollmentNotes = organizeSharedEnrollmentNotes(sharedEnrollmentNotes);
+  const displayedInstructorGrades = getInstructorHistoryRowsForDisplay(detail.instructorGrades);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -72,17 +82,53 @@ export default async function CoursePage({ params }: CoursePageProps) {
               prerequisite={detail.prerequisite}
               enrollmentPrerequisites={detail.course.enrollmentPrerequisites}
             />
+
+            {sharedEnrollmentNotes.length > 0 ? (
+              <div className="flex flex-col gap-4">
+                <h2 className="text-2xl font-semibold tracking-[-0.02em]">Enrollment notes</h2>
+                {organizedEnrollmentNotes.visibleNotes.length > 0 ? (
+                  <div className="rounded-3xl border border-black/10 bg-white/70 p-5 dark:border-white/10 dark:bg-white/[0.03]">
+                    <div className="flex flex-col gap-3 text-sm leading-7 text-black/72 dark:text-white/72">
+                      {organizedEnrollmentNotes.visibleNotes.map((note) => (
+                        <p key={note}>{note}</p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {organizedEnrollmentNotes.collapsibleSections.map((section) => (
+                  <details
+                    key={section.title}
+                    className="group rounded-3xl border border-black/10 bg-white/70 px-5 py-4 dark:border-white/10 dark:bg-white/[0.03]"
+                  >
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-black/80 marker:content-none dark:text-white/80">
+                      <span>{section.title}</span>
+                      <span className="text-xs uppercase tracking-[0.2em] text-black/45 transition group-open:rotate-45 dark:text-white/45">
+                        +
+                      </span>
+                    </summary>
+                    <div className="mt-4 flex flex-col gap-4 text-sm leading-7 text-black/72 dark:text-white/72">
+                      {section.notes.map((note) => (
+                        <div key={note} className="whitespace-pre-line">
+                          {note}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-4">
             <h2 className="text-2xl font-semibold tracking-[-0.02em]">Schedule packages</h2>
             <div className="flex flex-col gap-3">
-              {detail.schedulePackages.length === 0 ? (
+              {schedulePackageNotes.packages.length === 0 ? (
                 <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
                   No schedule packages available.
                 </div>
               ) : (
-                detail.schedulePackages.map((schedulePackage) => (
+                schedulePackageNotes.packages.map((schedulePackage) => (
                   <article
                     key={schedulePackage.sourcePackageId}
                     className="rounded-3xl border border-black/10 bg-white/70 p-5 dark:border-white/10 dark:bg-white/[0.03]"
@@ -95,9 +141,9 @@ export default async function CoursePage({ params }: CoursePageProps) {
                       <p className="text-sm text-black/60 dark:text-white/60">
                         {schedulePackage.openSeats ?? "-"} open seats, {schedulePackage.campusDayCount ?? "-"} campus days
                       </p>
-                      {schedulePackage.restrictionNote ? (
+                      {schedulePackage.packageNote ? (
                         <p className="text-sm leading-7 text-black/60 dark:text-white/60">
-                          {schedulePackage.restrictionNote}
+                          {schedulePackage.packageNote}
                         </p>
                       ) : null}
                     </div>
@@ -115,7 +161,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
 
         <section className="flex flex-col gap-4">
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">Instructor history</h2>
-          {detail.instructorGrades.length === 0 ? (
+          {displayedInstructorGrades.length === 0 ? (
             <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
               Historical instructor data is unavailable in the current database snapshot.
             </div>
@@ -134,7 +180,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black/8 dark:divide-white/8">
-                    {detail.instructorGrades.map((item) => (
+                    {displayedInstructorGrades.map((item) => (
                       <tr
                         key={`${item.sectionType}-${item.sectionNumber}-${item.instructorDisplayName ?? "unknown"}`}
                       >
