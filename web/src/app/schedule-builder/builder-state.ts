@@ -89,18 +89,19 @@ export function serializeBuilderState(state: ScheduleBuilderState): URLSearchPar
 }
 
 export function buildScheduleRequestPayload(state: ScheduleBuilderState): ScheduleRequestPayload {
-  const excludedSectionIds = normalizeExcludedSections(
+  const excludedSections = normalizeExcludedSections(
     state.excludedSections.map(({ courseDesignation, sourcePackageId }) =>
       courseDesignation ? `${courseDesignation}~${sourcePackageId}` : sourcePackageId,
     ),
-  ).map((excludedSection) => excludedSection.sourcePackageId);
+  );
+  const excludedSectionIds = excludedSections.map((excludedSection) => excludedSection.sourcePackageId);
   const excludedSectionIdSet = new Set(excludedSectionIds);
 
   return {
     courses: normalizeCourses(state.courses),
     lock_packages: normalizeLockedSections(
       state.lockedSections.map(({ courseDesignation, sourcePackageId }) => `${courseDesignation}~${sourcePackageId}`),
-      excludedSectionIds,
+      excludedSections,
     )
       .map((lockedSection) => lockedSection.sourcePackageId)
       .filter((packageId) => !excludedSectionIdSet.has(packageId)),
