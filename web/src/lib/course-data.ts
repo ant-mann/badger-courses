@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 
+import { normalizeCourseDesignation } from "./course-designation";
 import { getDb } from "./db";
 
 type SqlitePrimitive = string | number | null;
@@ -119,15 +120,7 @@ const MAX_LIMIT = 50;
 
 let hasInstructorHistoryView: boolean | null = null;
 
-export function normalizeDesignation(value: string): string {
-  const normalized = value.trim().replace(/\s+/g, " ").toUpperCase();
-
-  if (!normalized) {
-    throw new Error("Course designation must be non-empty");
-  }
-
-  return normalized;
-}
+export const normalizeDesignation = normalizeCourseDesignation;
 
 export function parseStringArrayJson(value: string | null): string[] {
   if (!value) {
