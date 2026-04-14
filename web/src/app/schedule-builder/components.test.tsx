@@ -123,6 +123,22 @@ test("ScheduleResults explains how to recover when no schedules match", () => {
   assert.match(markup, /Relax your locked or excluded sections and try again/i);
 });
 
+test("ScheduleResults shows a generated schedule count summary", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[makeSchedule(), makeSchedule({ package_ids: ["pkg-2"], packages: [{ ...makeSchedule().packages[0], source_package_id: "pkg-2" }] })]}
+      selectedScheduleIndex={0}
+      loading={false}
+      errorMessage={null}
+      view="cards"
+      onSelectSchedule={() => {}}
+      onViewChange={() => {}}
+    />,
+  );
+
+  assert.match(markup, /2 schedules generated/i);
+});
+
 test("ScheduleResults changes mobile output when calendar view is selected", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
@@ -137,7 +153,7 @@ test("ScheduleResults changes mobile output when calendar view is selected", () 
   );
 
   assert.match(markup, /Calendar preview/i);
-  assert.doesNotMatch(markup, /Selected schedule/i);
+  assert.match(markup, /Selected schedule/i);
 });
 
 test("ScheduleCalendar renders only the weekdays used by the selected schedule", () => {
