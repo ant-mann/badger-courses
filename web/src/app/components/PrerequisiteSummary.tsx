@@ -1,3 +1,5 @@
+import React from "react";
+
 import type { PrerequisiteSummary as PrerequisiteSummaryData } from "@/lib/course-data";
 
 type PrerequisiteSummaryProps = {
@@ -9,6 +11,13 @@ export function PrerequisiteSummary({
   prerequisite,
   enrollmentPrerequisites,
 }: PrerequisiteSummaryProps) {
+  const normalizedCatalogText = enrollmentPrerequisites?.replace(/\s+/g, " ").trim() ?? null;
+  const normalizedRawText = prerequisite?.rawText?.replace(/\s+/g, " ").trim() ?? null;
+  const shouldShowRawPrerequisiteText =
+    prerequisite?.summaryStatus === "partial" &&
+    normalizedRawText &&
+    normalizedRawText !== normalizedCatalogText;
+
   if (!prerequisite && !enrollmentPrerequisites) {
     return (
       <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
@@ -50,9 +59,10 @@ export function PrerequisiteSummary({
         </div>
       ) : null}
 
-      {prerequisite?.summaryStatus === "partial" && prerequisite.rawText ? (
+      {prerequisite?.summaryStatus === "partial" ? (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm leading-7 text-amber-950 dark:text-amber-100">
-          Parsed with partial coverage. Raw prerequisite text: {prerequisite.rawText}
+          Parsed with partial coverage.
+          {shouldShowRawPrerequisiteText ? <> Raw prerequisite text: {prerequisite.rawText}</> : null}
         </div>
       ) : null}
     </div>
