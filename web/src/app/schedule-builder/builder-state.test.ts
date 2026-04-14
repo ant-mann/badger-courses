@@ -5,6 +5,7 @@ import {
   buildScheduleRequestPayload,
   buildScheduleRequestSignature,
   parseBuilderState,
+  removeCourse,
   serializeBuilderState,
   setExcludedSection,
   setLockedSection,
@@ -15,7 +16,7 @@ function makeState(overrides: Partial<ScheduleBuilderState> = {}): ScheduleBuild
   return {
     courses: ["COMP SCI 577", "MATH 240"],
     lockedSections: [],
-    excludedSectionIds: [],
+    excludedSections: [],
     limit: 25,
     view: "cards",
     ...overrides,
@@ -29,15 +30,17 @@ test("parseBuilderState normalizes url-backed builder inputs", () => {
   searchParams.append("course", "math 240");
   searchParams.append("lock", "COMP SCI 577~pkg-1");
   searchParams.append("lock", "bad-lock-value");
-  searchParams.append("exclude", "pkg-2");
-  searchParams.append("exclude", "pkg-2");
+  searchParams.append("exclude", "COMP SCI 577~pkg-2");
+  searchParams.append("exclude", "COMP SCI 577~pkg-2");
   searchParams.set("limit", "999");
   searchParams.set("view", "calendar");
 
   assert.deepEqual(parseBuilderState(searchParams), {
     courses: ["COMP SCI 577", "MATH 240"],
     lockedSections: [{ courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" }],
-    excludedSectionIds: ["pkg-2"],
+    excludedSections: [
+      { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-2" },
+    ],
     limit: 50,
     view: "calendar",
   });
@@ -58,7 +61,7 @@ test("serializeBuilderState emits normalized url params", () => {
     makeState({
       courses: ["MATH 240", "COMP SCI 577"],
       lockedSections: [{ courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" }],
-      excludedSectionIds: ["pkg-2"],
+      excludedSections: [{ courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-2" }],
       limit: 30,
       view: "calendar",
     }),
@@ -66,7 +69,7 @@ test("serializeBuilderState emits normalized url params", () => {
 
   assert.deepEqual(searchParams.getAll("course"), ["MATH 240", "COMP SCI 577"]);
   assert.deepEqual(searchParams.getAll("lock"), ["COMP SCI 577~pkg-1"]);
-  assert.deepEqual(searchParams.getAll("exclude"), ["pkg-2"]);
+  assert.deepEqual(searchParams.getAll("exclude"), ["COMP SCI 577~pkg-2"]);
   assert.equal(searchParams.get("limit"), "30");
   assert.equal(searchParams.get("view"), "calendar");
 });
@@ -78,7 +81,10 @@ test("buildScheduleRequestPayload uses schedule api field names", () => {
         { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
         { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
       ],
-      excludedSectionIds: ["pkg-2", "pkg-3"],
+      excludedSections: [
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+        { courseDesignation: null, sourcePackageId: "pkg-3" },
+      ],
       limit: 10,
     }),
   );
@@ -99,7 +105,11 @@ test("buildScheduleRequestSignature stays stable for equivalent builder inputs",
         { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
         { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
       ],
-      excludedSectionIds: ["pkg-2", "pkg-3", "pkg-3"],
+      excludedSections: [
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+        { courseDesignation: null, sourcePackageId: "pkg-3" },
+        { courseDesignation: null, sourcePackageId: "pkg-3" },
+      ],
       limit: 999,
     }),
   );
@@ -111,7 +121,10 @@ test("buildScheduleRequestSignature stays stable for equivalent builder inputs",
         { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
         { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
       ],
-      excludedSectionIds: ["pkg-2", "pkg-3"],
+      excludedSections: [
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+        { courseDesignation: null, sourcePackageId: "pkg-3" },
+      ],
       limit: 50,
     }),
   );
@@ -139,6 +152,7 @@ test("setExcludedSection removes matching locked sections", () => {
         { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
       ],
     }),
+    "COMP SCI 577",
     "pkg-1",
     true,
   );
@@ -146,5 +160,33 @@ test("setExcludedSection removes matching locked sections", () => {
   assert.deepEqual(state.lockedSections, [
     { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
   ]);
-  assert.deepEqual(state.excludedSectionIds, ["pkg-1"]);
+  assert.deepEqual(state.excludedSections, [
+    { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
+  ]);
+});
+
+test("removeCourse drops the removed course locks and exclusions without detail data", () => {
+  const state = removeCourse(
+    makeState({
+      lockedSections: [
+        { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" },
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+      ],
+      excludedSections: [
+        { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-3" },
+        { courseDesignation: null, sourcePackageId: "pkg-4" },
+        { courseDesignation: "MATH 240", sourcePackageId: "pkg-5" },
+      ],
+    }),
+    " comp sci 577 ",
+  );
+
+  assert.deepEqual(state.courses, ["MATH 240"]);
+  assert.deepEqual(state.lockedSections, [
+    { courseDesignation: "MATH 240", sourcePackageId: "pkg-2" },
+  ]);
+  assert.deepEqual(state.excludedSections, [
+    { courseDesignation: null, sourcePackageId: "pkg-4" },
+    { courseDesignation: "MATH 240", sourcePackageId: "pkg-5" },
+  ]);
 });

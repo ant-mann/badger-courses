@@ -125,6 +125,26 @@ test("ScheduleResults explains how to recover when no schedules match", () => {
   assert.match(markup, /Relax your locked or excluded sections and try again/i);
 });
 
+test("ScheduleResults explains intentional zero-result limits separately from no-match results", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      view="cards"
+      zeroLimit={true}
+      onSelectSchedule={() => {}}
+      onViewChange={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Result limit is set to 0/i);
+  assert.match(markup, /Increase the limit to generate schedules/i);
+  assert.doesNotMatch(markup, /No conflict-free schedules match your current courses and section choices/i);
+});
+
 test("ScheduleResults shows guidance before any generation attempt", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults

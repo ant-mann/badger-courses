@@ -12,6 +12,7 @@ type ScheduleResultsProps = {
   loading: boolean;
   errorMessage: string | null;
   view: ScheduleResultsView;
+  zeroLimit?: boolean;
   onRetry?: () => void;
   onSelectSchedule: (index: number) => void;
   onViewChange: (view: ScheduleResultsView) => void;
@@ -44,6 +45,7 @@ export function ScheduleResults({
   loading,
   errorMessage,
   view,
+  zeroLimit = false,
   onRetry,
   onSelectSchedule,
   onViewChange,
@@ -118,7 +120,14 @@ export function ScheduleResults({
         </div>
       ) : null}
 
-      {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 ? (
+      {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && zeroLimit ? (
+        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+          <p>Result limit is set to 0, so the builder is not returning any schedules.</p>
+          <p>Increase the limit to generate schedules.</p>
+        </div>
+      ) : null}
+
+      {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && !zeroLimit ? (
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           <p>No conflict-free schedules match your current courses and section choices.</p>
           <p>Relax your locked or excluded sections and try again.</p>

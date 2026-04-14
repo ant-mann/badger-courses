@@ -12,10 +12,15 @@ export type LockedSection = {
   sourcePackageId: string;
 };
 
+export type ExcludedSection = {
+  courseDesignation: string | null;
+  sourcePackageId: string;
+};
+
 export type ScheduleBuilderState = {
   courses: string[];
   lockedSections: LockedSection[];
-  excludedSectionIds: string[];
+  excludedSections: ExcludedSection[];
   limit: number;
   view: BuilderView;
 };
@@ -31,13 +36,13 @@ const DEFAULT_VIEW: BuilderView = "cards";
 
 export function parseBuilderState(searchParams: URLSearchParams): ScheduleBuilderState {
   const courses = normalizeCourses(searchParams.getAll("course"));
-  const excludedSectionIds = normalizePackageIds(searchParams.getAll("exclude"));
-  const lockedSections = normalizeLockedSections(searchParams.getAll("lock"), excludedSectionIds);
+  const excludedSections = normalizeExcludedSections(searchParams.getAll("exclude"));
+  const lockedSections = normalizeLockedSections(searchParams.getAll("lock"), excludedSections);
 
   return {
     courses,
     lockedSections,
-    excludedSectionIds,
+    excludedSections,
     limit: clampScheduleLimit(parseOptionalInteger(searchParams.get("limit"))),
     view: parseView(searchParams.get("view")),
   };
@@ -52,7 +57,11 @@ export function serializeBuilderState(state: ScheduleBuilderState): URLSearchPar
 
   for (const lockedSection of normalizeLockedSections(
     state.lockedSections.map(({ courseDesignation, sourcePackageId }) => `${courseDesignation}~${sourcePackageId}`),
-    normalizePackageIds(state.excludedSectionIds),
+    normalizeExcludedSections(
+      state.excludedSections.map(({ courseDesignation, sourcePackageId }) =>
+        courseDesignation ? `${courseDesignation}~${sourcePackageId}` : sourcePackageId,
+      ),
+    ),
   )) {
     searchParams.append(
       "lock",
@@ -60,8 +69,17 @@ export function serializeBuilderState(state: ScheduleBuilderState): URLSearchPar
     );
   }
 
-  for (const packageId of normalizePackageIds(state.excludedSectionIds)) {
-    searchParams.append("exclude", packageId);
+  for (const excludedSection of normalizeExcludedSections(
+    state.excludedSections.map(({ courseDesignation, sourcePackageId }) =>
+      courseDesignation ? `${courseDesignation}~${sourcePackageId}` : sourcePackageId,
+    ),
+  )) {
+    searchParams.append(
+      "exclude",
+      excludedSection.courseDesignation
+        ? `${excludedSection.courseDesignation}~${excludedSection.sourcePackageId}`
+        : excludedSection.sourcePackageId,
+    );
   }
 
   searchParams.set("limit", String(clampScheduleLimit(state.limit)));
@@ -71,7 +89,11 @@ export function serializeBuilderState(state: ScheduleBuilderState): URLSearchPar
 }
 
 export function buildScheduleRequestPayload(state: ScheduleBuilderState): ScheduleRequestPayload {
-  const excludedSectionIds = normalizePackageIds(state.excludedSectionIds);
+  const excludedSectionIds = normalizeExcludedSections(
+    state.excludedSections.map(({ courseDesignation, sourcePackageId }) =>
+      courseDesignation ? `${courseDesignation}~${sourcePackageId}` : sourcePackageId,
+    ),
+  ).map((excludedSection) => excludedSection.sourcePackageId);
   const excludedSectionIdSet = new Set(excludedSectionIds);
 
   return {
@@ -118,33 +140,65 @@ export function setLockedSection(
     ...state,
     lockedSections: normalizeLockedSections(
       lockedSections.map(({ courseDesignation: designation, sourcePackageId: packageId }) => `${designation}~${packageId}`),
-      state.excludedSectionIds,
+      state.excludedSections,
     ),
   };
 }
 
 export function setExcludedSection(
   state: ScheduleBuilderState,
+  courseDesignation: string | null,
   sourcePackageId: string,
   excluded: boolean,
 ): ScheduleBuilderState {
+  const normalizedCourseDesignation = safeNormalizeCourseDesignation(courseDesignation);
   const normalizedSourcePackageId = normalizePackageId(sourcePackageId);
 
   if (!normalizedSourcePackageId) {
     return state;
   }
 
-  const excludedSectionIds = excluded
-    ? normalizePackageIds([...state.excludedSectionIds, normalizedSourcePackageId])
-    : normalizePackageIds(
-        state.excludedSectionIds.filter((packageId) => packageId !== normalizedSourcePackageId),
+  const excludedSections = excluded
+    ? normalizeExcludedSections([
+        ...state.excludedSections.map(({ courseDesignation: designation, sourcePackageId: packageId }) =>
+          designation ? `${designation}~${packageId}` : packageId,
+        ),
+        normalizedCourseDesignation
+          ? `${normalizedCourseDesignation}~${normalizedSourcePackageId}`
+          : normalizedSourcePackageId,
+      ])
+    : normalizeExcludedSections(
+        state.excludedSections
+          .filter((excludedSection) => excludedSection.sourcePackageId !== normalizedSourcePackageId)
+          .map(({ courseDesignation: designation, sourcePackageId: packageId }) =>
+            designation ? `${designation}~${packageId}` : packageId,
+          ),
       );
 
   return {
     ...state,
-    excludedSectionIds,
+    excludedSections,
     lockedSections: state.lockedSections.filter(
       (lockedSection) => lockedSection.sourcePackageId !== normalizedSourcePackageId,
+    ),
+  };
+}
+
+export function removeCourse(state: ScheduleBuilderState, courseDesignation: string): ScheduleBuilderState {
+  const normalizedCourseDesignation = safeNormalizeCourseDesignation(courseDesignation);
+
+  if (!normalizedCourseDesignation) {
+    return state;
+  }
+
+  return {
+    ...state,
+    courses: state.courses.filter((designation) => designation !== normalizedCourseDesignation),
+    lockedSections: state.lockedSections.filter(
+      (lockedSection) => lockedSection.courseDesignation !== normalizedCourseDesignation,
+    ),
+    excludedSections: state.excludedSections.filter(
+      (excludedSection) => excludedSection.courseDesignation !== normalizedCourseDesignation,
     ),
   };
 }
@@ -161,8 +215,8 @@ function normalizeCourses(values: string[]): string[] {
   }
 }
 
-function normalizeLockedSections(values: string[], excludedSectionIds: string[]): LockedSection[] {
-  const excludedSectionIdSet = new Set(excludedSectionIds);
+function normalizeLockedSections(values: string[], excludedSections: ExcludedSection[]): LockedSection[] {
+  const excludedSectionIdSet = new Set(excludedSections.map((excludedSection) => excludedSection.sourcePackageId));
   const lockedByCourse = new Map<string, string>();
 
   for (const value of values) {
@@ -198,6 +252,60 @@ function parseLockedSection(value: string): LockedSection | null {
   return {
     courseDesignation: normalizedCourseDesignation,
     sourcePackageId: normalizedSourcePackageId,
+  };
+}
+
+function normalizeExcludedSections(values: string[]): ExcludedSection[] {
+  const excludedSections: ExcludedSection[] = [];
+
+  for (const value of values) {
+    const excludedSection = parseExcludedSection(value);
+
+    if (
+      excludedSection &&
+      !excludedSections.some(
+        (entry) =>
+          entry.sourcePackageId === excludedSection.sourcePackageId &&
+          entry.courseDesignation === excludedSection.courseDesignation,
+      )
+    ) {
+      excludedSections.push(excludedSection);
+    }
+  }
+
+  return excludedSections;
+}
+
+function parseExcludedSection(value: string): ExcludedSection | null {
+  const [firstPart, secondPart, ...rest] = value.split("~");
+
+  if (rest.length > 0) {
+    return null;
+  }
+
+  if (secondPart === undefined) {
+    const sourcePackageId = normalizePackageId(firstPart);
+
+    if (!sourcePackageId) {
+      return null;
+    }
+
+    return {
+      courseDesignation: null,
+      sourcePackageId,
+    };
+  }
+
+  const courseDesignation = safeNormalizeCourseDesignation(firstPart);
+  const sourcePackageId = normalizePackageId(secondPart);
+
+  if (!courseDesignation || !sourcePackageId) {
+    return null;
+  }
+
+  return {
+    courseDesignation,
+    sourcePackageId,
   };
 }
 

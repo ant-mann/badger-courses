@@ -12,6 +12,7 @@ import {
   buildScheduleRequestPayload,
   buildScheduleRequestSignature,
   parseBuilderState,
+  removeCourse,
   serializeBuilderState,
   setExcludedSection,
   setLockedSection,
@@ -343,21 +344,7 @@ export function ScheduleBuilder() {
   }
 
   function handleRemoveCourse(designation: string) {
-    const courseDetail = courseDetails[designation]?.data;
-    const removedPackageIds = new Set(
-      (courseDetail?.schedule_packages ?? []).map((schedulePackage) => schedulePackage.sourcePackageId),
-    );
-
-    updateBuilderState((state) => ({
-      ...state,
-      courses: state.courses.filter((courseDesignation) => courseDesignation !== designation),
-      lockedSections: state.lockedSections.filter(
-        (lockedSection) => lockedSection.courseDesignation !== designation,
-      ),
-      excludedSectionIds: state.excludedSectionIds.filter(
-        (sourcePackageId) => !removedPackageIds.has(sourcePackageId),
-      ),
-    }));
+    updateBuilderState((state) => removeCourse(state, designation));
   }
 
   return (
@@ -435,14 +422,18 @@ export function ScheduleBuilder() {
                   (lockedSection) => lockedSection.courseDesignation === designation,
                 )?.sourcePackageId ?? null
               }
-              excludedSectionIds={builderState.excludedSectionIds}
+              excludedSectionIds={builderState.excludedSections.map(
+                (excludedSection) => excludedSection.sourcePackageId,
+              )}
               loading={record?.loading ?? false}
               errorMessage={record?.errorMessage ?? null}
               onLockSection={(sourcePackageId) => {
                 updateBuilderState((state) => setLockedSection(state, designation, sourcePackageId));
               }}
               onExcludeSection={(sourcePackageId, excluded) => {
-                updateBuilderState((state) => setExcludedSection(state, sourcePackageId, excluded));
+                updateBuilderState((state) =>
+                  setExcludedSection(state, designation, sourcePackageId, excluded),
+                );
               }}
             />
           );
@@ -457,6 +448,7 @@ export function ScheduleBuilder() {
           loading={requestState === "loading"}
           errorMessage={generationErrorMessage}
           view={builderState.view}
+          zeroLimit={builderState.limit === 0}
           onRetry={() => setRetryNonce((currentValue) => currentValue + 1)}
           onSelectSchedule={setSelectedScheduleIndex}
           onViewChange={(view) => {
