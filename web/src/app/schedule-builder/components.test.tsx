@@ -7,6 +7,7 @@ import { CoursePicker } from "@/app/components/CoursePicker";
 import { ScheduleCalendar } from "@/app/components/ScheduleCalendar";
 import { ScheduleResults } from "@/app/components/ScheduleResults";
 import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
+import { SelectedCourseList } from "@/app/components/SelectedCourseList";
 import type {
   GeneratedSchedule,
   ScheduleCalendarEntry,
@@ -311,4 +312,54 @@ test("CoursePicker stays prop-driven and presentational", () => {
 
   assert.match(markup, /Add course/i);
   assert.match(markup, /COMP SCI 577/);
+});
+
+test("CoursePicker does not show no-results copy while loading", () => {
+  const markup = renderToStaticMarkup(
+    <CoursePicker
+      query="comp sci"
+      onQueryChange={() => {}}
+      onAddCourse={() => {}}
+      loading={true}
+      errorMessage={null}
+      maxCoursesReached={false}
+      results={[]}
+      selectedCourseDesignations={[]}
+    />,
+  );
+
+  assert.match(markup, /Searching courses/i);
+  assert.doesNotMatch(markup, /No matching courses found for this search/i);
+});
+
+test("SelectedCourseList shows its key presentational states", () => {
+  const emptyMarkup = renderToStaticMarkup(
+    <SelectedCourseList courses={[]} onRemoveCourse={() => {}} />,
+  );
+
+  assert.match(emptyMarkup, /No courses selected yet/i);
+
+  const populatedMarkup = renderToStaticMarkup(
+    <SelectedCourseList
+      courses={[
+        {
+          designation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          loading: true,
+          errorMessage: null,
+        },
+        {
+          designation: "MATH 240",
+          title: "Linear Algebra",
+          loading: false,
+          errorMessage: "Could not load section options.",
+        },
+      ]}
+      onRemoveCourse={() => {}}
+    />,
+  );
+
+  assert.match(populatedMarkup, /Loading section options/i);
+  assert.match(populatedMarkup, /Could not load section options/i);
+  assert.match(populatedMarkup, /Remove/i);
 });

@@ -64,13 +64,13 @@ export function CoursePicker({
         <span>{selectedCourseDesignations.length} selected</span>
       </div>
 
-      {results.length === 0 ? (
+      {!loading && results.length === 0 ? (
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           {query.trim().length === 0
             ? "Search to see matching courses."
             : "No matching courses found for this search."}
         </div>
-      ) : (
+      ) : results.length > 0 ? (
         <div className="flex flex-col gap-3">
           {results.map((course) => {
             const isSelected = selectedCourseDesignations.includes(course.designation);
@@ -96,7 +96,7 @@ export function CoursePicker({
             );
           })}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
