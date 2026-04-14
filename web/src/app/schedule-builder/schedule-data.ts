@@ -81,6 +81,9 @@ export function deriveScheduleCalendarEntries(
   courseDetails: ScheduleBuilderCourseDetailResponse[],
 ): ScheduleCalendarEntry[] {
   const meetingsByPackageId = new Map<string, CourseMeeting[]>();
+  const packagesById = new Map(
+    schedule.packages.map((schedulePackage) => [schedulePackage.source_package_id, schedulePackage] as const),
+  );
 
   for (const courseDetail of courseDetails) {
     for (const meeting of courseDetail.meetings) {
@@ -92,8 +95,14 @@ export function deriveScheduleCalendarEntries(
 
   const entries: ScheduleCalendarEntry[] = [];
 
-  for (const schedulePackage of schedule.packages) {
-    const meetings = meetingsByPackageId.get(schedulePackage.source_package_id) ?? [];
+  for (const packageId of schedule.package_ids) {
+    const schedulePackage = packagesById.get(packageId);
+
+    if (!schedulePackage) {
+      continue;
+    }
+
+    const meetings = meetingsByPackageId.get(packageId) ?? [];
 
     for (const meeting of meetings) {
       const startMinutes = parseTimeToMinutes(meeting.meetingTimeStart);

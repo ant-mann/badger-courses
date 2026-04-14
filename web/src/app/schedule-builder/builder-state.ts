@@ -2,6 +2,7 @@ import {
   DEFAULT_SCHEDULE_LIMIT,
   clampScheduleLimit,
   normalizeCourseDesignation,
+  normalizeUniqueCourseDesignations,
 } from "@/lib/course-designation";
 
 export type BuilderView = "cards" | "calendar";
@@ -145,17 +146,15 @@ export function setExcludedSection(
 }
 
 function normalizeCourses(values: string[]): string[] {
-  const courses: string[] = [];
-
-  for (const value of values) {
-    const designation = safeNormalizeCourseDesignation(value);
-
-    if (designation && !courses.includes(designation)) {
-      courses.push(designation);
-    }
+  if (values.length === 0) {
+    return [];
   }
 
-  return courses;
+  try {
+    return normalizeUniqueCourseDesignations(values);
+  } catch {
+    return [];
+  }
 }
 
 function normalizeLockedSections(values: string[], excludedSectionIds: string[]): LockedSection[] {

@@ -42,6 +42,16 @@ test("parseBuilderState normalizes url-backed builder inputs", () => {
   });
 });
 
+test("parseBuilderState drops invalid course lists that fail shared normalization", () => {
+  const searchParams = new URLSearchParams();
+
+  for (const course of ["A 1", "B 2", "C 3", "D 4", "E 5", "F 6", "G 7", "H 8", "I 9"]) {
+    searchParams.append("course", course);
+  }
+
+  assert.deepEqual(parseBuilderState(searchParams).courses, []);
+});
+
 test("serializeBuilderState emits normalized url params", () => {
   const searchParams = serializeBuilderState(
     makeState({
