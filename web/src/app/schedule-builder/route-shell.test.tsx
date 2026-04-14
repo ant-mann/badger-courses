@@ -5,10 +5,27 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import Home from "@/app/page";
 
+type ScheduleBuilderPageModule = {
+  default:
+    | (() => Promise<React.ReactElement> | React.ReactElement)
+    | {
+        default: () => Promise<React.ReactElement> | React.ReactElement;
+      };
+};
+
 async function renderScheduleBuilderPage(): Promise<string> {
   try {
-    const module = await import("./page");
-    return renderToStaticMarkup(await module.default());
+    const module = (await import("./page")) as ScheduleBuilderPageModule;
+    const Page = typeof module.default === "function" ? module.default : module.default.default;
+    const page = await Page();
+    const layout = (page.props as { children?: React.ReactElement }).children;
+
+    if (!layout) {
+      return "";
+    }
+
+    const [intro] = React.Children.toArray((layout.props as { children?: React.ReactNode }).children);
+    return intro ? renderToStaticMarkup(intro) : "";
   } catch {
     return "";
   }

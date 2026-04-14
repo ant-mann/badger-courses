@@ -1,9 +1,5 @@
 import React from "react";
-import dynamic from "next/dynamic";
-
-const ScheduleBuilder = dynamic(() => import("./ScheduleBuilder").then((module) => module.ScheduleBuilder), {
-  ssr: false,
-});
+import { ScheduleBuilder } from "./ScheduleBuilder";
 
 export default function ScheduleBuilderPage() {
   return (
