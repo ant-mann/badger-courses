@@ -28,6 +28,15 @@ const BASELINE_START_MINUTES = 9 * 60;
 const BASELINE_END_MINUTES = 17 * 60;
 const WINDOW_PADDING_MINUTES = 60;
 
+function badgeClasses(sectionType: string | null): string {
+  switch (sectionType) {
+    case "LEC": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+    case "LAB": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+    case "DIS": return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
+    default: return "bg-black/8 dark:bg-white/10";
+  }
+}
+
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   if (!schedule) {
     return (
@@ -61,7 +70,9 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
     );
   }
 
-  const visibleWeekdays = CALENDAR_WEEKDAYS;
+  const visibleWeekdays = CALENDAR_WEEKDAYS.filter(
+    (d) => (d !== "S" && d !== "U") || entries.some((e) => e.weekday === d),
+  );
   const timeWindow = deriveTimeWindow(entries);
   const timeLabels = buildTimeLabels(timeWindow.startMinutes, timeWindow.endMinutes);
   const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
@@ -140,15 +151,16 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                         <div className="flex items-center justify-between gap-1">
                           <p className="truncate font-semibold">{entry.courseDesignation}</p>
                           {typeLabel ? (
-                            <span className="shrink-0 rounded bg-black/8 px-1 py-px text-[9px] font-bold uppercase tracking-wide dark:bg-white/10">
-                              {typeLabel}
+                            <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${badgeClasses(entry.sectionType)}`}>
+                              {typeLabel}{entry.sectionNumber ? ` ${entry.sectionNumber}` : ""}
                             </span>
                           ) : null}
                         </div>
-                        <p className="text-black/60 dark:text-white/60">{formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}</p>
-                        <p className="text-black/72 dark:text-white/72">{entry.sectionBundleLabel}</p>
-                        <p className="text-black/60 dark:text-white/60">
+                        <p className="truncate whitespace-nowrap text-black/60 dark:text-white/60">
                           {[entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
+                        </p>
+                        <p className="text-black/60 dark:text-white/60">
+                          {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
                         </p>
                       </div>
                     </article>
