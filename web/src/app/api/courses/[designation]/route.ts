@@ -23,5 +23,6 @@ export async function GET(_: Request, { params }: RouteContext) {
     prerequisites: detail.prerequisites,
     instructor_grades: detail.instructorGrades,
     schedule_packages: detail.schedulePackages,
+    package_section_memberships: detail.packageSectionMemberships,
   });
 }
