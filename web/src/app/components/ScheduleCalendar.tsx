@@ -128,6 +128,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                 {weekdayEntries.map((entry) => {
                   const top = getOffsetPercent(entry.startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
                   const height = getOffsetPercent(entry.endMinutes, timeWindow.startMinutes, timeWindow.endMinutes) - top;
+                  const typeLabel = meetingTypeLabel(entry.meetingType);
 
                   return (
                     <article
@@ -138,9 +139,9 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                       <div className="flex flex-col gap-1 text-xs leading-5">
                         <div className="flex items-center justify-between gap-1">
                           <p className="truncate font-semibold">{entry.courseDesignation}</p>
-                          {meetingTypeLabel(entry.meetingType) ? (
+                          {typeLabel ? (
                             <span className="shrink-0 rounded bg-black/8 px-1 py-px text-[9px] font-bold uppercase tracking-wide dark:bg-white/10">
-                              {meetingTypeLabel(entry.meetingType)}
+                              {typeLabel}
                             </span>
                           ) : null}
                         </div>

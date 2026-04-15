@@ -1133,7 +1133,7 @@ test("ScheduleCalendar shows no type badge when meetingType is null", () => {
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ meetingType: null })]} />,
   );
 
-  assert.doesNotMatch(markup, /shrink-0 rounded bg-black/);
+  assert.doesNotMatch(markup, />\s*(LEC|LAB|DIS)\s*</);
 });
 
 test("ScheduleCalendar renders time range before section bundle label", () => {
@@ -1144,7 +1144,7 @@ test("ScheduleCalendar renders time range before section bundle label", () => {
   const timeIndex = markup.indexOf("9:00 AM");
   const bundleIndex = markup.indexOf("LEC 001");
 
-  assert.equal(timeIndex !== -1, true, "time range should appear in markup");
-  assert.equal(bundleIndex !== -1, true, "section bundle label should appear in markup");
-  assert.equal(timeIndex < bundleIndex, true, "time range should appear before section bundle label");
+  assert.ok(timeIndex !== -1, "time range should appear in markup");
+  assert.ok(bundleIndex !== -1, "section bundle label should appear in markup");
+  assert.ok(timeIndex < bundleIndex, "time range should appear before section bundle label");
 });
