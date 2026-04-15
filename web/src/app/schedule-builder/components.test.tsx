@@ -857,10 +857,7 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
 test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule({
-        earliest_start_minute_local: 600,
-        latest_end_minute_local: 660,
-      })}
+      schedule={makeSchedule()}
       entries={[
         {
           weekday: "M",
@@ -887,10 +884,7 @@ test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules"
 test("ScheduleCalendar expands earlier schedules with one extra padded hour", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule({
-        earliest_start_minute_local: 510,
-        latest_end_minute_local: 570,
-      })}
+      schedule={makeSchedule()}
       entries={[
         {
           weekday: "M",
@@ -916,10 +910,7 @@ test("ScheduleCalendar expands earlier schedules with one extra padded hour", ()
 test("ScheduleCalendar expands later schedules with one extra padded hour", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule({
-        earliest_start_minute_local: 600,
-        latest_end_minute_local: 1100,
-      })}
+      schedule={makeSchedule()}
       entries={[
         {
           weekday: "M",
@@ -945,10 +936,7 @@ test("ScheduleCalendar expands later schedules with one extra padded hour", () =
 test("ScheduleCalendar expands both sides independently for early and late schedules", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule({
-        earliest_start_minute_local: 430,
-        latest_end_minute_local: 1240,
-      })}
+      schedule={makeSchedule()}
       entries={[
         {
           weekday: "M",
@@ -968,6 +956,8 @@ test("ScheduleCalendar expands both sides independently for early and late sched
 
   assert.match(markup, /6:00 AM/);
   assert.match(markup, /10:00 PM/);
+  assert.doesNotMatch(markup, /5:00 AM/);
+  assert.doesNotMatch(markup, /11:00 PM/);
 });
 
 test("ScheduleCalendar shows an accurate empty state when a selected schedule has no entries", () => {
