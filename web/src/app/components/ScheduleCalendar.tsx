@@ -136,9 +136,16 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                       style={{ top: `${top}%`, height: `${Math.max(height, 6)}%`, position: "absolute" }}
                     >
                       <div className="flex flex-col gap-1 text-xs leading-5">
-                        <p className="font-semibold">{entry.courseDesignation}</p>
-                        <p className="text-black/72 dark:text-white/72">{entry.sectionBundleLabel}</p>
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="truncate font-semibold">{entry.courseDesignation}</p>
+                          {meetingTypeLabel(entry.meetingType) ? (
+                            <span className="shrink-0 rounded bg-black/8 px-1 py-px text-[9px] font-bold uppercase tracking-wide dark:bg-white/10">
+                              {meetingTypeLabel(entry.meetingType)}
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="text-black/60 dark:text-white/60">{formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}</p>
+                        <p className="text-black/72 dark:text-white/72">{entry.sectionBundleLabel}</p>
                         <p className="text-black/60 dark:text-white/60">
                           {[entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
                         </p>
@@ -195,4 +202,10 @@ function formatMinutes(totalMinutes: number): string {
   const hour12 = hour24 % 12 || 12;
 
   return `${hour12}:${minute.toString().padStart(2, "0")} ${suffix}`;
+}
+
+function meetingTypeLabel(meetingType: string | null): string | null {
+  if (meetingType === null) return null;
+  if (meetingType === "CLASS") return "LEC";
+  return meetingType; // LAB, DIS, and any unknown values pass through as-is
 }

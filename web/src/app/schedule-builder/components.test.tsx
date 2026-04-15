@@ -1087,3 +1087,64 @@ test("SelectedCourseList shows its key presentational states", () => {
   assert.match(populatedMarkup, /Could not load section options/i);
   assert.match(populatedMarkup, /Remove/i);
 });
+
+function makeEntry(overrides: Partial<ScheduleCalendarEntry> = {}): ScheduleCalendarEntry {
+  return {
+    weekday: "M",
+    sourcePackageId: "pkg-1",
+    courseDesignation: "COMP SCI 577",
+    title: "Intro to Algorithms",
+    sectionBundleLabel: "LEC 001",
+    meetingType: "CLASS",
+    startMinutes: 540,
+    endMinutes: 590,
+    room: null,
+    buildingName: null,
+    ...overrides,
+  };
+}
+
+test("ScheduleCalendar shows LEC badge for CLASS meeting type", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ meetingType: "CLASS" })]} />,
+  );
+
+  assert.match(markup, />LEC</);
+});
+
+test("ScheduleCalendar shows LAB badge for LAB meeting type", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ meetingType: "LAB" })]} />,
+  );
+
+  assert.match(markup, />LAB</);
+});
+
+test("ScheduleCalendar shows DIS badge for DIS meeting type", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ meetingType: "DIS" })]} />,
+  );
+
+  assert.match(markup, />DIS</);
+});
+
+test("ScheduleCalendar shows no type badge when meetingType is null", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ meetingType: null })]} />,
+  );
+
+  assert.doesNotMatch(markup, /shrink-0 rounded bg-black/);
+});
+
+test("ScheduleCalendar renders time range before section bundle label", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry()]} />,
+  );
+
+  const timeIndex = markup.indexOf("9:00 AM");
+  const bundleIndex = markup.indexOf("LEC 001");
+
+  assert.equal(timeIndex !== -1, true, "time range should appear in markup");
+  assert.equal(bundleIndex !== -1, true, "section bundle label should appear in markup");
+  assert.equal(timeIndex < bundleIndex, true, "time range should appear before section bundle label");
+});
