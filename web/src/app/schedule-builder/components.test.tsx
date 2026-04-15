@@ -854,6 +854,110 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
   assert.match(markup, />U<|>Sun<|Sunday/);
 });
 
+test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[
+        {
+          weekday: "M",
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionBundleLabel: "LEC 001",
+          meetingType: "CLASS",
+          startMinutes: 600,
+          endMinutes: 660,
+          room: "140",
+          buildingName: "Grainger Hall",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /9:00 AM/);
+  assert.match(markup, /5:00 PM/);
+  assert.doesNotMatch(markup, /8:00 AM/);
+  assert.doesNotMatch(markup, /6:00 PM/);
+});
+
+test("ScheduleCalendar expands earlier schedules with one extra padded hour", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[
+        {
+          weekday: "M",
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionBundleLabel: "LEC 001",
+          meetingType: "CLASS",
+          startMinutes: 510,
+          endMinutes: 570,
+          room: "140",
+          buildingName: "Grainger Hall",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /7:00 AM/);
+  assert.match(markup, /5:00 PM/);
+  assert.doesNotMatch(markup, /6:00 AM/);
+});
+
+test("ScheduleCalendar expands later schedules with one extra padded hour", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[
+        {
+          weekday: "M",
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionBundleLabel: "LEC 001",
+          meetingType: "CLASS",
+          startMinutes: 600,
+          endMinutes: 1100,
+          room: "140",
+          buildingName: "Grainger Hall",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /9:00 AM/);
+  assert.match(markup, /8:00 PM/);
+  assert.doesNotMatch(markup, /9:00 PM/);
+});
+
+test("ScheduleCalendar expands both sides independently for early and late schedules", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[
+        {
+          weekday: "M",
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionBundleLabel: "LEC 001",
+          meetingType: "CLASS",
+          startMinutes: 430,
+          endMinutes: 1240,
+          room: "140",
+          buildingName: "Grainger Hall",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /6:00 AM/);
+  assert.match(markup, /10:00 PM/);
+});
+
 test("ScheduleCalendar shows an accurate empty state when a selected schedule has no entries", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar entries={[]} schedule={makeSchedule()} />,
