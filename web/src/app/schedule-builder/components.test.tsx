@@ -899,7 +899,7 @@ test("ScheduleResults shows a retry action for error states", () => {
   assert.match(markup, /Retry/i);
 });
 
-test("ScheduleCalendar renders all seven weekdays for the selected schedule", () => {
+test("ScheduleCalendar renders Mon–Fri columns but hides Sat/Sun when no entries fall on those days", () => {
   const entries: ScheduleCalendarEntry[] = [
     {
       weekday: "M",
@@ -938,8 +938,96 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
   assert.match(markup, />W<|>Wed<|Wednesday/);
   assert.match(markup, />R<|>Thu<|Thursday/);
   assert.match(markup, />F<|>Fri<|Friday/);
-  assert.match(markup, />S<|>Sat<|Saturday/);
-  assert.match(markup, />U<|>Sun<|Sunday/);
+  assert.doesNotMatch(markup, />Sat</);
+  assert.doesNotMatch(markup, />Sun</);
+});
+
+test("ScheduleCalendar hides Saturday and Sunday columns when no entries fall on those days", () => {
+  const entries: ScheduleCalendarEntry[] = [
+    {
+      weekday: "M",
+      sourcePackageId: "pkg-1",
+      courseDesignation: "COMP SCI 577",
+      title: "Algorithms for Large Data",
+      sectionBundleLabel: "LEC 001",
+      meetingType: "CLASS",
+      sectionType: null,
+      startMinutes: 540,
+      endMinutes: 590,
+      room: "140",
+      buildingName: "Grainger Hall",
+    },
+    {
+      weekday: "F",
+      sourcePackageId: "pkg-1",
+      courseDesignation: "COMP SCI 577",
+      title: "Algorithms for Large Data",
+      sectionBundleLabel: "LEC 001",
+      meetingType: "CLASS",
+      sectionType: null,
+      startMinutes: 540,
+      endMinutes: 590,
+      room: "140",
+      buildingName: "Grainger Hall",
+    },
+  ];
+
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar entries={entries} schedule={makeSchedule()} />,
+  );
+
+  assert.doesNotMatch(markup, />Sat</);
+  assert.doesNotMatch(markup, />Sun</);
+});
+
+test("ScheduleCalendar shows Saturday column when an entry falls on Saturday", () => {
+  const entries: ScheduleCalendarEntry[] = [
+    {
+      weekday: "S",
+      sourcePackageId: "pkg-1",
+      courseDesignation: "COMP SCI 577",
+      title: "Algorithms for Large Data",
+      sectionBundleLabel: "LEC 001",
+      meetingType: "CLASS",
+      sectionType: null,
+      startMinutes: 600,
+      endMinutes: 660,
+      room: null,
+      buildingName: null,
+    },
+  ];
+
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar entries={entries} schedule={makeSchedule()} />,
+  );
+
+  assert.match(markup, />Sat</);
+  assert.doesNotMatch(markup, />Sun</);
+});
+
+test("ScheduleCalendar shows Sunday column when an entry falls on Sunday", () => {
+  const entries: ScheduleCalendarEntry[] = [
+    {
+      weekday: "U",
+      sourcePackageId: "pkg-1",
+      courseDesignation: "COMP SCI 577",
+      title: "Algorithms for Large Data",
+      sectionBundleLabel: "LEC 001",
+      meetingType: "CLASS",
+      sectionType: null,
+      startMinutes: 600,
+      endMinutes: 660,
+      room: null,
+      buildingName: null,
+    },
+  ];
+
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar entries={entries} schedule={makeSchedule()} />,
+  );
+
+  assert.doesNotMatch(markup, />Sat</);
+  assert.match(markup, />Sun</);
 });
 
 test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules", () => {
