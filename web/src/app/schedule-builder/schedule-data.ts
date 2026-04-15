@@ -101,6 +101,12 @@ export function deriveScheduleCalendarEntries(
       }
     }
   }
+  const sectionTypesByPackageId = new Map(
+    schedule.packages.map((schedulePackage) => [
+      schedulePackage.source_package_id,
+      parseSectionTypesFromBundleLabel(schedulePackage.section_bundle_label),
+    ] as const),
+  );
 
   for (const courseDetail of courseDetails) {
     for (const meeting of courseDetail.meetings) {
@@ -137,7 +143,12 @@ export function deriveScheduleCalendarEntries(
           title: schedulePackage.title,
           sectionBundleLabel: schedulePackage.section_bundle_label,
           meetingType: meeting.meetingType,
-          sectionType: (meeting.sectionClassNumber !== null ? sectionTypeByClassNumber.get(meeting.sectionClassNumber) ?? null : null),
+          sectionType: deriveSectionType({
+            meeting,
+            sourcePackageId: schedulePackage.source_package_id,
+            sectionTypeByClassNumber,
+            sectionTypesByPackageId,
+          }),
           startMinutes,
           endMinutes,
           room: meeting.room,
@@ -215,4 +226,36 @@ function compareCalendarEntries(left: ScheduleCalendarEntry, right: ScheduleCale
 
 function isVisibleWeekday(value: string): value is VisibleWeekday {
   return WEEKDAY_ORDER.includes(value as VisibleWeekday);
+}
+
+function deriveSectionType({
+  meeting,
+  sourcePackageId,
+  sectionTypeByClassNumber,
+  sectionTypesByPackageId,
+}: {
+  meeting: CourseMeeting;
+  sourcePackageId: string;
+  sectionTypeByClassNumber: Map<number, string>;
+  sectionTypesByPackageId: Map<string, string[]>;
+}): string | null {
+  if (meeting.sectionClassNumber !== null) {
+    const sectionType = sectionTypeByClassNumber.get(meeting.sectionClassNumber);
+    if (sectionType) {
+      return sectionType;
+    }
+  }
+
+  const sectionTypesForPackage = sectionTypesByPackageId.get(sourcePackageId) ?? [];
+  return sectionTypesForPackage.length === 1 ? sectionTypesForPackage[0] : null;
+}
+
+function parseSectionTypesFromBundleLabel(sectionBundleLabel: string): string[] {
+  const sectionTypes = new Set<string>();
+
+  for (const match of sectionBundleLabel.matchAll(/\b([A-Z]{2,4})\s+\d{3}\b/g)) {
+    sectionTypes.add(match[1]);
+  }
+
+  return [...sectionTypes];
 }

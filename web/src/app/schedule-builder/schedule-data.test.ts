@@ -234,7 +234,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       title: "Algorithms for Large Data",
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
-      sectionType: null,
+      sectionType: "LEC",
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -247,7 +247,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       title: "Algorithms for Large Data",
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
-      sectionType: null,
+      sectionType: "LEC",
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -260,7 +260,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       title: "Algorithms for Large Data",
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
-      sectionType: null,
+      sectionType: "LEC",
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -273,11 +273,152 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       title: "Linear Algebra",
       sectionBundleLabel: "LEC 002",
       meetingType: "CLASS",
-      sectionType: null,
+      sectionType: "LEC",
       startMinutes: 660,
       endMinutes: 710,
       room: "B203",
       buildingName: "Van Vleck Hall",
     },
   ]);
+});
+
+test("deriveScheduleCalendarEntries falls back to section type from bundle label when class number lookup misses", () => {
+  const schedule: GeneratedSchedule = {
+    package_ids: ["pkg-1"],
+    packages: [
+      {
+        source_package_id: "pkg-1",
+        course_designation: "BIOLOGY 151",
+        title: "Introductory Biology",
+        section_bundle_label: "LEC 001",
+        open_seats: 3,
+        is_full: 0,
+        has_waitlist: 0,
+        meeting_count: 1,
+        campus_day_count: 3,
+        earliest_start_minute_local: 540,
+        latest_end_minute_local: 590,
+        has_online_meeting: 0,
+        has_unknown_location: 0,
+        restriction_note: null,
+        has_temporary_restriction: 0,
+        meeting_summary_local: "MWF 09:00-09:50",
+      },
+    ],
+    conflict_count: 0,
+    campus_day_count: 3,
+    earliest_start_minute_local: 540,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 590,
+  };
+
+  const entries = deriveScheduleCalendarEntries(schedule, [
+    makeCourseDetail({
+      sections: [
+        {
+          sectionClassNumber: 10001,
+          sectionNumber: "001",
+          sectionType: "LEC",
+          instructionMode: "P",
+          openSeats: 3,
+          waitlistCurrentSize: 0,
+          capacity: 24,
+          currentlyEnrolled: 21,
+          hasOpenSeats: true,
+          hasWaitlist: false,
+          isFull: false,
+        },
+      ],
+      meetings: [
+        {
+          sectionClassNumber: 20002,
+          sourcePackageId: "pkg-1",
+          meetingIndex: 1,
+          meetingType: "CLASS",
+          meetingDays: "MWF",
+          meetingTimeStart: 54000000,
+          meetingTimeEnd: 57000000,
+          startDate: null,
+          endDate: null,
+          examDate: null,
+          room: "B302",
+          buildingCode: "B3",
+          buildingName: "Birge Hall",
+          streetAddress: "430 Lincoln Dr.",
+          latitude: 43.076,
+          longitude: -89.414,
+          locationKnown: true,
+        },
+      ],
+    }),
+  ]);
+
+  assert.equal(entries.length, 3);
+  assert(entries.every((entry) => entry.sectionType === "LEC"));
+});
+
+test("deriveScheduleCalendarEntries does not infer section type from bundle label when multiple types are present", () => {
+  const schedule: GeneratedSchedule = {
+    package_ids: ["pkg-1"],
+    packages: [
+      {
+        source_package_id: "pkg-1",
+        course_designation: "CHEM 109",
+        title: "Advanced General Chemistry",
+        section_bundle_label: "LEC 001 / DIS 301",
+        open_seats: 3,
+        is_full: 0,
+        has_waitlist: 0,
+        meeting_count: 2,
+        campus_day_count: 4,
+        earliest_start_minute_local: 540,
+        latest_end_minute_local: 770,
+        has_online_meeting: 0,
+        has_unknown_location: 0,
+        restriction_note: null,
+        has_temporary_restriction: 0,
+        meeting_summary_local: "MWF 09:00-09:50; R 12:00-12:50",
+      },
+    ],
+    conflict_count: 0,
+    campus_day_count: 4,
+    earliest_start_minute_local: 540,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 770,
+  };
+
+  const entries = deriveScheduleCalendarEntries(schedule, [
+    makeCourseDetail({
+      meetings: [
+        {
+          sectionClassNumber: 90009,
+          sourcePackageId: "pkg-1",
+          meetingIndex: 1,
+          meetingType: "CLASS",
+          meetingDays: "R",
+          meetingTimeStart: 72000000,
+          meetingTimeEnd: 75000000,
+          startDate: null,
+          endDate: null,
+          examDate: null,
+          room: "120",
+          buildingCode: "CH",
+          buildingName: "Chamberlin Hall",
+          streetAddress: "1150 University Ave.",
+          latitude: 43.072,
+          longitude: -89.406,
+          locationKnown: true,
+        },
+      ],
+    }),
+  ]);
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].sectionType, null);
 });
