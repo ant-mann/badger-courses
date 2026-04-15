@@ -1,7 +1,13 @@
 .codex
 .worktrees/
 .playwright-cli/
+.playwright-mcp/
 .tmp-db-import-*/
+.tmp-madgrades-db-*/
+.agents/
+.claude/
+.superpowers/
+skills-lock.json
 node_modules/
 *.sqlite
 *.sqlite-shm
