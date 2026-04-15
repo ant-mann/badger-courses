@@ -476,6 +476,21 @@ export function hasConflict(conflicts, packageId, selectedPackageIds) {
   return false;
 }
 
+function makeVisiblePackageKey(pkg) {
+  return [
+    pkg.courseDesignation ?? pkg.course_designation ?? '',
+    pkg.sectionBundleLabel ?? pkg.section_bundle_label ?? '',
+    pkg.meetingSummaryLocal ?? pkg.meeting_summary_local ?? '',
+  ].join('\u0000');
+}
+
+function makeScheduleVisibilityKey(packages) {
+  return [...packages]
+    .map((pkg) => makeVisiblePackageKey(pkg))
+    .sort()
+    .join('\u0001');
+}
+
 export function buildSchedules({
   orderedGroups,
   lockedByCourse,
@@ -485,8 +500,21 @@ export function buildSchedules({
   limit,
 }) {
   const schedules = [];
+  const scheduleIndexByVisibilityKey = new Map();
   const selectedCandidates = [];
   const selectedPackageIds = new Set();
+
+  function trimSchedulesToLimit() {
+    schedules.sort((left, right) => compareSchedules(left, right, preferenceOrder));
+    if (schedules.length > limit) {
+      schedules.length = limit;
+    }
+
+    scheduleIndexByVisibilityKey.clear();
+    schedules.forEach((schedule, index) => {
+      scheduleIndexByVisibilityKey.set(makeScheduleVisibilityKey(schedule.packages), index);
+    });
+  }
 
   function visit(index) {
     if (index >= orderedGroups.length) {
@@ -512,15 +540,28 @@ export function buildSchedules({
           meeting_summary_local: candidate.meetingSummaryLocal,
         }));
 
-      schedules.push({
+      const schedule = {
         package_ids: packageIds,
         packages,
         conflict_count: 0,
         ...buildScheduleMetrics(selectedCandidates, transitions),
-      });
+      };
+      const visibilityKey = makeScheduleVisibilityKey(packages);
+      const existingIndex = scheduleIndexByVisibilityKey.get(visibilityKey);
+
+      if (existingIndex !== undefined) {
+        if (compareSchedules(schedule, schedules[existingIndex], preferenceOrder) < 0) {
+          schedules[existingIndex] = schedule;
+          trimSchedulesToLimit();
+        }
+
+        return false;
+      }
+
+      schedules.push(schedule);
+      scheduleIndexByVisibilityKey.set(visibilityKey, schedules.length - 1);
       if (schedules.length > limit) {
-        schedules.sort((left, right) => compareSchedules(left, right, preferenceOrder));
-        schedules.length = limit;
+        trimSchedulesToLimit();
       }
 
       return false;
@@ -553,7 +594,7 @@ export function buildSchedules({
   }
 
   visit(0);
-  schedules.sort((left, right) => compareSchedules(left, right, preferenceOrder));
+  trimSchedulesToLimit();
   return schedules.slice(0, limit);
 }
 
