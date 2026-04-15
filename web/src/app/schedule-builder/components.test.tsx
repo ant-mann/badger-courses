@@ -604,7 +604,7 @@ test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules"
   assert.doesNotMatch(markup, /6:00 PM/);
 });
 
-test("ScheduleCalendar expands earlier schedules with one extra padded hour", () => {
+test("ScheduleCalendar expands earlier schedules to the nearest hour boundary", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
       schedule={makeSchedule()}
@@ -627,12 +627,12 @@ test("ScheduleCalendar expands earlier schedules with one extra padded hour", ()
     />,
   );
 
-  assert.match(markup, /7:00 AM/);
+  assert.match(markup, /8:00 AM/);
   assert.match(markup, /5:00 PM/);
-  assert.doesNotMatch(markup, /6:00 AM/);
+  assert.doesNotMatch(markup, /7:00 AM/);
 });
 
-test("ScheduleCalendar expands later schedules with one extra padded hour", () => {
+test("ScheduleCalendar expands later schedules to the nearest hour boundary", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
       schedule={makeSchedule()}
@@ -656,11 +656,11 @@ test("ScheduleCalendar expands later schedules with one extra padded hour", () =
   );
 
   assert.match(markup, /9:00 AM/);
-  assert.match(markup, /8:00 PM/);
-  assert.doesNotMatch(markup, /9:00 PM/);
+  assert.match(markup, /7:00 PM/);
+  assert.doesNotMatch(markup, /8:00 PM/);
 });
 
-test("ScheduleCalendar expands both sides independently for early and late schedules", () => {
+test("ScheduleCalendar expands both sides independently to nearest hour boundaries", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
       schedule={makeSchedule()}
@@ -683,10 +683,10 @@ test("ScheduleCalendar expands both sides independently for early and late sched
     />,
   );
 
-  assert.match(markup, /6:00 AM/);
-  assert.match(markup, /10:00 PM/);
-  assert.doesNotMatch(markup, /5:00 AM/);
-  assert.doesNotMatch(markup, /11:00 PM/);
+  assert.match(markup, /7:00 AM/);
+  assert.match(markup, /9:00 PM/);
+  assert.doesNotMatch(markup, /6:00 AM/);
+  assert.doesNotMatch(markup, /10:00 PM/);
 });
 
 test("ScheduleCalendar shows an accurate empty state when a selected schedule has no entries", () => {

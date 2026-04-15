@@ -37,22 +37,24 @@ export function SchedulePriorityList({
               <span className="text-base font-semibold">{PREFERENCE_RULE_LABELS[ruleId]}</span>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex w-full gap-2 sm:w-auto">
               <button
                 type="button"
                 disabled={index === 0}
                 onClick={() => onMoveRule(ruleId, -1)}
-                className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                aria-label="Move up"
+                className="min-h-11 flex-1 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
               >
-                Move up
+                ↑
               </button>
               <button
                 type="button"
                 disabled={index === preferenceOrder.length - 1}
                 onClick={() => onMoveRule(ruleId, 1)}
-                className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                aria-label="Move down"
+                className="min-h-11 flex-1 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
               >
-                Move down
+                ↓
               </button>
             </div>
           </article>

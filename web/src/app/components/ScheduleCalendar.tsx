@@ -26,7 +26,6 @@ const CALENDAR_WEEKDAYS: VisibleWeekday[] = ["M", "T", "W", "R", "F", "S", "U"];
 const HOUR_HEIGHT_REM = 4;
 const BASELINE_START_MINUTES = 9 * 60;
 const BASELINE_END_MINUTES = 17 * 60;
-const WINDOW_PADDING_MINUTES = 60;
 
 function badgeClasses(sectionType: string | null): string {
   switch (sectionType) {
@@ -127,7 +126,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                   return (
                     <div
                       key={labelMinute}
-                      className="absolute left-0 right-0 border-t border-dashed border-black/8 dark:border-white/10"
+                      className="absolute left-0 right-0 border-t border-dashed border-black/20 dark:border-white/10"
                       style={{ top: `${top}%` }}
                     />
                   );
@@ -177,11 +176,11 @@ function deriveTimeWindow(entries: ScheduleCalendarEntry[]): { startMinutes: num
   const latestEnd = Math.max(...entries.map((entry) => entry.endMinutes));
 
   const startMinutes = earliestStart < BASELINE_START_MINUTES
-    ? (Math.floor(earliestStart / 60) * 60) - WINDOW_PADDING_MINUTES
+    ? Math.floor(earliestStart / 60) * 60
     : BASELINE_START_MINUTES;
 
   const endMinutes = latestEnd > BASELINE_END_MINUTES
-    ? (Math.ceil(latestEnd / 60) * 60) + WINDOW_PADDING_MINUTES
+    ? Math.ceil(latestEnd / 60) * 60
     : BASELINE_END_MINUTES;
 
   return {
