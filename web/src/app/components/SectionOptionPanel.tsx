@@ -134,7 +134,11 @@ function buildMeetingLines(
     }
 
     const meeting = course.meetings
-      .filter((candidateMeeting) => candidateMeeting.sectionClassNumber === section.sectionClassNumber)
+      .filter(
+        (candidateMeeting) =>
+          candidateMeeting.sourcePackageId === schedulePackage.sourcePackageId &&
+          candidateMeeting.sectionClassNumber === section.sectionClassNumber,
+      )
       .sort((left, right) => (left.meetingIndex ?? Number.MAX_SAFE_INTEGER) - (right.meetingIndex ?? Number.MAX_SAFE_INTEGER))
       .find((candidateMeeting) => formatMeetingDetail(candidateMeeting) !== null);
 

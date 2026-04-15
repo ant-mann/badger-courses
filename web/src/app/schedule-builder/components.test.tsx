@@ -202,7 +202,7 @@ test("SectionOptionPanel renders separate LEC, LAB, and DIS meeting rows from se
         meetings: [
           {
             sectionClassNumber: 2002,
-            sourcePackageId: "pkg-lec-002",
+            sourcePackageId: "pkg-chem-104-002-727-427",
             meetingIndex: 0,
             meetingType: "CLASS",
             meetingDays: "TR",
@@ -341,7 +341,7 @@ test("SectionOptionPanel derives labeled meeting rows from course-prefixed bundl
         meetings: [
           {
             sectionClassNumber: 2002,
-            sourcePackageId: "pkg-lec-002",
+            sourcePackageId: "pkg-chem-104-002-727-427",
             meetingIndex: 0,
             meetingType: "CLASS",
             meetingDays: "TR",
@@ -480,7 +480,7 @@ test("SectionOptionPanel renders labeled meeting rows when meeting times are num
         meetings: [
           {
             sectionClassNumber: 2002,
-            sourcePackageId: "pkg-lec-002",
+            sourcePackageId: "pkg-chem-104-002-727-427",
             meetingIndex: 0,
             meetingType: "CLASS",
             meetingDays: "TR",
@@ -676,6 +676,92 @@ test("SectionOptionPanel renders repeated section types without duplicate key wa
   }
 
   assert.equal(errors.length, 0);
+});
+
+test("SectionOptionPanel matches meetings to the current package when class numbers overlap", () => {
+  const markup = renderToStaticMarkup(
+    <SectionOptionPanel
+      course={makeCourseDetail({
+        sections: [
+          {
+            sectionClassNumber: 2002,
+            sectionNumber: "002",
+            sectionType: "LEC",
+            sectionTitle: null,
+            instructionMode: null,
+            openSeats: 5,
+            waitlistCurrentSize: null,
+            capacity: null,
+            currentlyEnrolled: null,
+            hasOpenSeats: true,
+            hasWaitlist: false,
+            isFull: false,
+          },
+        ],
+        meetings: [
+          {
+            sectionClassNumber: 2002,
+            sourcePackageId: "pkg-other",
+            meetingIndex: 0,
+            meetingType: "CLASS",
+            meetingDays: "MW",
+            meetingTimeStart: "08:00",
+            meetingTimeEnd: "08:50",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Wrong Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+          {
+            sectionClassNumber: 2002,
+            sourcePackageId: "pkg-1",
+            meetingIndex: 0,
+            meetingType: "CLASS",
+            meetingDays: "TR",
+            meetingTimeStart: "13:00",
+            meetingTimeEnd: "14:15",
+            startDate: null,
+            endDate: null,
+            examDate: null,
+            room: null,
+            buildingCode: null,
+            buildingName: "Chemistry Building",
+            streetAddress: null,
+            latitude: null,
+            longitude: null,
+            locationKnown: true,
+          },
+        ],
+        schedule_packages: [
+          {
+            sourcePackageId: "pkg-1",
+            sectionBundleLabel: "LEC 002",
+            openSeats: 5,
+            isFull: false,
+            hasWaitlist: false,
+            campusDayCount: 2,
+            meetingSummaryLocal: "TR 1:00 PM-2:15 PM @ Chemistry Building",
+            restrictionNote: null,
+          },
+        ],
+      })}
+      excludedSectionIds={[]}
+      loading={false}
+      lockedSectionId={null}
+      errorMessage={null}
+      onExcludeSection={() => {}}
+      onLockSection={() => {}}
+    />,
+  );
+
+  assert.match(markup, /TR 1:00 PM-2:15 PM @ Chemistry Building/);
+  assert.doesNotMatch(markup, /MW 8:00 AM-8:50 AM @ Wrong Building/);
 });
 
 test("SectionOptionPanel falls back to the merged meeting summary when labeled rows cannot be derived", () => {
