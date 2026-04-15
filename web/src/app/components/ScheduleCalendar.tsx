@@ -61,7 +61,9 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
     );
   }
 
-  const visibleWeekdays = CALENDAR_WEEKDAYS;
+  const visibleWeekdays = CALENDAR_WEEKDAYS.filter(
+    (d) => (d !== "S" && d !== "U") || entries.some((e) => e.weekday === d),
+  );
   const timeWindow = deriveTimeWindow(entries);
   const timeLabels = buildTimeLabels(timeWindow.startMinutes, timeWindow.endMinutes);
   const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
