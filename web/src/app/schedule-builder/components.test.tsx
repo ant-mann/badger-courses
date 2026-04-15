@@ -813,7 +813,7 @@ test("ScheduleResults shows a retry action for error states", () => {
   assert.match(markup, /Retry/i);
 });
 
-test("ScheduleCalendar renders only the weekdays used by the selected schedule", () => {
+test("ScheduleCalendar renders all seven weekdays for the selected schedule", () => {
   const entries: ScheduleCalendarEntry[] = [
     {
       weekday: "M",
@@ -846,9 +846,12 @@ test("ScheduleCalendar renders only the weekdays used by the selected schedule",
   );
 
   assert.match(markup, />M<|>Mon<|Monday/);
+  assert.match(markup, />T<|>Tue<|Tuesday/);
   assert.match(markup, />W<|>Wed<|Wednesday/);
-  assert.doesNotMatch(markup, />T<|>Tue<|Tuesday/);
-  assert.doesNotMatch(markup, />F<|>Fri<|Friday/);
+  assert.match(markup, />R<|>Thu<|Thursday/);
+  assert.match(markup, />F<|>Fri<|Friday/);
+  assert.match(markup, />S<|>Sat<|Saturday/);
+  assert.match(markup, />U<|>Sun<|Sunday/);
   assert.match(markup, /9:00 AM/);
   assert.match(markup, /position:absolute/);
 });
