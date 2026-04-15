@@ -235,6 +235,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
       sectionType: "LEC",
+      sectionNumber: null,
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -248,6 +249,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
       sectionType: "LEC",
+      sectionNumber: null,
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -261,6 +263,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
       sectionType: "LEC",
+      sectionNumber: null,
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -274,6 +277,7 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       sectionBundleLabel: "LEC 002",
       meetingType: "CLASS",
       sectionType: "LEC",
+      sectionNumber: null,
       startMinutes: 660,
       endMinutes: 710,
       room: "B203",
@@ -421,4 +425,273 @@ test("deriveScheduleCalendarEntries falls back to the first bundle section type 
 
   assert.equal(entries.length, 1);
   assert.equal(entries[0].sectionType, "LEC");
+});
+
+test("deriveScheduleCalendarEntries finds all bundle sections when sourcePackageId differs from bundle package ID", () => {
+  // Regression test: a LEC section is refreshed into a newer package (pkg-1b),
+  // while the bundle package ID remains pkg-1. Without the membership-based lookup,
+  // the LEC is keyed by pkg-1b and is never found when looking up pkg-1, so only
+  // the DIS shows up on the calendar.
+  const schedule: GeneratedSchedule = {
+    package_ids: ["pkg-1"],
+    packages: [
+      {
+        source_package_id: "pkg-1",
+        course_designation: "CHEM 109",
+        title: "Advanced General Chemistry",
+        section_bundle_label: "LEC 001 / DIS 302",
+        open_seats: 3,
+        is_full: 0,
+        has_waitlist: 0,
+        meeting_count: 2,
+        campus_day_count: 4,
+        earliest_start_minute_local: 540,
+        latest_end_minute_local: 770,
+        has_online_meeting: 0,
+        has_unknown_location: 0,
+        restriction_note: null,
+        has_temporary_restriction: 0,
+        meeting_summary_local: "MWF 09:00-09:50; R 12:00-12:50",
+      },
+    ],
+    conflict_count: 0,
+    campus_day_count: 4,
+    earliest_start_minute_local: 540,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 770,
+  };
+
+  const entries = deriveScheduleCalendarEntries(schedule, [
+    makeCourseDetail({
+      sections: [
+        {
+          sectionClassNumber: 10001,
+          sectionNumber: "001",
+          sectionType: "LEC",
+          instructionMode: "P",
+          openSeats: 3,
+          waitlistCurrentSize: 0,
+          capacity: 100,
+          currentlyEnrolled: 97,
+          hasOpenSeats: true,
+          hasWaitlist: false,
+          isFull: false,
+        },
+        {
+          sectionClassNumber: 10302,
+          sectionNumber: "302",
+          sectionType: "DIS",
+          instructionMode: "P",
+          openSeats: 3,
+          waitlistCurrentSize: 0,
+          capacity: 25,
+          currentlyEnrolled: 22,
+          hasOpenSeats: true,
+          hasWaitlist: false,
+          isFull: false,
+        },
+      ],
+      meetings: [
+        {
+          // LEC 001: refreshed into newer package pkg-1b (NOT pkg-1)
+          sectionClassNumber: 10001,
+          sourcePackageId: "pkg-1b",
+          meetingIndex: 1,
+          meetingType: "CLASS",
+          meetingDays: "MWF",
+          meetingTimeStart: 54000000,
+          meetingTimeEnd: 57000000,
+          startDate: null,
+          endDate: null,
+          examDate: null,
+          room: "1351",
+          buildingCode: "CH",
+          buildingName: "Chamberlin Hall",
+          streetAddress: "1150 University Ave.",
+          latitude: 43.072,
+          longitude: -89.406,
+          locationKnown: true,
+        },
+        {
+          // DIS 302: still in original package pkg-1
+          sectionClassNumber: 10302,
+          sourcePackageId: "pkg-1",
+          meetingIndex: 1,
+          meetingType: "DIS",
+          meetingDays: "R",
+          meetingTimeStart: 72000000,
+          meetingTimeEnd: 75000000,
+          startDate: null,
+          endDate: null,
+          examDate: null,
+          room: "2103",
+          buildingCode: "CH",
+          buildingName: "Chamberlin Hall",
+          streetAddress: "1150 University Ave.",
+          latitude: 43.072,
+          longitude: -89.406,
+          locationKnown: true,
+        },
+      ],
+      package_section_memberships: [
+        { packageId: "pkg-1", sectionClassNumber: 10001 },
+        { packageId: "pkg-1", sectionClassNumber: 10302 },
+      ],
+    }),
+  ]);
+
+  // Both LEC (MWF) and DIS (R) should appear — 4 entries total
+  assert.equal(entries.length, 4);
+  const weekdays = entries.map((e) => e.weekday);
+  assert(weekdays.includes("M"), "Monday LEC missing");
+  assert(weekdays.includes("W"), "Wednesday LEC missing");
+  assert(weekdays.includes("F"), "Friday LEC missing");
+  assert(weekdays.includes("R"), "Thursday DIS missing");
+  assert(entries.every((e) => e.sourcePackageId === "pkg-1"), "all entries should use bundle package ID");
+});
+
+test("deriveScheduleCalendarEntries populates sectionNumber from sections when class number matches", () => {
+  const schedule: GeneratedSchedule = {
+    package_ids: ["pkg-1"],
+    packages: [
+      {
+        source_package_id: "pkg-1",
+        course_designation: "COMP SCI 400",
+        title: "Programming III",
+        section_bundle_label: "LEC 007",
+        open_seats: 3,
+        is_full: 0,
+        has_waitlist: 0,
+        meeting_count: 1,
+        campus_day_count: 3,
+        earliest_start_minute_local: 540,
+        latest_end_minute_local: 590,
+        has_online_meeting: 0,
+        has_unknown_location: 0,
+        restriction_note: null,
+        has_temporary_restriction: 0,
+        meeting_summary_local: "MWF 09:00-09:50",
+      },
+    ],
+    conflict_count: 0,
+    campus_day_count: 3,
+    earliest_start_minute_local: 540,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 590,
+  };
+
+  const entries = deriveScheduleCalendarEntries(schedule, [
+    makeCourseDetail({
+      sections: [
+        {
+          sectionClassNumber: 40007,
+          sectionNumber: "007",
+          sectionType: "LEC",
+          instructionMode: "P",
+          openSeats: 3,
+          waitlistCurrentSize: 0,
+          capacity: 50,
+          currentlyEnrolled: 47,
+          hasOpenSeats: true,
+          hasWaitlist: false,
+          isFull: false,
+        },
+      ],
+      meetings: [
+        {
+          sectionClassNumber: 40007,
+          sourcePackageId: "pkg-1",
+          meetingIndex: 1,
+          meetingType: "CLASS",
+          meetingDays: "MWF",
+          meetingTimeStart: 54000000,
+          meetingTimeEnd: 57000000,
+          startDate: null,
+          endDate: null,
+          examDate: null,
+          room: "140",
+          buildingCode: "0140",
+          buildingName: "Grainger Hall",
+          streetAddress: "975 University Ave.",
+          latitude: 43.0727,
+          longitude: -89.4015,
+          locationKnown: true,
+        },
+      ],
+    }),
+  ]);
+
+  assert.equal(entries.length, 3);
+  assert(entries.every((e) => e.sectionNumber === "007"), "all entries should have sectionNumber '007'");
+});
+
+test("deriveScheduleCalendarEntries sets sectionNumber to null when class number is not in any section", () => {
+  const schedule: GeneratedSchedule = {
+    package_ids: ["pkg-1"],
+    packages: [
+      {
+        source_package_id: "pkg-1",
+        course_designation: "COMP SCI 400",
+        title: "Programming III",
+        section_bundle_label: "LEC 001",
+        open_seats: 3,
+        is_full: 0,
+        has_waitlist: 0,
+        meeting_count: 1,
+        campus_day_count: 1,
+        earliest_start_minute_local: 540,
+        latest_end_minute_local: 590,
+        has_online_meeting: 0,
+        has_unknown_location: 0,
+        restriction_note: null,
+        has_temporary_restriction: 0,
+        meeting_summary_local: "M 09:00-09:50",
+      },
+    ],
+    conflict_count: 0,
+    campus_day_count: 1,
+    earliest_start_minute_local: 540,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 590,
+  };
+
+  // sections: [] — no class numbers indexed
+  const entries = deriveScheduleCalendarEntries(schedule, [
+    makeCourseDetail({
+      sections: [],
+      meetings: [
+        {
+          sectionClassNumber: 99999,
+          sourcePackageId: "pkg-1",
+          meetingIndex: 1,
+          meetingType: "CLASS",
+          meetingDays: "M",
+          meetingTimeStart: 54000000,
+          meetingTimeEnd: 57000000,
+          startDate: null,
+          endDate: null,
+          examDate: null,
+          room: "140",
+          buildingCode: "0140",
+          buildingName: "Grainger Hall",
+          streetAddress: "975 University Ave.",
+          latitude: 43.0727,
+          longitude: -89.4015,
+          locationKnown: true,
+        },
+      ],
+    }),
+  ]);
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].sectionNumber, null);
 });

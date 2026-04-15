@@ -60,6 +60,7 @@ export type ScheduleBuilderCourseDetailResponse = {
   prerequisites: PrerequisiteRule[];
   instructor_grades: InstructorHistoryItem[];
   schedule_packages: SchedulePackage[];
+  package_section_memberships?: Array<{ packageId: string; sectionClassNumber: number | null }>;
 };
 
 export type ScheduleBuilderSchedulesResponse = {
@@ -76,6 +77,7 @@ export type ScheduleCalendarEntry = {
   sectionBundleLabel: string;
   meetingType: string | null;
   sectionType: string | null;
+  sectionNumber: string | null;
   startMinutes: number;
   endMinutes: number;
   room: string | null;
@@ -89,15 +91,21 @@ export function deriveScheduleCalendarEntries(
   courseDetails: ScheduleBuilderCourseDetailResponse[],
 ): ScheduleCalendarEntry[] {
   const meetingsByPackageId = new Map<string, CourseMeeting[]>();
+  const meetingsBySectionClassNumber = new Map<number, CourseMeeting[]>();
+  const sectionClassNumbersByPackageId = new Map<string, number[]>();
   const packagesById = new Map(
     schedule.packages.map((schedulePackage) => [schedulePackage.source_package_id, schedulePackage] as const),
   );
 
   const sectionTypeByClassNumber = new Map<number, string>();
+  const sectionNumberByClassNumber = new Map<number, string>();
   for (const courseDetail of courseDetails) {
     for (const section of courseDetail.sections) {
       if (section.sectionClassNumber !== null && section.sectionType !== null) {
         sectionTypeByClassNumber.set(section.sectionClassNumber, section.sectionType);
+      }
+      if (section.sectionClassNumber !== null) {
+        sectionNumberByClassNumber.set(section.sectionClassNumber, section.sectionNumber);
       }
     }
   }
@@ -110,9 +118,28 @@ export function deriveScheduleCalendarEntries(
 
   for (const courseDetail of courseDetails) {
     for (const meeting of courseDetail.meetings) {
-      const meetings = meetingsByPackageId.get(meeting.sourcePackageId) ?? [];
-      meetings.push(meeting);
-      meetingsByPackageId.set(meeting.sourcePackageId, meetings);
+      // Index by package ID (fallback behavior)
+      const byPkg = meetingsByPackageId.get(meeting.sourcePackageId) ?? [];
+      byPkg.push(meeting);
+      meetingsByPackageId.set(meeting.sourcePackageId, byPkg);
+
+      // Index by section class number (preferred lookup path)
+      if (meeting.sectionClassNumber !== null) {
+        const byClass = meetingsBySectionClassNumber.get(meeting.sectionClassNumber) ?? [];
+        byClass.push(meeting);
+        meetingsBySectionClassNumber.set(meeting.sectionClassNumber, byClass);
+      }
+    }
+
+    // Build package → section class numbers mapping from membership data
+    if (courseDetail.package_section_memberships) {
+      for (const membership of courseDetail.package_section_memberships) {
+        if (membership.sectionClassNumber !== null) {
+          const classNumbers = sectionClassNumbersByPackageId.get(membership.packageId) ?? [];
+          classNumbers.push(membership.sectionClassNumber);
+          sectionClassNumbersByPackageId.set(membership.packageId, classNumbers);
+        }
+      }
     }
   }
 
@@ -125,7 +152,14 @@ export function deriveScheduleCalendarEntries(
       continue;
     }
 
-    const meetings = meetingsByPackageId.get(packageId) ?? [];
+    // Use membership-based lookup when available to handle sourcePackageId mismatches.
+    // Without this, a LEC refreshed into a newer package (P2) would be missed when
+    // looking up meetings for the bundle package (P1).
+    const sectionClassNumbers = sectionClassNumbersByPackageId.get(packageId);
+    const meetings =
+      sectionClassNumbers && sectionClassNumbers.length > 0
+        ? sectionClassNumbers.flatMap((cn) => meetingsBySectionClassNumber.get(cn) ?? [])
+        : (meetingsByPackageId.get(packageId) ?? []);
 
     for (const meeting of meetings) {
       const startMinutes = parseTimeToMinutes(meeting.meetingTimeStart);
@@ -149,6 +183,10 @@ export function deriveScheduleCalendarEntries(
             sectionTypeByClassNumber,
             sectionTypesByPackageId,
           }),
+          sectionNumber:
+            meeting.sectionClassNumber !== null
+              ? (sectionNumberByClassNumber.get(meeting.sectionClassNumber) ?? null)
+              : null,
           startMinutes,
           endMinutes,
           room: meeting.room,
