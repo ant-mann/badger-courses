@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { CoursePicker } from "@/app/components/CoursePicker";
+import { ScheduleAvailabilityFilters } from "@/app/components/ScheduleAvailabilityFilters";
 import { ScheduleCalendar } from "@/app/components/ScheduleCalendar";
 import { SchedulePriorityList } from "@/app/components/SchedulePriorityList";
 import { ScheduleResults } from "@/app/components/ScheduleResults";
@@ -430,6 +431,17 @@ export function ScheduleBuilder() {
               className="min-h-12 rounded-2xl border border-black/10 bg-transparent px-4 text-base font-normal outline-none transition focus:border-black/30 dark:border-white/10 dark:focus:border-white/30"
             />
           </label>
+
+          <ScheduleAvailabilityFilters
+            includeWaitlisted={builderState.includeWaitlisted}
+            includeClosed={builderState.includeClosed}
+            onIncludeWaitlistedChange={(checked) => {
+              updateBuilderState((state) => ({ ...state, includeWaitlisted: checked }));
+            }}
+            onIncludeClosedChange={(checked) => {
+              updateBuilderState((state) => ({ ...state, includeClosed: checked }));
+            }}
+          />
 
           <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
             {isRoutingPending ? "Updating..." : "Schedules regenerate automatically when your inputs change."}

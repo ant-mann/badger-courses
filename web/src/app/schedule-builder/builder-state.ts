@@ -23,6 +23,8 @@ export type ScheduleBuilderState = {
   excludedSections: ExcludedSection[];
   limit: number;
   preferenceOrder: PreferenceRuleId[];
+  includeWaitlisted: boolean;
+  includeClosed: boolean;
 };
 
 export type ScheduleRequestPayload = {
@@ -31,6 +33,8 @@ export type ScheduleRequestPayload = {
   exclude_packages: string[];
   limit: number;
   preference_order: PreferenceRuleId[];
+  include_waitlisted: boolean;
+  include_closed: boolean;
 };
 
 export function parseBuilderState(searchParams: URLSearchParams): ScheduleBuilderState {
@@ -44,6 +48,8 @@ export function parseBuilderState(searchParams: URLSearchParams): ScheduleBuilde
     excludedSections,
     limit: clampScheduleLimit(parseOptionalInteger(searchParams.get("limit"))),
     preferenceOrder: normalizePreferenceOrder(searchParams.getAll("priority")),
+    includeWaitlisted: parseBooleanSearchParam(searchParams.get("includeWaitlisted")),
+    includeClosed: parseBooleanSearchParam(searchParams.get("includeClosed")),
   };
 }
 
@@ -86,6 +92,8 @@ export function serializeBuilderState(state: ScheduleBuilderState): URLSearchPar
   }
 
   searchParams.set("limit", String(clampScheduleLimit(state.limit)));
+  searchParams.set("includeWaitlisted", state.includeWaitlisted ? "true" : "false");
+  searchParams.set("includeClosed", state.includeClosed ? "true" : "false");
 
   return searchParams;
 }
@@ -110,6 +118,8 @@ export function buildScheduleRequestPayload(state: ScheduleBuilderState): Schedu
     exclude_packages: excludedSectionIds,
     limit: clampScheduleLimit(state.limit),
     preference_order: normalizePreferenceOrder(state.preferenceOrder),
+    include_waitlisted: state.includeWaitlisted,
+    include_closed: state.includeClosed,
   };
 }
 
@@ -371,4 +381,8 @@ function parseOptionalInteger(value: string | null): number | undefined {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? DEFAULT_SCHEDULE_LIMIT : parsed;
+}
+
+function parseBooleanSearchParam(value: string | null): boolean {
+  return value === "true";
 }

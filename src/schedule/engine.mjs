@@ -491,14 +491,49 @@ function makeScheduleVisibilityKey(packages) {
     .join('\u0001');
 }
 
+function isCandidateAvailabilityEligible(candidate, {
+  includeWaitlisted = false,
+  includeClosed = false,
+  isLocked = false,
+}) {
+  if (isLocked || candidate.openSeats > 0) {
+    return true;
+  }
+
+  if (candidate.hasWaitlist) {
+    return includeWaitlisted;
+  }
+
+  return includeClosed;
+}
+
 export function buildSchedules({
   orderedGroups,
   lockedByCourse,
   conflicts,
   transitions,
   preferenceOrder = DEFAULT_PREFERENCE_ORDER,
+  includeWaitlisted = false,
+  includeClosed = false,
   limit,
 }) {
+  const eligibleGroups = orderedGroups.map((group) => {
+    const lockedPackageId = lockedByCourse.get(group.courseDesignation) ?? null;
+
+    return {
+      ...group,
+      candidates: group.candidates.filter((candidate) => isCandidateAvailabilityEligible(candidate, {
+        includeWaitlisted,
+        includeClosed,
+        isLocked: lockedPackageId === candidate.packageId,
+      })),
+    };
+  });
+
+  if (eligibleGroups.some((group) => group.candidates.length === 0)) {
+    return [];
+  }
+
   const schedules = [];
   const scheduleIndexByVisibilityKey = new Map();
   const selectedCandidates = [];
@@ -517,7 +552,7 @@ export function buildSchedules({
   }
 
   function visit(index) {
-    if (index >= orderedGroups.length) {
+    if (index >= eligibleGroups.length) {
       const packageIds = selectedCandidates.map((candidate) => candidate.packageId).sort();
       const packages = [...selectedCandidates]
         .sort((left, right) => left.packageId.localeCompare(right.packageId))
@@ -567,7 +602,7 @@ export function buildSchedules({
       return false;
     }
 
-    const group = orderedGroups[index];
+    const group = eligibleGroups[index];
     const lockedPackageId = lockedByCourse.get(group.courseDesignation) ?? null;
 
     for (const candidate of group.candidates) {
@@ -605,6 +640,8 @@ export function generateSchedules(
     lockPackages = [],
     excludePackages = [],
     preferenceOrder = DEFAULT_PREFERENCE_ORDER,
+    includeWaitlisted = false,
+    includeClosed = false,
     limit = DEFAULT_LIMIT,
   },
 ) {
@@ -645,6 +682,8 @@ export function generateSchedules(
     conflicts: deriveConflicts(meetingsByPackageId, activePackageIds),
     transitions: deriveTransitions(meetingsByPackageId, activePackageIds),
     preferenceOrder,
+    includeWaitlisted,
+    includeClosed,
     limit,
   });
 }
