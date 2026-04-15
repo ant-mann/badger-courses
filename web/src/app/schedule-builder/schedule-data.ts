@@ -91,21 +91,27 @@ export function deriveScheduleCalendarEntries(
   courseDetails: ScheduleBuilderCourseDetailResponse[],
 ): ScheduleCalendarEntry[] {
   const meetingsByPackageId = new Map<string, CourseMeeting[]>();
-  const meetingsBySectionClassNumber = new Map<number, CourseMeeting[]>();
+  // Composite key `${courseId}:${classNumber}` — prevents cross-course contamination
+  // when two selected courses share the same section class number (e.g. synthetic negatives).
+  const meetingsByCompositeKey = new Map<string, CourseMeeting[]>();
   const sectionClassNumbersByPackageId = new Map<string, number[]>();
+  // Maps any packageId (bundle or source) to its owning courseId.
+  const courseIdByPackageId = new Map<string, string>();
   const packagesById = new Map(
     schedule.packages.map((schedulePackage) => [schedulePackage.source_package_id, schedulePackage] as const),
   );
 
-  const sectionTypeByClassNumber = new Map<number, string>();
-  const sectionNumberByClassNumber = new Map<number, string>();
+  const sectionTypeByCompositeKey = new Map<string, string>();
+  const sectionNumberByCompositeKey = new Map<string, string>();
   for (const courseDetail of courseDetails) {
+    const courseId = courseDetail.course.courseId;
     for (const section of courseDetail.sections) {
-      if (section.sectionClassNumber !== null && section.sectionType !== null) {
-        sectionTypeByClassNumber.set(section.sectionClassNumber, section.sectionType);
-      }
       if (section.sectionClassNumber !== null) {
-        sectionNumberByClassNumber.set(section.sectionClassNumber, section.sectionNumber);
+        const key = `${courseId}:${section.sectionClassNumber}`;
+        if (section.sectionType !== null) {
+          sectionTypeByCompositeKey.set(key, section.sectionType);
+        }
+        sectionNumberByCompositeKey.set(key, section.sectionNumber);
       }
     }
   }
@@ -117,23 +123,32 @@ export function deriveScheduleCalendarEntries(
   );
 
   for (const courseDetail of courseDetails) {
+    const courseId = courseDetail.course.courseId;
+
     for (const meeting of courseDetail.meetings) {
+      // Track source package → course mapping (fallback for cases without membership data)
+      courseIdByPackageId.set(meeting.sourcePackageId, courseId);
+
       // Index by package ID (fallback behavior)
       const byPkg = meetingsByPackageId.get(meeting.sourcePackageId) ?? [];
       byPkg.push(meeting);
       meetingsByPackageId.set(meeting.sourcePackageId, byPkg);
 
-      // Index by section class number (preferred lookup path)
+      // Index by composite key (preferred lookup path)
       if (meeting.sectionClassNumber !== null) {
-        const byClass = meetingsBySectionClassNumber.get(meeting.sectionClassNumber) ?? [];
+        const key = `${courseId}:${meeting.sectionClassNumber}`;
+        const byClass = meetingsByCompositeKey.get(key) ?? [];
         byClass.push(meeting);
-        meetingsBySectionClassNumber.set(meeting.sectionClassNumber, byClass);
+        meetingsByCompositeKey.set(key, byClass);
       }
     }
 
-    // Build package → section class numbers mapping from membership data
+    // Build package → course ID mapping and section class numbers from membership data.
+    // Using courseId as part of the key prevents meetings from a different course with
+    // the same class number from being attached to the wrong bundle package.
     if (courseDetail.package_section_memberships) {
       for (const membership of courseDetail.package_section_memberships) {
+        courseIdByPackageId.set(membership.packageId, courseId);
         if (membership.sectionClassNumber !== null) {
           const classNumbers = sectionClassNumbersByPackageId.get(membership.packageId) ?? [];
           classNumbers.push(membership.sectionClassNumber);
@@ -156,9 +171,10 @@ export function deriveScheduleCalendarEntries(
     // Without this, a LEC refreshed into a newer package (P2) would be missed when
     // looking up meetings for the bundle package (P1).
     const sectionClassNumbers = sectionClassNumbersByPackageId.get(packageId);
+    const courseId = courseIdByPackageId.get(packageId);
     const meetings =
-      sectionClassNumbers && sectionClassNumbers.length > 0
-        ? sectionClassNumbers.flatMap((cn) => meetingsBySectionClassNumber.get(cn) ?? [])
+      sectionClassNumbers && sectionClassNumbers.length > 0 && courseId
+        ? sectionClassNumbers.flatMap((cn) => meetingsByCompositeKey.get(`${courseId}:${cn}`) ?? [])
         : (meetingsByPackageId.get(packageId) ?? []);
 
     for (const meeting of meetings) {
@@ -180,12 +196,13 @@ export function deriveScheduleCalendarEntries(
           sectionType: deriveSectionType({
             meeting,
             sourcePackageId: schedulePackage.source_package_id,
-            sectionTypeByClassNumber,
+            courseId: courseId ?? null,
+            sectionTypeByCompositeKey,
             sectionTypesByPackageId,
           }),
           sectionNumber:
-            meeting.sectionClassNumber !== null
-              ? (sectionNumberByClassNumber.get(meeting.sectionClassNumber) ?? null)
+            meeting.sectionClassNumber !== null && courseId
+              ? (sectionNumberByCompositeKey.get(`${courseId}:${meeting.sectionClassNumber}`) ?? null)
               : null,
           startMinutes,
           endMinutes,
@@ -269,16 +286,18 @@ function isVisibleWeekday(value: string): value is VisibleWeekday {
 function deriveSectionType({
   meeting,
   sourcePackageId,
-  sectionTypeByClassNumber,
+  courseId,
+  sectionTypeByCompositeKey,
   sectionTypesByPackageId,
 }: {
   meeting: CourseMeeting;
   sourcePackageId: string;
-  sectionTypeByClassNumber: Map<number, string>;
+  courseId: string | null;
+  sectionTypeByCompositeKey: Map<string, string>;
   sectionTypesByPackageId: Map<string, string[]>;
 }): string | null {
-  if (meeting.sectionClassNumber !== null) {
-    const sectionType = sectionTypeByClassNumber.get(meeting.sectionClassNumber);
+  if (meeting.sectionClassNumber !== null && courseId !== null) {
+    const sectionType = sectionTypeByCompositeKey.get(`${courseId}:${meeting.sectionClassNumber}`);
     if (sectionType) {
       return sectionType;
     }
