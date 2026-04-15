@@ -360,7 +360,7 @@ test("deriveScheduleCalendarEntries falls back to section type from bundle label
   assert(entries.every((entry) => entry.sectionType === "LEC"));
 });
 
-test("deriveScheduleCalendarEntries does not infer section type from bundle label when multiple types are present", () => {
+test("deriveScheduleCalendarEntries falls back to the first bundle section type when class lookup misses", () => {
   const schedule: GeneratedSchedule = {
     package_ids: ["pkg-1"],
     packages: [
@@ -420,5 +420,5 @@ test("deriveScheduleCalendarEntries does not infer section type from bundle labe
   ]);
 
   assert.equal(entries.length, 1);
-  assert.equal(entries[0].sectionType, null);
+  assert.equal(entries[0].sectionType, "LEC");
 });

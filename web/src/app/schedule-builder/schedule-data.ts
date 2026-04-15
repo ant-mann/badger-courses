@@ -247,7 +247,12 @@ function deriveSectionType({
   }
 
   const sectionTypesForPackage = sectionTypesByPackageId.get(sourcePackageId) ?? [];
-  return sectionTypesForPackage.length === 1 ? sectionTypesForPackage[0] : null;
+
+  if (sectionTypesForPackage.length === 0) {
+    return null;
+  }
+
+  return sectionTypesForPackage[0];
 }
 
 function parseSectionTypesFromBundleLabel(sectionBundleLabel: string): string[] {
