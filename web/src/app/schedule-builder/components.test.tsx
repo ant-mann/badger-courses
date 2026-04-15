@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CoursePicker } from "@/app/components/CoursePicker";
+import { ScheduleAvailabilityFilters } from "@/app/components/ScheduleAvailabilityFilters";
 import { ScheduleCalendar } from "@/app/components/ScheduleCalendar";
 import { SchedulePriorityList } from "@/app/components/SchedulePriorityList";
 import { ScheduleResults } from "@/app/components/ScheduleResults";
@@ -420,6 +421,21 @@ test("SchedulePriorityList shows ordered rules, guidance copy, and move controls
   assert.match(markup, />4\.<\/span>\s*<span[^>]*>Earlier finishes</i);
   assert.equal(markup.match(/Move up/g)?.length, 4);
   assert.equal(markup.match(/Move down/g)?.length, 4);
+});
+
+test("ScheduleAvailabilityFilters renders both toggles and locked-section helper copy", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleAvailabilityFilters
+      includeWaitlisted={true}
+      includeClosed={false}
+      onIncludeWaitlistedChange={() => {}}
+      onIncludeClosedChange={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Include waitlisted sections/i);
+  assert.match(markup, /Include closed sections/i);
+  assert.match(markup, /Locked sections still count even if these are off/i);
 });
 
 test("ScheduleCalendar renders Mon–Fri columns but hides Sat/Sun when no entries fall on those days", () => {

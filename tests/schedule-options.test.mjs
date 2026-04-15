@@ -807,6 +807,201 @@ test('buildSchedules changes the top result when preferenceOrder changes', async
   assert.deepEqual(schedules[0].package_ids, ['a-early-compact', 'b-1']);
 });
 
+test('buildSchedules collapses duplicate visible schedules from equivalent package variants', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-crosslist-z', {
+            courseDesignation: 'COURSE A',
+            sectionBundleLabel: 'COURSE A LEC 001',
+            meetingSummaryLocal: 'M 9:00 AM-10:00 AM',
+            openSeats: 1,
+            campusDayCount: 1,
+            earliestStartMinuteLocal: 540,
+            latestEndMinuteLocal: 600,
+            meetings: [{ days_mask: 1, start_minute_local: 540, end_minute_local: 600, is_online: 0 }],
+          }),
+          makeTestCandidate('a-crosslist-a', {
+            courseDesignation: 'COURSE A',
+            sectionBundleLabel: 'COURSE A LEC 001',
+            meetingSummaryLocal: 'M 9:00 AM-10:00 AM',
+            openSeats: 4,
+            campusDayCount: 1,
+            earliestStartMinuteLocal: 540,
+            latestEndMinuteLocal: 600,
+            meetings: [{ days_mask: 1, start_minute_local: 540, end_minute_local: 600, is_online: 0 }],
+          }),
+        ],
+      },
+      {
+        courseDesignation: 'COURSE B',
+        candidates: [
+          makeTestCandidate('b-1', {
+            courseDesignation: 'COURSE B',
+            sectionBundleLabel: 'COURSE B LEC 001',
+            meetingSummaryLocal: 'T 11:00 AM-12:00 PM',
+            openSeats: 2,
+            campusDayCount: 1,
+            earliestStartMinuteLocal: 660,
+            latestEndMinuteLocal: 720,
+            meetings: [{ days_mask: 2, start_minute_local: 660, end_minute_local: 720, is_online: 0 }],
+          }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    limit: 25,
+  });
+
+  assert.equal(schedules.length, 1);
+  assert.deepEqual(schedules[0].package_ids, ['a-crosslist-a', 'b-1']);
+});
+
+test('buildSchedules excludes waitlisted and closed packages by default', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-open', { courseDesignation: 'COURSE A', openSeats: 2, hasWaitlist: 0 }),
+          makeTestCandidate('a-waitlisted', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 1 }),
+          makeTestCandidate('a-closed', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 0 }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    limit: 10,
+  });
+
+  assert.deepEqual(schedules.map((schedule) => schedule.package_ids), [['a-open']]);
+});
+
+test('buildSchedules includes waitlisted packages when enabled', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-open', { courseDesignation: 'COURSE A', openSeats: 2, hasWaitlist: 0 }),
+          makeTestCandidate('a-waitlisted', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 1 }),
+          makeTestCandidate('a-closed', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 0 }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    includeWaitlisted: true,
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    schedules.map((schedule) => schedule.package_ids[0]).sort(),
+    ['a-open', 'a-waitlisted'],
+  );
+});
+
+test('buildSchedules includes closed packages when enabled', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-open', { courseDesignation: 'COURSE A', openSeats: 2, hasWaitlist: 0 }),
+          makeTestCandidate('a-waitlisted', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 1 }),
+          makeTestCandidate('a-closed', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 0 }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    includeClosed: true,
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    schedules.map((schedule) => schedule.package_ids[0]).sort(),
+    ['a-closed', 'a-open'],
+  );
+});
+
+test('buildSchedules includes all availability classes when both toggles are enabled', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-open', { courseDesignation: 'COURSE A', openSeats: 2, hasWaitlist: 0 }),
+          makeTestCandidate('a-waitlisted', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 1 }),
+          makeTestCandidate('a-closed', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 0 }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    includeWaitlisted: true,
+    includeClosed: true,
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    schedules.map((schedule) => schedule.package_ids[0]).sort(),
+    ['a-closed', 'a-open', 'a-waitlisted'],
+  );
+});
+
+test('buildSchedules keeps a locked closed or waitlisted package even when its toggle is off', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const lockedWaitlistedSchedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-open', { courseDesignation: 'COURSE A', openSeats: 2, hasWaitlist: 0 }),
+          makeTestCandidate('a-waitlisted', { courseDesignation: 'COURSE A', openSeats: 0, hasWaitlist: 1 }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map([['COURSE A', 'a-waitlisted']]),
+    conflicts: new Map(),
+    transitions: new Map(),
+    limit: 10,
+  });
+
+  const lockedClosedSchedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE B',
+        candidates: [
+          makeTestCandidate('b-open', { courseDesignation: 'COURSE B', openSeats: 2, hasWaitlist: 0 }),
+          makeTestCandidate('b-closed', { courseDesignation: 'COURSE B', openSeats: 0, hasWaitlist: 0 }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map([['COURSE B', 'b-closed']]),
+    conflicts: new Map(),
+    transitions: new Map(),
+    limit: 10,
+  });
+
+  assert.deepEqual(lockedWaitlistedSchedules.map((schedule) => schedule.package_ids), [['a-waitlisted']]);
+  assert.deepEqual(lockedClosedSchedules.map((schedule) => schedule.package_ids), [['b-closed']]);
+});
+
 test('compareSchedules falls through null time metrics to later rules and tie-breakers', async () => {
   const scheduleEngine = await loadScheduleEngineModule();
 

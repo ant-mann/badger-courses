@@ -18,6 +18,8 @@ type ScheduleRequestBody = {
   exclude_packages?: unknown;
   limit?: unknown;
   preference_order?: unknown;
+  include_waitlisted?: unknown;
+  include_closed?: unknown;
 };
 
 type GenerateSchedulesOptions = {
@@ -26,6 +28,8 @@ type GenerateSchedulesOptions = {
   excludePackages: string[];
   limit: number;
   preferenceOrder: PreferenceRuleId[];
+  includeWaitlisted: boolean;
+  includeClosed: boolean;
 };
 
 const generateSchedulesTyped = generateSchedules as unknown as (
@@ -89,6 +93,18 @@ export function normalizePreferenceOrderInput(value: unknown): PreferenceRuleId[
   return normalizePreferenceOrder(value);
 }
 
+export function normalizeBooleanInput(value: unknown): boolean | null {
+  if (value === undefined) {
+    return false;
+  }
+
+  if (typeof value !== 'boolean') {
+    return null;
+  }
+
+  return value;
+}
+
 export async function POST(request: Request) {
   let body: unknown;
 
@@ -107,6 +123,8 @@ export async function POST(request: Request) {
   const excludePackages = normalizePackageIds(body.exclude_packages);
   const limit = normalizeLimit(body.limit);
   const preferenceOrder = normalizePreferenceOrderInput(body.preference_order);
+  const includeWaitlisted = normalizeBooleanInput(body.include_waitlisted);
+  const includeClosed = normalizeBooleanInput(body.include_closed);
 
   if (!courses) {
     return NextResponse.json(
@@ -115,7 +133,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!lockPackages || !excludePackages || limit === null || !preferenceOrder) {
+  if (
+    !lockPackages ||
+    !excludePackages ||
+    limit === null ||
+    !preferenceOrder ||
+    includeWaitlisted === null ||
+    includeClosed === null
+  ) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
@@ -127,6 +152,8 @@ export async function POST(request: Request) {
         excludePackages,
         limit,
         preferenceOrder,
+        includeWaitlisted,
+        includeClosed,
       }),
     },
     {

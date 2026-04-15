@@ -14,7 +14,15 @@ import {
   type ScheduleBuilderState,
 } from "./builder-state";
 
-function makeState(overrides: Partial<ScheduleBuilderState> = {}): ScheduleBuilderState {
+function makeState(
+  overrides: Partial<ScheduleBuilderState> & {
+    includeWaitlisted?: boolean;
+    includeClosed?: boolean;
+  } = {},
+): ScheduleBuilderState & {
+  includeWaitlisted: boolean;
+  includeClosed: boolean;
+} {
   return {
     courses: ["COMP SCI 577", "MATH 240"],
     lockedSections: [],
@@ -26,9 +34,21 @@ function makeState(overrides: Partial<ScheduleBuilderState> = {}): ScheduleBuild
       "fewer-long-gaps",
       "earlier-finishes",
     ],
+    includeWaitlisted: false,
+    includeClosed: false,
     ...overrides,
+  } as ScheduleBuilderState & {
+    includeWaitlisted: boolean;
+    includeClosed: boolean;
   };
 }
+
+test("makeState defaults availability toggles to false", () => {
+  const state = makeState();
+
+  assert.equal(state.includeWaitlisted, false);
+  assert.equal(state.includeClosed, false);
+});
 
 test("parseBuilderState normalizes url-backed builder inputs", () => {
   const searchParams = new URLSearchParams();
@@ -58,6 +78,8 @@ test("parseBuilderState normalizes url-backed builder inputs", () => {
       "later-starts",
       "fewer-campus-days",
     ],
+    includeWaitlisted: false,
+    includeClosed: false,
   });
 });
 
@@ -69,6 +91,30 @@ test("parseBuilderState drops invalid course lists that fail shared normalizatio
   }
 
   assert.deepEqual(parseBuilderState(searchParams).courses, []);
+});
+
+test("parseBuilderState restores availability toggles from the url", () => {
+  const searchParams = new URLSearchParams();
+  searchParams.append("course", "COMP SCI 577");
+  searchParams.set("includeWaitlisted", "true");
+  searchParams.set("includeClosed", "true");
+
+  const parsedState = parseBuilderState(searchParams) as ScheduleBuilderState & Record<string, unknown>;
+
+  assert.equal(parsedState.includeWaitlisted, true);
+  assert.equal(parsedState.includeClosed, true);
+});
+
+test("parseBuilderState defaults malformed availability toggles to false", () => {
+  const searchParams = new URLSearchParams();
+  searchParams.append("course", "COMP SCI 577");
+  searchParams.set("includeWaitlisted", "yes");
+  searchParams.set("includeClosed", "1");
+
+  const parsedState = parseBuilderState(searchParams) as ScheduleBuilderState & Record<string, unknown>;
+
+  assert.equal(parsedState.includeWaitlisted, false);
+  assert.equal(parsedState.includeClosed, false);
 });
 
 test("serializeBuilderState emits normalized url params", () => {
@@ -99,6 +145,15 @@ test("serializeBuilderState emits normalized url params", () => {
   assert.equal(searchParams.get("limit"), "30");
 });
 
+test("serializeBuilderState emits availability toggle params", () => {
+  const searchParams = serializeBuilderState(
+    makeState({ includeWaitlisted: true, includeClosed: true }),
+  );
+
+  assert.equal(searchParams.get("includeWaitlisted"), "true");
+  assert.equal(searchParams.get("includeClosed"), "true");
+});
+
 test("buildScheduleRequestPayload uses schedule api field names", () => {
   const payload = buildScheduleRequestPayload(
     makeState({
@@ -125,7 +180,18 @@ test("buildScheduleRequestPayload uses schedule api field names", () => {
       "fewer-long-gaps",
       "earlier-finishes",
     ],
+    include_waitlisted: false,
+    include_closed: false,
   });
+});
+
+test("buildScheduleRequestPayload includes availability flags", () => {
+  const payload = buildScheduleRequestPayload(
+    makeState({ includeWaitlisted: true, includeClosed: false }),
+  ) as Record<string, unknown>;
+
+  assert.equal(payload.include_waitlisted, true);
+  assert.equal(payload.include_closed, false);
 });
 
 test("buildScheduleRequestSignature stays stable for equivalent builder inputs", () => {
@@ -174,6 +240,17 @@ test("buildScheduleRequestSignature changes when preference order changes", () =
         "earlier-finishes",
       ],
     }),
+  );
+
+  assert.notEqual(firstSignature, secondSignature);
+});
+
+test("buildScheduleRequestSignature changes when availability toggles change", () => {
+  const firstSignature = buildScheduleRequestSignature(
+    makeState({ includeWaitlisted: false, includeClosed: false }),
+  );
+  const secondSignature = buildScheduleRequestSignature(
+    makeState({ includeWaitlisted: true, includeClosed: false }),
   );
 
   assert.notEqual(firstSignature, secondSignature);

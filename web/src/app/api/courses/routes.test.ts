@@ -5,7 +5,11 @@ import { buildCourseDbFixture, makeCourse } from "../../../../../tests/helpers/m
 
 import { GET as getCourseDetail } from "./[designation]/route";
 import { DEFAULT_PREFERENCE_ORDER } from "@/app/schedule-builder/preferences";
-import { POST as buildSchedules, normalizePreferenceOrderInput } from "../schedules/route";
+import {
+  POST as buildSchedules,
+  normalizeBooleanInput,
+  normalizePreferenceOrderInput,
+} from "../schedules/route";
 import { GET as searchCourses } from "./search/route";
 
 const fixture = buildCourseDbFixture({
@@ -310,6 +314,20 @@ test("normalizePreferenceOrderInput fills defaults and filters invalid values", 
   assert.equal(normalizePreferenceOrderInput(123), null);
 });
 
+test("normalizeBooleanInput defaults undefined to false", () => {
+  assert.equal(normalizeBooleanInput(undefined), false);
+});
+
+test("normalizeBooleanInput accepts true and false", () => {
+  assert.equal(normalizeBooleanInput(true), true);
+  assert.equal(normalizeBooleanInput(false), false);
+});
+
+test("normalizeBooleanInput rejects non-booleans", () => {
+  assert.equal(normalizeBooleanInput("true"), null);
+  assert.equal(normalizeBooleanInput(1), null);
+});
+
 test("schedule route accepts a valid preference_order array", async () => {
   const response = await buildSchedules(
     new Request("https://example.test/api/schedules", {
@@ -328,6 +346,49 @@ test("schedule route accepts a valid preference_order array", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     schedules: [],
+  });
+});
+
+test("schedule route accepts valid include_waitlisted and include_closed booleans", async () => {
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["COMP SCI 577"],
+        limit: 0,
+        include_waitlisted: true,
+        include_closed: false,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    schedules: [],
+  });
+});
+
+test("schedule route rejects invalid non-boolean availability values", async () => {
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["COMP SCI 577"],
+        include_waitlisted: "true",
+        include_closed: 1,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "Invalid schedule request body.",
   });
 });
 
