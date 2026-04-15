@@ -72,10 +72,10 @@ uw-madison-courses/
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v20 or later
-- [Playwright](https://playwright.dev/) browser binaries (installed automatically via `npm install`)
+- [Playwright](https://playwright.dev/) browser binaries (installed automatically via `pnpm install`)
 
 ```bash
-npm install
+pnpm install
 npx playwright install chromium
 ```
 
@@ -87,13 +87,13 @@ Scrapes all Fall 2026 courses from the enrollment search API and writes them to 
 
 ```bash
 # Headed browser (default — lets you observe the session)
-npm run extract:fall-2026
+pnpm run extract:fall-2026
 
 # Headless browser
-npm run extract:fall-2026 -- --headless
+pnpm run extract:fall-2026 -- --headless
 
 # Also fetch per-course enrollment package details
-npm run extract:fall-2026 -- --headless --include-packages
+pnpm run extract:fall-2026 -- --headless --include-packages
 ```
 
 ### 2. Build the course database
@@ -101,7 +101,7 @@ npm run extract:fall-2026 -- --headless --include-packages
 Imports the extracted JSON into `data/fall-2026.sqlite`.
 
 ```bash
-npm run build:course-db
+pnpm run build:course-db
 ```
 
 This creates all tables, canonical de-duplication views, and pre-computes schedule-planning fields (timezone-aware start/end minutes, days bitmasks, meeting summaries, etc.).
@@ -112,10 +112,10 @@ Enriches the database with historical GPA data from [Madgrades](https://madgrade
 
 ```bash
 # Re-import from the latest saved snapshot (no API call needed after the first run)
-npm run import:madgrades
+pnpm run import:madgrades
 
 # Fetch a fresh snapshot from the Madgrades API and import it
-MADGRADES_API_TOKEN=<your-token> npm run import:madgrades -- --refresh-api
+MADGRADES_API_TOKEN=<your-token> pnpm run import:madgrades -- --refresh-api
 ```
 
 Snapshots are cached under `data/madgrades/` and can be re-imported at any time after rebuilding `data/fall-2026.sqlite`. Once imported, historical GPA data is available via `course_grade_overview_v`, `instructor_course_history_overview_v`, and `current_term_section_instructor_grade_overview_v`.
@@ -125,7 +125,7 @@ Snapshots are cached under `data/madgrades/` and can be re-imported at any time 
 Finds conflict-free section combinations for a set of courses and ranks them.
 
 ```bash
-npm run schedule:options -- \
+pnpm run schedule:options -- \
   --db data/fall-2026.sqlite \
   --course "COMP SCI 577" \
   --course "STAT 340" \
@@ -206,7 +206,7 @@ The SQLite database (`data/fall-2026.sqlite`) contains the following key tables 
 | `prerequisite_nodes` / `prerequisite_edges` | Parsed prerequisite AST |
 | `prerequisite_course_summaries` | AI-friendly course-group summaries |
 
-### Madgrades Tables *(populated after `npm run import:madgrades`)*
+### Madgrades Tables *(populated after `pnpm run import:madgrades`)*
 
 | Table | Description |
 |-------|-------------|
@@ -241,7 +241,7 @@ See [`docs/querying-course-db.md`](docs/querying-course-db.md) for example SQL q
 ## Running Tests
 
 ```bash
-npm test
+pnpm test
 ```
 
 ## Key Dependencies

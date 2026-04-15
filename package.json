@@ -2,12 +2,10 @@
   "name": "uw-madison-courses",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "web"
-  ],
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "test": "node --test && npm run test:web",
-    "test:web": "npm run test --workspace=web",
+    "test": "node --test && pnpm run test:web",
+    "test:web": "pnpm --filter uw-madison-courses-web run test",
     "test:prerequisite-helpers": "node --test tests/prerequisite-helpers.test.mjs",
     "extract:fall-2026": "node scripts/extract-fall-2026-courses.mjs",
     "build:course-db": "node src/db/build-course-db.mjs",
