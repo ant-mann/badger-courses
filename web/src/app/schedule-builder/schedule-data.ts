@@ -75,6 +75,7 @@ export type ScheduleCalendarEntry = {
   title: string;
   sectionBundleLabel: string;
   meetingType: string | null;
+  sectionType: string | null;
   startMinutes: number;
   endMinutes: number;
   room: string | null;
@@ -91,6 +92,15 @@ export function deriveScheduleCalendarEntries(
   const packagesById = new Map(
     schedule.packages.map((schedulePackage) => [schedulePackage.source_package_id, schedulePackage] as const),
   );
+
+  const sectionTypeByClassNumber = new Map<number, string>();
+  for (const courseDetail of courseDetails) {
+    for (const section of courseDetail.sections) {
+      if (section.sectionClassNumber !== null && section.sectionType !== null) {
+        sectionTypeByClassNumber.set(section.sectionClassNumber, section.sectionType);
+      }
+    }
+  }
 
   for (const courseDetail of courseDetails) {
     for (const meeting of courseDetail.meetings) {
@@ -127,6 +137,7 @@ export function deriveScheduleCalendarEntries(
           title: schedulePackage.title,
           sectionBundleLabel: schedulePackage.section_bundle_label,
           meetingType: meeting.meetingType,
+          sectionType: (meeting.sectionClassNumber !== null ? sectionTypeByClassNumber.get(meeting.sectionClassNumber) ?? null : null),
           startMinutes,
           endMinutes,
           room: meeting.room,

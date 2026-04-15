@@ -128,7 +128,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                 {weekdayEntries.map((entry) => {
                   const top = getOffsetPercent(entry.startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
                   const height = getOffsetPercent(entry.endMinutes, timeWindow.startMinutes, timeWindow.endMinutes) - top;
-                  const typeLabel = meetingTypeLabel(entry.meetingType);
+                  const typeLabel = meetingTypeLabel(entry.sectionType);
 
                   return (
                     <article
@@ -205,8 +205,6 @@ function formatMinutes(totalMinutes: number): string {
   return `${hour12}:${minute.toString().padStart(2, "0")} ${suffix}`;
 }
 
-function meetingTypeLabel(meetingType: string | null): string | null {
-  if (meetingType === null) return null;
-  if (meetingType === "CLASS") return "LEC";
-  return meetingType; // LAB, DIS, and any unknown values pass through as-is
+function meetingTypeLabel(sectionType: string | null): string | null {
+  return sectionType;
 }
