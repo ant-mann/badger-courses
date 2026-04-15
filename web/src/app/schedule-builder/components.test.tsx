@@ -908,6 +908,7 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
       title: "Algorithms for Large Data",
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
+      sectionType: null,
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -920,6 +921,7 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
       title: "Algorithms for Large Data",
       sectionBundleLabel: "LEC 001",
       meetingType: "CLASS",
+      sectionType: null,
       startMinutes: 540,
       endMinutes: 590,
       room: "140",
@@ -952,6 +954,7 @@ test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules"
           title: "Algorithms for Large Data",
           sectionBundleLabel: "LEC 001",
           meetingType: "CLASS",
+          sectionType: null,
           startMinutes: 600,
           endMinutes: 660,
           room: "140",
@@ -979,6 +982,7 @@ test("ScheduleCalendar expands earlier schedules with one extra padded hour", ()
           title: "Algorithms for Large Data",
           sectionBundleLabel: "LEC 001",
           meetingType: "CLASS",
+          sectionType: null,
           startMinutes: 510,
           endMinutes: 570,
           room: "140",
@@ -1005,6 +1009,7 @@ test("ScheduleCalendar expands later schedules with one extra padded hour", () =
           title: "Algorithms for Large Data",
           sectionBundleLabel: "LEC 001",
           meetingType: "CLASS",
+          sectionType: null,
           startMinutes: 600,
           endMinutes: 1100,
           room: "140",
@@ -1031,6 +1036,7 @@ test("ScheduleCalendar expands both sides independently for early and late sched
           title: "Algorithms for Large Data",
           sectionBundleLabel: "LEC 001",
           meetingType: "CLASS",
+          sectionType: null,
           startMinutes: 430,
           endMinutes: 1240,
           room: "140",
@@ -1067,6 +1073,7 @@ test("ScheduleCalendar gives equal-duration meetings equal heights", () => {
           title: "Algorithms for Large Data",
           sectionBundleLabel: "LEC 001",
           meetingType: "CLASS",
+          sectionType: null,
           startMinutes: 540,
           endMinutes: 600,
           room: "140",
@@ -1079,6 +1086,7 @@ test("ScheduleCalendar gives equal-duration meetings equal heights", () => {
           title: "Linear Algebra",
           sectionBundleLabel: "LEC 002",
           meetingType: "CLASS",
+          sectionType: null,
           startMinutes: 780,
           endMinutes: 840,
           room: "B203",
@@ -1172,4 +1180,66 @@ test("SelectedCourseList shows its key presentational states", () => {
   assert.match(populatedMarkup, /Loading section options/i);
   assert.match(populatedMarkup, /Could not load section options/i);
   assert.match(populatedMarkup, /Remove/i);
+});
+
+function makeEntry(overrides: Partial<ScheduleCalendarEntry> = {}): ScheduleCalendarEntry {
+  return {
+    weekday: "M",
+    sourcePackageId: "pkg-1",
+    courseDesignation: "COMP SCI 577",
+    title: "Intro to Algorithms",
+    sectionBundleLabel: "LEC 001",
+    meetingType: "CLASS",
+    sectionType: "LEC",
+    startMinutes: 540,
+    endMinutes: 590,
+    room: null,
+    buildingName: null,
+    ...overrides,
+  };
+}
+
+test("ScheduleCalendar shows LEC badge for LEC section type", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LEC" })]} />,
+  );
+
+  assert.match(markup, />LEC</);
+});
+
+test("ScheduleCalendar shows LAB badge for LAB section type", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LAB" })]} />,
+  );
+
+  assert.match(markup, />LAB</);
+});
+
+test("ScheduleCalendar shows DIS badge for DIS section type", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "DIS" })]} />,
+  );
+
+  assert.match(markup, />DIS</);
+});
+
+test("ScheduleCalendar shows no type badge when sectionType is null", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: null })]} />,
+  );
+
+  assert.doesNotMatch(markup, />\s*(LEC|LAB|DIS)\s*</);
+});
+
+test("ScheduleCalendar renders time range before section bundle label", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry()]} />,
+  );
+
+  const timeIndex = markup.indexOf("9:00 AM");
+  const bundleIndex = markup.indexOf("LEC 001");
+
+  assert.ok(timeIndex !== -1, "time range should appear in markup");
+  assert.ok(bundleIndex !== -1, "section bundle label should appear in markup");
+  assert.ok(timeIndex < bundleIndex, "time range should appear before section bundle label");
 });

@@ -75,6 +75,7 @@ export type ScheduleCalendarEntry = {
   title: string;
   sectionBundleLabel: string;
   meetingType: string | null;
+  sectionType: string | null;
   startMinutes: number;
   endMinutes: number;
   room: string | null;
@@ -90,6 +91,21 @@ export function deriveScheduleCalendarEntries(
   const meetingsByPackageId = new Map<string, CourseMeeting[]>();
   const packagesById = new Map(
     schedule.packages.map((schedulePackage) => [schedulePackage.source_package_id, schedulePackage] as const),
+  );
+
+  const sectionTypeByClassNumber = new Map<number, string>();
+  for (const courseDetail of courseDetails) {
+    for (const section of courseDetail.sections) {
+      if (section.sectionClassNumber !== null && section.sectionType !== null) {
+        sectionTypeByClassNumber.set(section.sectionClassNumber, section.sectionType);
+      }
+    }
+  }
+  const sectionTypesByPackageId = new Map(
+    schedule.packages.map((schedulePackage) => [
+      schedulePackage.source_package_id,
+      parseSectionTypesFromBundleLabel(schedulePackage.section_bundle_label),
+    ] as const),
   );
 
   for (const courseDetail of courseDetails) {
@@ -127,6 +143,12 @@ export function deriveScheduleCalendarEntries(
           title: schedulePackage.title,
           sectionBundleLabel: schedulePackage.section_bundle_label,
           meetingType: meeting.meetingType,
+          sectionType: deriveSectionType({
+            meeting,
+            sourcePackageId: schedulePackage.source_package_id,
+            sectionTypeByClassNumber,
+            sectionTypesByPackageId,
+          }),
           startMinutes,
           endMinutes,
           room: meeting.room,
@@ -204,4 +226,45 @@ function compareCalendarEntries(left: ScheduleCalendarEntry, right: ScheduleCale
 
 function isVisibleWeekday(value: string): value is VisibleWeekday {
   return WEEKDAY_ORDER.includes(value as VisibleWeekday);
+}
+
+function deriveSectionType({
+  meeting,
+  sourcePackageId,
+  sectionTypeByClassNumber,
+  sectionTypesByPackageId,
+}: {
+  meeting: CourseMeeting;
+  sourcePackageId: string;
+  sectionTypeByClassNumber: Map<number, string>;
+  sectionTypesByPackageId: Map<string, string[]>;
+}): string | null {
+  if (meeting.sectionClassNumber !== null) {
+    const sectionType = sectionTypeByClassNumber.get(meeting.sectionClassNumber);
+    if (sectionType) {
+      return sectionType;
+    }
+  }
+
+  const sectionTypesForPackage = sectionTypesByPackageId.get(sourcePackageId) ?? [];
+
+  if (sectionTypesForPackage.length === 0) {
+    return null;
+  }
+
+  return sectionTypesForPackage[0];
+}
+
+function parseSectionTypesFromBundleLabel(sectionBundleLabel: string): string[] {
+  const sectionTypes = new Set<string>();
+
+  for (const bundlePart of sectionBundleLabel.split(/[+/]/)) {
+    const matches = [...bundlePart.matchAll(/\b([A-Z]{2,4})\s+\d{3}\b/g)];
+
+    if (matches.length > 0) {
+      sectionTypes.add(matches[matches.length - 1][1]);
+    }
+  }
+
+  return [...sectionTypes];
 }
