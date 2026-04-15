@@ -776,9 +776,6 @@ test("deriveScheduleCalendarEntries populates sectionNumber from sections when c
           locationKnown: true,
         },
       ],
-      package_section_memberships: [
-        { packageId: "pkg-1", sectionClassNumber: 40007 },
-      ],
     }),
   ]);
 

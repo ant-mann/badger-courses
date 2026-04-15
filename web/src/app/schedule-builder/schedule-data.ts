@@ -126,6 +126,9 @@ export function deriveScheduleCalendarEntries(
     const courseId = courseDetail.course.courseId;
 
     for (const meeting of courseDetail.meetings) {
+      // Track source package → course mapping (fallback for cases without membership data)
+      courseIdByPackageId.set(meeting.sourcePackageId, courseId);
+
       // Index by package ID (fallback behavior)
       const byPkg = meetingsByPackageId.get(meeting.sourcePackageId) ?? [];
       byPkg.push(meeting);
