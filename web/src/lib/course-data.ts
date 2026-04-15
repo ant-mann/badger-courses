@@ -114,6 +114,7 @@ export type CourseDetail = {
   prerequisite: PrerequisiteSummary | null;
   sections: CourseSection[];
   schedulePackages: SchedulePackage[];
+  packageSectionMemberships: Array<{ packageId: string; sectionClassNumber: number | null }>;
 };
 
 export type CourseSearchParams = {
@@ -538,6 +539,17 @@ export function getCourseDetail(designation: string): CourseDetail | null {
     )
     .all(canonical.termCode, canonical.courseId) as Row[];
 
+  const packageSectionMembershipRows = db
+    .prepare(
+      `
+        SELECT DISTINCT package_id, section_class_number
+        FROM sections
+        WHERE term_code = ? AND course_id = ?
+        ORDER BY package_id, section_class_number
+      `,
+    )
+    .all(canonical.termCode, canonical.courseId) as Row[];
+
   const instructorGrades = getInstructorHistory(db, canonical.termCode, canonical.courseId);
   const prerequisites = prerequisiteRows.map(mapPrerequisiteRule);
   const courseTitleLookup = buildCourseTitleLookup(
@@ -643,6 +655,10 @@ export function getCourseDetail(designation: string): CourseDetail | null {
       : null,
     sections: dedupedSections,
     schedulePackages: enrichedSchedulePackages,
+    packageSectionMemberships: packageSectionMembershipRows.map((row) => ({
+      packageId: asString(row.package_id),
+      sectionClassNumber: asNullableNumber(row.section_class_number),
+    })),
   };
 }
 

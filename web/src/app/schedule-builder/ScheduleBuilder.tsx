@@ -460,6 +460,8 @@ export function ScheduleBuilder() {
       </div>
 
       <div className="flex flex-col gap-4">
+        <ScheduleCalendar schedule={selectedSchedule} entries={calendarEntries} />
+
         <ScheduleResults
           schedules={schedules}
           selectedScheduleIndex={selectedScheduleIndex}
@@ -477,8 +479,6 @@ export function ScheduleBuilder() {
             }));
           }}
         />
-
-        <ScheduleCalendar schedule={selectedSchedule} entries={calendarEntries} />
       </div>
     </div>
   );
