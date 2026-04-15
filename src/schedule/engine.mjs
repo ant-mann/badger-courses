@@ -2,6 +2,27 @@ import { countBits, haversineMeters } from '../db/schedule-helpers.mjs';
 
 export const DEFAULT_LIMIT = 25;
 export const LARGE_IDLE_GAP_MINUTES = 90;
+export const DEFAULT_PREFERENCE_ORDER = [
+  'later-starts',
+  'fewer-campus-days',
+  'fewer-long-gaps',
+  'earlier-finishes',
+];
+
+const SCHEDULE_PREFERENCE_RULES = {
+  'later-starts': (left, right) => compareNullableDescending(
+    left.earliest_start_minute_local,
+    right.earliest_start_minute_local,
+    Number.POSITIVE_INFINITY,
+  ),
+  'fewer-campus-days': (left, right) => left.campus_day_count - right.campus_day_count,
+  'fewer-long-gaps': (left, right) => left.large_idle_gap_count - right.large_idle_gap_count,
+  'earlier-finishes': (left, right) => compareNullableAscending(
+    left.latest_end_minute_local,
+    right.latest_end_minute_local,
+    Number.NEGATIVE_INFINITY,
+  ),
+};
 
 export function makePlaceholders(values) {
   return values.map(() => '?').join(', ');
@@ -383,22 +404,59 @@ export function buildScheduleMetrics(candidates, transitions) {
 }
 
 export function compareNullableAscending(left, right, nullValue) {
-  return (left ?? nullValue) - (right ?? nullValue);
+  const resolvedLeft = left ?? nullValue;
+  const resolvedRight = right ?? nullValue;
+  if (resolvedLeft === resolvedRight) {
+    return 0;
+  }
+
+  return resolvedLeft - resolvedRight;
 }
 
 export function compareNullableDescending(left, right, nullValue) {
-  return (right ?? nullValue) - (left ?? nullValue);
+  const resolvedLeft = left ?? nullValue;
+  const resolvedRight = right ?? nullValue;
+  if (resolvedLeft === resolvedRight) {
+    return 0;
+  }
+
+  return resolvedRight - resolvedLeft;
 }
 
-export function compareSchedules(left, right) {
+export function normalizePreferenceOrder(preferenceOrder = DEFAULT_PREFERENCE_ORDER) {
+  const seen = new Set();
+  const normalized = [];
+
+  for (const ruleId of preferenceOrder) {
+    if (!Object.hasOwn(SCHEDULE_PREFERENCE_RULES, ruleId) || seen.has(ruleId)) {
+      continue;
+    }
+
+    seen.add(ruleId);
+    normalized.push(ruleId);
+  }
+
+  for (const ruleId of DEFAULT_PREFERENCE_ORDER) {
+    if (!seen.has(ruleId)) {
+      normalized.push(ruleId);
+    }
+  }
+
+  return normalized;
+}
+
+export function compareSchedules(left, right, preferenceOrder = DEFAULT_PREFERENCE_ORDER) {
+  for (const ruleId of normalizePreferenceOrder(preferenceOrder)) {
+    const comparison = SCHEDULE_PREFERENCE_RULES[ruleId](left, right);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+
   return (
-    left.campus_day_count - right.campus_day_count ||
-    compareNullableDescending(left.earliest_start_minute_local, right.earliest_start_minute_local, Number.POSITIVE_INFINITY) ||
-    left.large_idle_gap_count - right.large_idle_gap_count ||
     left.tight_transition_count - right.tight_transition_count ||
     left.total_walking_distance_meters - right.total_walking_distance_meters ||
     right.total_open_seats - left.total_open_seats ||
-    compareNullableAscending(left.latest_end_minute_local, right.latest_end_minute_local, Number.NEGATIVE_INFINITY) ||
     left.package_ids.join('\u0000').localeCompare(right.package_ids.join('\u0000'))
   );
 }
@@ -418,7 +476,14 @@ export function hasConflict(conflicts, packageId, selectedPackageIds) {
   return false;
 }
 
-export function buildSchedules({ orderedGroups, lockedByCourse, conflicts, transitions, limit }) {
+export function buildSchedules({
+  orderedGroups,
+  lockedByCourse,
+  conflicts,
+  transitions,
+  preferenceOrder = DEFAULT_PREFERENCE_ORDER,
+  limit,
+}) {
   const schedules = [];
   const selectedCandidates = [];
   const selectedPackageIds = new Set();
@@ -454,7 +519,7 @@ export function buildSchedules({ orderedGroups, lockedByCourse, conflicts, trans
         ...buildScheduleMetrics(selectedCandidates, transitions),
       });
       if (schedules.length > limit) {
-        schedules.sort(compareSchedules);
+        schedules.sort((left, right) => compareSchedules(left, right, preferenceOrder));
         schedules.length = limit;
       }
 
@@ -488,11 +553,20 @@ export function buildSchedules({ orderedGroups, lockedByCourse, conflicts, trans
   }
 
   visit(0);
-  schedules.sort(compareSchedules);
+  schedules.sort((left, right) => compareSchedules(left, right, preferenceOrder));
   return schedules.slice(0, limit);
 }
 
-export function generateSchedules(db, { courses, lockPackages = [], excludePackages = [], limit = DEFAULT_LIMIT }) {
+export function generateSchedules(
+  db,
+  {
+    courses,
+    lockPackages = [],
+    excludePackages = [],
+    preferenceOrder = DEFAULT_PREFERENCE_ORDER,
+    limit = DEFAULT_LIMIT,
+  },
+) {
   if (!Array.isArray(courses) || courses.length === 0) {
     return [];
   }
@@ -529,6 +603,7 @@ export function generateSchedules(db, { courses, lockPackages = [], excludePacka
     lockedByCourse,
     conflicts: deriveConflicts(meetingsByPackageId, activePackageIds),
     transitions: deriveTransitions(meetingsByPackageId, activePackageIds),
+    preferenceOrder,
     limit,
   });
 }

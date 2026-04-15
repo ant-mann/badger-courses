@@ -5,6 +5,7 @@ import {
   buildCourseDetailsRequestSignature,
   buildScheduleRequestPayload,
   buildScheduleRequestSignature,
+  movePreferenceRule,
   parseBuilderState,
   removeCourse,
   serializeBuilderState,
@@ -19,7 +20,12 @@ function makeState(overrides: Partial<ScheduleBuilderState> = {}): ScheduleBuild
     lockedSections: [],
     excludedSections: [],
     limit: 25,
-    view: "cards",
+    preferenceOrder: [
+      "later-starts",
+      "fewer-campus-days",
+      "fewer-long-gaps",
+      "earlier-finishes",
+    ],
     ...overrides,
   };
 }
@@ -33,8 +39,11 @@ test("parseBuilderState normalizes url-backed builder inputs", () => {
   searchParams.append("lock", "bad-lock-value");
   searchParams.append("exclude", "COMP SCI 577~pkg-2");
   searchParams.append("exclude", "COMP SCI 577~pkg-2");
+  searchParams.append("priority", " earlier-finishes ");
+  searchParams.append("priority", "fewer-long-gaps");
+  searchParams.append("priority", " earlier-finishes ");
+  searchParams.append("priority", "unknown-rule");
   searchParams.set("limit", "999");
-  searchParams.set("view", "calendar");
 
   assert.deepEqual(parseBuilderState(searchParams), {
     courses: ["COMP SCI 577", "MATH 240"],
@@ -43,7 +52,12 @@ test("parseBuilderState normalizes url-backed builder inputs", () => {
       { courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-2" },
     ],
     limit: 50,
-    view: "calendar",
+    preferenceOrder: [
+      "earlier-finishes",
+      "fewer-long-gaps",
+      "later-starts",
+      "fewer-campus-days",
+    ],
   });
 });
 
@@ -64,15 +78,25 @@ test("serializeBuilderState emits normalized url params", () => {
       lockedSections: [{ courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-1" }],
       excludedSections: [{ courseDesignation: "COMP SCI 577", sourcePackageId: "pkg-2" }],
       limit: 30,
-      view: "calendar",
+      preferenceOrder: [
+        "fewer-long-gaps",
+        "later-starts",
+        "earlier-finishes",
+        "fewer-campus-days",
+      ],
     }),
   );
 
   assert.deepEqual(searchParams.getAll("course"), ["MATH 240", "COMP SCI 577"]);
   assert.deepEqual(searchParams.getAll("lock"), ["COMP SCI 577~pkg-1"]);
   assert.deepEqual(searchParams.getAll("exclude"), ["COMP SCI 577~pkg-2"]);
+  assert.deepEqual(searchParams.getAll("priority"), [
+    "fewer-long-gaps",
+    "later-starts",
+    "earlier-finishes",
+    "fewer-campus-days",
+  ]);
   assert.equal(searchParams.get("limit"), "30");
-  assert.equal(searchParams.get("view"), "calendar");
 });
 
 test("buildScheduleRequestPayload uses schedule api field names", () => {
@@ -95,6 +119,12 @@ test("buildScheduleRequestPayload uses schedule api field names", () => {
     lock_packages: ["pkg-1"],
     exclude_packages: ["pkg-2", "pkg-3"],
     limit: 10,
+    preference_order: [
+      "later-starts",
+      "fewer-campus-days",
+      "fewer-long-gaps",
+      "earlier-finishes",
+    ],
   });
 });
 
@@ -131,6 +161,22 @@ test("buildScheduleRequestSignature stays stable for equivalent builder inputs",
   );
 
   assert.equal(firstSignature, secondSignature);
+});
+
+test("buildScheduleRequestSignature changes when preference order changes", () => {
+  const firstSignature = buildScheduleRequestSignature(makeState());
+  const secondSignature = buildScheduleRequestSignature(
+    makeState({
+      preferenceOrder: [
+        "fewer-campus-days",
+        "later-starts",
+        "fewer-long-gaps",
+        "earlier-finishes",
+      ],
+    }),
+  );
+
+  assert.notEqual(firstSignature, secondSignature);
 });
 
 test("buildCourseDetailsRequestSignature stays stable across equivalent course arrays", () => {
@@ -197,4 +243,28 @@ test("removeCourse drops the removed course locks and exclusions without detail 
     { courseDesignation: null, sourcePackageId: "pkg-4" },
     { courseDesignation: "MATH 240", sourcePackageId: "pkg-5" },
   ]);
+});
+
+test("movePreferenceRule swaps adjacent rules and stops at bounds", () => {
+  const movedUp = movePreferenceRule(makeState(), "fewer-long-gaps", -1);
+  assert.deepEqual(movedUp.preferenceOrder, [
+    "later-starts",
+    "fewer-long-gaps",
+    "fewer-campus-days",
+    "earlier-finishes",
+  ]);
+
+  const unchangedAtTop = movePreferenceRule(movedUp, "later-starts", -1);
+  assert.deepEqual(unchangedAtTop.preferenceOrder, movedUp.preferenceOrder);
+
+  const movedDown = movePreferenceRule(unchangedAtTop, "fewer-campus-days", 1);
+  assert.deepEqual(movedDown.preferenceOrder, [
+    "later-starts",
+    "fewer-long-gaps",
+    "earlier-finishes",
+    "fewer-campus-days",
+  ]);
+
+  const unchangedAtBottom = movePreferenceRule(movedDown, "fewer-campus-days", 1);
+  assert.deepEqual(unchangedAtBottom.preferenceOrder, movedDown.preferenceOrder);
 });

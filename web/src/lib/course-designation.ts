@@ -1,5 +1,5 @@
 export const MAX_SCHEDULE_COURSES = 8;
-export const DEFAULT_SCHEDULE_LIMIT = 25;
+export const DEFAULT_SCHEDULE_LIMIT = 5;
 export const MAX_SCHEDULE_LIMIT = 50;
 
 export function normalizeCourseDesignation(value: string): string {

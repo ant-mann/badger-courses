@@ -42,10 +42,9 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
     return (
       <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+          <h2 className="text-2xl font-semibold tracking-[-0.02em]">
             Weekly Calendar
-          </p>
-          <h2 className="text-2xl font-semibold tracking-[-0.02em]">Selected schedule layout</h2>
+          </h2>
         </div>
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           Select a generated schedule to see its meetings laid out across the week.
@@ -58,10 +57,9 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
     return (
       <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+          <h2 className="text-2xl font-semibold tracking-[-0.02em]">
             Weekly Calendar
-          </p>
-          <h2 className="text-2xl font-semibold tracking-[-0.02em]">Selected schedule layout</h2>
+          </h2>
         </div>
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           No calendar meetings are available for this selected schedule.
@@ -80,17 +78,16 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   return (
     <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Weekly Calendar
-        </p>
-        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Selected schedule layout</h2>
+        </h2>
         <p className="text-sm leading-7 text-black/68 dark:text-white/68">
           {schedule.packages.length} section choice{schedule.packages.length === 1 ? "" : "s"} in the selected result.
         </p>
       </div>
 
       <div className="overflow-x-auto rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04]">
-        <div className="grid min-w-[42rem] grid-cols-[4.5rem_repeat(var(--calendar-columns),minmax(0,1fr))] gap-3" style={{ ["--calendar-columns" as string]: visibleWeekdays.length }}>
+        <div className="grid min-w-[60rem] grid-cols-[4rem_repeat(var(--calendar-columns),minmax(0,1fr))] gap-3" style={{ ["--calendar-columns" as string]: visibleWeekdays.length }}>
           <div />
           {visibleWeekdays.map((weekday) => (
             <div key={weekday} className="rounded-2xl bg-white/70 px-3 py-2 text-center text-sm font-semibold dark:bg-white/[0.05]">
@@ -144,10 +141,10 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                   return (
                     <article
                       key={`${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}-${entry.meetingType ?? "meeting"}`}
-                      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-black/10 bg-black/[0.06] p-2 dark:border-white/10 dark:bg-white/[0.1]"
+                      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-black/10 bg-black/[0.06] p-1 dark:border-white/10 dark:bg-white/[0.1]"
                       style={{ top: `${top}%`, height: `${Math.max(height, 6)}%`, position: "absolute" }}
                     >
-                      <div className="flex flex-col gap-1 text-xs leading-5">
+                      <div className="flex flex-col gap-0 text-xs leading-tight">
                         <div className="flex items-center justify-between gap-1">
                           <p className="truncate font-semibold">{entry.courseDesignation}</p>
                           {typeLabel ? (
@@ -156,11 +153,11 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                             </span>
                           ) : null}
                         </div>
-                        <p className="truncate whitespace-nowrap text-black/60 dark:text-white/60">
-                          {[entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
-                        </p>
                         <p className="text-black/60 dark:text-white/60">
                           {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
+                        </p>
+                        <p className="truncate text-black/60 dark:text-white/60">
+                          {[entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
                         </p>
                       </div>
                     </article>

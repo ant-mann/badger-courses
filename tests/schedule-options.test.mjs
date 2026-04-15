@@ -709,22 +709,29 @@ test('schedule-options returns only conflict-free ranked schedules', () => {
   }
 });
 
-test('buildSchedules still returns the best-ranked schedule when limit is 1', async () => {
+test('buildSchedules uses the default preference order when limit is 1', async () => {
   const scheduleEngine = await loadScheduleEngineModule();
   const schedules = scheduleEngine.buildSchedules({
     orderedGroups: [
       {
         courseDesignation: 'COURSE A',
         candidates: [
-          makeTestCandidate('a-early', {
+          makeTestCandidate('a-early-compact', {
             courseDesignation: 'COURSE A',
+            campusDayCount: 1,
             earliestStartMinuteLocal: 480,
+            latestEndMinuteLocal: 840,
             meetings: [{ days_mask: 1, start_minute_local: 480, end_minute_local: 540, is_online: 0 }],
           }),
-          makeTestCandidate('a-best', {
+          makeTestCandidate('a-late-spread', {
             courseDesignation: 'COURSE A',
+            campusDayCount: 3,
             earliestStartMinuteLocal: 720,
-            meetings: [{ days_mask: 1, start_minute_local: 720, end_minute_local: 780, is_online: 0 }],
+            latestEndMinuteLocal: 900,
+            meetings: [
+              { days_mask: 1, start_minute_local: 720, end_minute_local: 780, is_online: 0 },
+              { days_mask: 2, start_minute_local: 720, end_minute_local: 780, is_online: 0 },
+            ],
           }),
         ],
       },
@@ -733,7 +740,6 @@ test('buildSchedules still returns the best-ranked schedule when limit is 1', as
         candidates: [
           makeTestCandidate('b-1', {
             courseDesignation: 'COURSE B',
-            earliestStartMinuteLocal: 840,
             meetings: [{ days_mask: 2, start_minute_local: 840, end_minute_local: 900, is_online: 0 }],
           }),
         ],
@@ -746,7 +752,153 @@ test('buildSchedules still returns the best-ranked schedule when limit is 1', as
   });
 
   assert.equal(schedules.length, 1);
-  assert.deepEqual(schedules[0].package_ids, ['a-best', 'b-1']);
+  assert.deepEqual(schedules[0].package_ids, ['a-late-spread', 'b-1']);
+});
+
+test('buildSchedules changes the top result when preferenceOrder changes', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-early-compact', {
+            courseDesignation: 'COURSE A',
+            campusDayCount: 1,
+            earliestStartMinuteLocal: 480,
+            latestEndMinuteLocal: 840,
+            meetings: [{ days_mask: 1, start_minute_local: 480, end_minute_local: 540, is_online: 0 }],
+          }),
+          makeTestCandidate('a-late-spread', {
+            courseDesignation: 'COURSE A',
+            campusDayCount: 3,
+            earliestStartMinuteLocal: 720,
+            latestEndMinuteLocal: 900,
+            meetings: [
+              { days_mask: 1, start_minute_local: 720, end_minute_local: 780, is_online: 0 },
+              { days_mask: 2, start_minute_local: 720, end_minute_local: 780, is_online: 0 },
+            ],
+          }),
+        ],
+      },
+      {
+        courseDesignation: 'COURSE B',
+        candidates: [
+          makeTestCandidate('b-1', {
+            courseDesignation: 'COURSE B',
+            meetings: [{ days_mask: 1, start_minute_local: 840, end_minute_local: 900, is_online: 0 }],
+          }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    preferenceOrder: [
+      'fewer-campus-days',
+      'later-starts',
+      'fewer-long-gaps',
+      'earlier-finishes',
+    ],
+    limit: 1,
+  });
+
+  assert.equal(schedules.length, 1);
+  assert.deepEqual(schedules[0].package_ids, ['a-early-compact', 'b-1']);
+});
+
+test('compareSchedules falls through null time metrics to later rules and tie-breakers', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const laterStartsSchedule = {
+    package_ids: ['late-start'],
+    campus_day_count: 2,
+    earliest_start_minute_local: null,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 900,
+  };
+  const fewerCampusDaysSchedule = {
+    package_ids: ['fewer-days'],
+    campus_day_count: 1,
+    earliest_start_minute_local: null,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: 900,
+  };
+
+  assert.equal(
+    Number.isNaN(
+      scheduleEngine.compareSchedules(laterStartsSchedule, fewerCampusDaysSchedule, [
+        'later-starts',
+        'fewer-campus-days',
+      ]),
+    ),
+    false,
+  );
+  assert.equal(
+    scheduleEngine.compareSchedules(laterStartsSchedule, fewerCampusDaysSchedule, [
+      'later-starts',
+      'fewer-campus-days',
+    ]) > 0,
+    true,
+  );
+
+  const lexicalFirstSchedule = {
+    package_ids: ['aaa'],
+    campus_day_count: 1,
+    earliest_start_minute_local: null,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: null,
+  };
+  const lexicalSecondSchedule = {
+    package_ids: ['bbb'],
+    campus_day_count: 1,
+    earliest_start_minute_local: null,
+    large_idle_gap_count: 0,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 3,
+    latest_end_minute_local: null,
+  };
+
+  assert.equal(
+    scheduleEngine.compareSchedules(lexicalFirstSchedule, lexicalSecondSchedule),
+    -1,
+  );
+});
+
+test('normalizePreferenceOrder fills missing rules and ignores unknown values', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  assert.deepEqual(scheduleEngine.normalizePreferenceOrder(), [
+    'later-starts',
+    'fewer-campus-days',
+    'fewer-long-gaps',
+    'earlier-finishes',
+  ]);
+
+  assert.deepEqual(
+    scheduleEngine.normalizePreferenceOrder([
+      'fewer-long-gaps',
+      'later-starts',
+      'later-starts',
+      'not-a-rule',
+    ]),
+    [
+      'fewer-long-gaps',
+      'later-starts',
+      'fewer-campus-days',
+      'earlier-finishes',
+    ],
+  );
 });
 
 test('generateSchedules returns the same schedule payload as the CLI inputs expect', async () => {

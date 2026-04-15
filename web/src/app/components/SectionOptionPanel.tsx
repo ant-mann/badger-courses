@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 
 import type { CourseMeeting, SchedulePackage } from "@/lib/course-data";
 
@@ -170,35 +172,54 @@ export function SectionOptionPanel({
   onLockSection,
   onExcludeSection,
 }: SectionOptionPanelProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const packageCount = course.schedule_packages.length;
+
   return (
     <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
-          {course.course.designation}
-        </p>
-        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Section options</h2>
-        <p className="text-sm leading-7 text-black/68 dark:text-white/68">{course.course.title}</p>
-      </div>
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-start justify-between gap-3 text-left"
+      >
+        <div className="flex flex-col gap-2">
+          <h2 className="text-2xl font-semibold tracking-[-0.02em]">
+            {course.course.designation}
+          </h2>
+          <p className="text-sm leading-7 text-black/68 dark:text-white/68">{course.course.title}</p>
+          {!isOpen && !loading && packageCount > 0 ? (
+            <p className="text-sm text-black/50 dark:text-white/50">{packageCount} section{packageCount === 1 ? "" : "s"} available</p>
+          ) : null}
+        </div>
+        <span
+          aria-hidden="true"
+          className={`mt-1 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
 
-      {loading ? (
+      {isOpen && loading ? (
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           Loading section options...
         </div>
       ) : null}
 
-      {errorMessage ? (
+      {isOpen && errorMessage ? (
         <div className="rounded-3xl border border-red-500/20 bg-red-500/8 p-4 text-sm leading-7 text-red-900 dark:text-red-100">
           {errorMessage}
         </div>
       ) : null}
 
-      {!loading && !errorMessage && course.schedule_packages.length === 0 ? (
+      {isOpen && !loading && !errorMessage && course.schedule_packages.length === 0 ? (
         <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
           No section combinations are available for this course right now.
         </div>
       ) : null}
 
-      {!loading && !errorMessage && course.schedule_packages.length > 0 ? (
+      {isOpen && !loading && !errorMessage && course.schedule_packages.length > 0 ? (
         <div className="flex flex-col gap-3">
           {course.schedule_packages.map((schedulePackage) => {
             const excluded = isExcluded(excludedSectionIds, schedulePackage.sourcePackageId);
