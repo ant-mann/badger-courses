@@ -5,7 +5,7 @@ import {
   normalizeUniqueCourseDesignations,
 } from "@/lib/course-designation";
 
-export type BuilderView = "cards" | "calendar";
+import { normalizePreferenceOrder, type PreferenceRuleId } from "./preferences";
 
 export type LockedSection = {
   courseDesignation: string;
@@ -22,7 +22,7 @@ export type ScheduleBuilderState = {
   lockedSections: LockedSection[];
   excludedSections: ExcludedSection[];
   limit: number;
-  view: BuilderView;
+  preferenceOrder: PreferenceRuleId[];
 };
 
 export type ScheduleRequestPayload = {
@@ -30,9 +30,8 @@ export type ScheduleRequestPayload = {
   lock_packages: string[];
   exclude_packages: string[];
   limit: number;
+  preference_order: PreferenceRuleId[];
 };
-
-const DEFAULT_VIEW: BuilderView = "cards";
 
 export function parseBuilderState(searchParams: URLSearchParams): ScheduleBuilderState {
   const courses = normalizeCourses(searchParams.getAll("course"));
@@ -44,7 +43,7 @@ export function parseBuilderState(searchParams: URLSearchParams): ScheduleBuilde
     lockedSections,
     excludedSections,
     limit: clampScheduleLimit(parseOptionalInteger(searchParams.get("limit"))),
-    view: parseView(searchParams.get("view")),
+    preferenceOrder: normalizePreferenceOrder(searchParams.getAll("priority")),
   };
 }
 
@@ -82,8 +81,11 @@ export function serializeBuilderState(state: ScheduleBuilderState): URLSearchPar
     );
   }
 
+  for (const ruleId of normalizePreferenceOrder(state.preferenceOrder)) {
+    searchParams.append("priority", ruleId);
+  }
+
   searchParams.set("limit", String(clampScheduleLimit(state.limit)));
-  searchParams.set("view", parseView(state.view));
 
   return searchParams;
 }
@@ -107,6 +109,7 @@ export function buildScheduleRequestPayload(state: ScheduleBuilderState): Schedu
       .filter((packageId) => !excludedSectionIdSet.has(packageId)),
     exclude_packages: excludedSectionIds,
     limit: clampScheduleLimit(state.limit),
+    preference_order: normalizePreferenceOrder(state.preferenceOrder),
   };
 }
 
@@ -205,6 +208,36 @@ export function removeCourse(state: ScheduleBuilderState, courseDesignation: str
     excludedSections: state.excludedSections.filter(
       (excludedSection) => excludedSection.courseDesignation !== normalizedCourseDesignation,
     ),
+  };
+}
+
+export function movePreferenceRule(
+  state: ScheduleBuilderState,
+  ruleId: PreferenceRuleId,
+  direction: -1 | 1,
+): ScheduleBuilderState {
+  const preferenceOrder = normalizePreferenceOrder(state.preferenceOrder);
+  const fromIndex = preferenceOrder.indexOf(ruleId);
+
+  if (fromIndex === -1) {
+    return { ...state, preferenceOrder };
+  }
+
+  const toIndex = fromIndex + direction;
+
+  if (toIndex < 0 || toIndex >= preferenceOrder.length) {
+    return { ...state, preferenceOrder };
+  }
+
+  const nextPreferenceOrder = [...preferenceOrder];
+  [nextPreferenceOrder[fromIndex], nextPreferenceOrder[toIndex]] = [
+    nextPreferenceOrder[toIndex],
+    nextPreferenceOrder[fromIndex],
+  ];
+
+  return {
+    ...state,
+    preferenceOrder: nextPreferenceOrder,
   };
 }
 
@@ -338,8 +371,4 @@ function parseOptionalInteger(value: string | null): number | undefined {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? DEFAULT_SCHEDULE_LIMIT : parsed;
-}
-
-function parseView(value: string | null): BuilderView {
-  return value === "calendar" ? "calendar" : DEFAULT_VIEW;
 }

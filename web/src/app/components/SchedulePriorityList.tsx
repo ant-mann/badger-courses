@@ -1,0 +1,63 @@
+import React from "react";
+
+import {
+  PREFERENCE_RULE_LABELS,
+  type PreferenceRuleId,
+} from "@/app/schedule-builder/preferences";
+
+type SchedulePriorityListProps = {
+  preferenceOrder: PreferenceRuleId[];
+  onMoveRule: (ruleId: PreferenceRuleId, direction: -1 | 1) => void;
+};
+
+export function SchedulePriorityList({
+  preferenceOrder,
+  onMoveRule,
+}: SchedulePriorityListProps) {
+  return (
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+          Schedule Priorities
+        </p>
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Choose ranking order</h2>
+        <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+          Schedules are generated using this priority order top to bottom.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {preferenceOrder.map((ruleId, index) => (
+          <article
+            key={ruleId}
+            className="flex flex-col gap-3 rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04] sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-black/55 dark:text-white/55">{index + 1}.</span>
+              <span className="text-base font-semibold">{PREFERENCE_RULE_LABELS[ruleId]}</span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={index === 0}
+                onClick={() => onMoveRule(ruleId, -1)}
+                className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+              >
+                Move up
+              </button>
+              <button
+                type="button"
+                disabled={index === preferenceOrder.length - 1}
+                onClick={() => onMoveRule(ruleId, 1)}
+                className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+              >
+                Move down
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}

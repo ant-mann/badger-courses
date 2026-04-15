@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { generateSchedules } from '@madgrades/schedule';
+import {
+  normalizePreferenceOrder,
+  type PreferenceRuleId,
+} from '@/app/schedule-builder/preferences';
 
 import {
   clampScheduleLimit,
@@ -13,6 +17,7 @@ type ScheduleRequestBody = {
   lock_packages?: unknown;
   exclude_packages?: unknown;
   limit?: unknown;
+  preference_order?: unknown;
 };
 
 type GenerateSchedulesOptions = {
@@ -20,9 +25,10 @@ type GenerateSchedulesOptions = {
   lockPackages: string[];
   excludePackages: string[];
   limit: number;
+  preferenceOrder: PreferenceRuleId[];
 };
 
-const generateSchedulesTyped = generateSchedules as (
+const generateSchedulesTyped = generateSchedules as unknown as (
   db: ReturnType<typeof getDb>,
   options: GenerateSchedulesOptions,
 ) => unknown[];
@@ -71,6 +77,18 @@ function normalizeLimit(value: unknown): number | null {
   return clampScheduleLimit(value);
 }
 
+export function normalizePreferenceOrderInput(value: unknown): PreferenceRuleId[] | null {
+  if (value === undefined) {
+    return normalizePreferenceOrder([]);
+  }
+
+  if (!isStringArray(value)) {
+    return null;
+  }
+
+  return normalizePreferenceOrder(value);
+}
+
 export async function POST(request: Request) {
   let body: unknown;
 
@@ -88,6 +106,7 @@ export async function POST(request: Request) {
   const lockPackages = normalizePackageIds(body.lock_packages);
   const excludePackages = normalizePackageIds(body.exclude_packages);
   const limit = normalizeLimit(body.limit);
+  const preferenceOrder = normalizePreferenceOrderInput(body.preference_order);
 
   if (!courses) {
     return NextResponse.json(
@@ -96,7 +115,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!lockPackages || !excludePackages || limit === null) {
+  if (!lockPackages || !excludePackages || limit === null || !preferenceOrder) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
@@ -107,6 +126,7 @@ export async function POST(request: Request) {
         lockPackages,
         excludePackages,
         limit,
+        preferenceOrder,
       }),
     },
     {

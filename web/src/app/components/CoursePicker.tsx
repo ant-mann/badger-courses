@@ -26,10 +26,9 @@ export function CoursePicker({
   return (
     <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Add Courses
-        </p>
-        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Build a course list</h2>
+        </h2>
         <p className="text-sm leading-7 text-black/68 dark:text-white/68">
           Search by designation, title, or subject prefix, then add courses to the builder.
         </p>

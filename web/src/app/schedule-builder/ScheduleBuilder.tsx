@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { CoursePicker } from "@/app/components/CoursePicker";
 import { ScheduleCalendar } from "@/app/components/ScheduleCalendar";
+import { SchedulePriorityList } from "@/app/components/SchedulePriorityList";
 import { ScheduleResults } from "@/app/components/ScheduleResults";
 import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
 import { SelectedCourseList } from "@/app/components/SelectedCourseList";
@@ -14,6 +15,7 @@ import {
   parseBuilderState,
   removeCourse,
   serializeBuilderState,
+  movePreferenceRule,
   setExcludedSection,
   setLockedSection,
   type ScheduleRequestPayload,
@@ -394,19 +396,25 @@ export function ScheduleBuilder() {
           onRemoveCourse={handleRemoveCourse}
         />
 
+        <SchedulePriorityList
+          preferenceOrder={builderState.preferenceOrder}
+          onMoveRule={(ruleId, direction) => {
+            updateBuilderState((state) => movePreferenceRule(state, ruleId, direction));
+          }}
+        />
+
         <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
-              Builder Settings
-            </p>
-            <h2 className="text-2xl font-semibold tracking-[-0.02em]">Keep schedules updating</h2>
+            <h2 className="text-2xl font-semibold tracking-[-0.02em]">
+              Settings
+            </h2>
             <p className="text-sm leading-7 text-black/68 dark:text-white/68">
-              Generated schedules stay out of the URL, but your courses, section choices, limit, and view stay shareable.
+              Your courses, section choices, and preferences are saved in the URL and can be shared. Generated schedules themselves are not included.
             </p>
           </div>
 
           <label className="flex flex-col gap-3 text-sm font-medium text-black/70 dark:text-white/70" htmlFor="schedule-builder-limit">
-            Result limit
+            Max results
             <input
               id="schedule-builder-limit"
               type="number"
@@ -424,7 +432,7 @@ export function ScheduleBuilder() {
           </label>
 
           <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
-            {isRoutingPending ? "Updating builder inputs..." : "Schedules regenerate automatically after meaningful input changes."}
+            {isRoutingPending ? "Updating..." : "Schedules regenerate automatically when your inputs change."}
           </div>
         </section>
 
@@ -468,16 +476,9 @@ export function ScheduleBuilder() {
           requestState={requestState}
           loading={requestState === "loading"}
           errorMessage={generationErrorMessage}
-          view={builderState.view}
           zeroLimit={builderState.limit === 0}
           onRetry={() => setRetryNonce((currentValue) => currentValue + 1)}
           onSelectSchedule={setSelectedScheduleIndex}
-          onViewChange={(view) => {
-            updateBuilderState((state) => ({
-              ...state,
-              view,
-            }));
-          }}
         />
       </div>
     </div>
