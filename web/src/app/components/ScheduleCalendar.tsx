@@ -1,7 +1,6 @@
 import React from "react";
 
 import {
-  getVisibleWeekdays,
   type GeneratedSchedule,
   type ScheduleCalendarEntry,
   type VisibleWeekday,
@@ -22,7 +21,12 @@ const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
   U: "Sun",
 };
 
+const CALENDAR_WEEKDAYS: VisibleWeekday[] = ["M", "T", "W", "R", "F", "S", "U"];
+
 const HOUR_HEIGHT_REM = 4;
+const BASELINE_START_MINUTES = 9 * 60;
+const BASELINE_END_MINUTES = 17 * 60;
+const WINDOW_PADDING_MINUTES = 60;
 
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   if (!schedule) {
@@ -57,9 +61,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
     );
   }
 
-  const visibleWeekdays = getVisibleWeekdays(entries).filter((weekday) =>
-    entries.some((entry) => entry.weekday === weekday),
-  );
+  const visibleWeekdays = CALENDAR_WEEKDAYS;
   const timeWindow = deriveTimeWindow(entries);
   const timeLabels = buildTimeLabels(timeWindow.startMinutes, timeWindow.endMinutes);
   const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
@@ -157,9 +159,17 @@ function deriveTimeWindow(entries: ScheduleCalendarEntry[]): { startMinutes: num
   const earliestStart = Math.min(...entries.map((entry) => entry.startMinutes));
   const latestEnd = Math.max(...entries.map((entry) => entry.endMinutes));
 
+  const startMinutes = earliestStart < BASELINE_START_MINUTES
+    ? (Math.floor(earliestStart / 60) * 60) - WINDOW_PADDING_MINUTES
+    : BASELINE_START_MINUTES;
+
+  const endMinutes = latestEnd > BASELINE_END_MINUTES
+    ? (Math.ceil(latestEnd / 60) * 60) + WINDOW_PADDING_MINUTES
+    : BASELINE_END_MINUTES;
+
   return {
-    startMinutes: Math.floor(earliestStart / 60) * 60,
-    endMinutes: Math.ceil(latestEnd / 60) * 60,
+    startMinutes,
+    endMinutes,
   };
 }
 

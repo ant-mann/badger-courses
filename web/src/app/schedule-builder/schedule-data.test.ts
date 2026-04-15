@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   deriveScheduleCalendarEntries,
   expandMeetingDays,
-  getVisibleWeekdays,
   parseTimeToMinutes,
   type GeneratedSchedule,
   type ScheduleBuilderCourseDetailResponse,
@@ -277,23 +276,4 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       buildingName: "Van Vleck Hall",
     },
   ]);
-});
-
-test("getVisibleWeekdays adds weekend columns only when schedules use them", () => {
-  assert.deepEqual(
-    getVisibleWeekdays([
-      { weekday: "M", sourcePackageId: "pkg-1", courseDesignation: "A", title: "A", sectionBundleLabel: "A", meetingType: "CLASS", startMinutes: 540, endMinutes: 590, room: null, buildingName: null },
-      { weekday: "F", sourcePackageId: "pkg-2", courseDesignation: "B", title: "B", sectionBundleLabel: "B", meetingType: "CLASS", startMinutes: 600, endMinutes: 650, room: null, buildingName: null },
-    ]),
-    ["M", "T", "W", "R", "F"],
-  );
-
-  assert.deepEqual(
-    getVisibleWeekdays([
-      { weekday: "M", sourcePackageId: "pkg-1", courseDesignation: "A", title: "A", sectionBundleLabel: "A", meetingType: "CLASS", startMinutes: 540, endMinutes: 590, room: null, buildingName: null },
-      { weekday: "S", sourcePackageId: "pkg-2", courseDesignation: "B", title: "B", sectionBundleLabel: "B", meetingType: "CLASS", startMinutes: 600, endMinutes: 650, room: null, buildingName: null },
-      { weekday: "U", sourcePackageId: "pkg-3", courseDesignation: "C", title: "C", sectionBundleLabel: "C", meetingType: "CLASS", startMinutes: 700, endMinutes: 750, room: null, buildingName: null },
-    ]),
-    ["M", "T", "W", "R", "F", "S", "U"],
-  );
 });
