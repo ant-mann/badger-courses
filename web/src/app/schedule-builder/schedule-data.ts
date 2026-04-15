@@ -82,7 +82,6 @@ export type ScheduleCalendarEntry = {
 };
 
 const WEEKDAY_ORDER: VisibleWeekday[] = ["M", "T", "W", "R", "F", "S", "U"];
-const DEFAULT_VISIBLE_WEEKDAYS: VisibleWeekday[] = ["M", "T", "W", "R", "F"];
 
 export function deriveScheduleCalendarEntries(
   schedule: GeneratedSchedule,
@@ -191,16 +190,6 @@ export function parseTimeToMinutes(value: string | number | null): number | null
   }
 
   return (hour * 60) + minute;
-}
-
-export function getVisibleWeekdays(entries: ScheduleCalendarEntry[]): VisibleWeekday[] {
-  const weekdaysInUse = new Set(entries.map((entry) => entry.weekday));
-
-  if (weekdaysInUse.has("S") || weekdaysInUse.has("U")) {
-    return [...WEEKDAY_ORDER];
-  }
-
-  return [...DEFAULT_VISIBLE_WEEKDAYS];
 }
 
 function compareCalendarEntries(left: ScheduleCalendarEntry, right: ScheduleCalendarEntry): number {
