@@ -290,7 +290,7 @@ test("deriveScheduleCalendarEntries falls back to section type from bundle label
         source_package_id: "pkg-1",
         course_designation: "BIOLOGY 151",
         title: "Introductory Biology",
-        section_bundle_label: "LEC 001",
+        section_bundle_label: "COMP SCI 577 LEC 001",
         open_seats: 3,
         is_full: 0,
         has_waitlist: 0,

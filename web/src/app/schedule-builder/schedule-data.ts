@@ -258,8 +258,12 @@ function deriveSectionType({
 function parseSectionTypesFromBundleLabel(sectionBundleLabel: string): string[] {
   const sectionTypes = new Set<string>();
 
-  for (const match of sectionBundleLabel.matchAll(/\b([A-Z]{2,4})\s+\d{3}\b/g)) {
-    sectionTypes.add(match[1]);
+  for (const bundlePart of sectionBundleLabel.split(/[+/]/)) {
+    const matches = [...bundlePart.matchAll(/\b([A-Z]{2,4})\s+\d{3}\b/g)];
+
+    if (matches.length > 0) {
+      sectionTypes.add(matches[matches.length - 1][1]);
+    }
   }
 
   return [...sectionTypes];
