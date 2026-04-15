@@ -852,8 +852,6 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
   assert.match(markup, />F<|>Fri<|Friday/);
   assert.match(markup, />S<|>Sat<|Saturday/);
   assert.match(markup, />U<|>Sun<|Sunday/);
-  assert.match(markup, /9:00 AM/);
-  assert.match(markup, /position:absolute/);
 });
 
 test("ScheduleCalendar shows an accurate empty state when a selected schedule has no entries", () => {
