@@ -1302,26 +1302,26 @@ function makeEntry(overrides: Partial<ScheduleCalendarEntry> = {}): ScheduleCale
 
 test("ScheduleCalendar shows LEC badge for LEC section type", () => {
   const markup = renderToStaticMarkup(
-    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LEC" })]} />,
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LEC", sectionNumber: "001" })]} />,
   );
 
-  assert.match(markup, />LEC</);
+  assert.match(markup, /LEC 001/);
 });
 
 test("ScheduleCalendar shows LAB badge for LAB section type", () => {
   const markup = renderToStaticMarkup(
-    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LAB" })]} />,
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LAB", sectionNumber: "301" })]} />,
   );
 
-  assert.match(markup, />LAB</);
+  assert.match(markup, /LAB 301/);
 });
 
 test("ScheduleCalendar shows DIS badge for DIS section type", () => {
   const markup = renderToStaticMarkup(
-    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "DIS" })]} />,
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "DIS", sectionNumber: "470" })]} />,
   );
 
-  assert.match(markup, />DIS</);
+  assert.match(markup, /DIS 470/);
 });
 
 test("ScheduleCalendar shows no type badge when sectionType is null", () => {
@@ -1329,18 +1329,56 @@ test("ScheduleCalendar shows no type badge when sectionType is null", () => {
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: null })]} />,
   );
 
-  assert.doesNotMatch(markup, />\s*(LEC|LAB|DIS)\s*</);
+  assert.doesNotMatch(markup, /LEC|LAB|DIS/);
 });
 
-test("ScheduleCalendar renders time range before section bundle label", () => {
+test("ScheduleCalendar uses blue badge classes for LEC", () => {
   const markup = renderToStaticMarkup(
-    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry()]} />,
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LEC" })]} />,
   );
 
-  const timeIndex = markup.indexOf("9:00 AM");
-  const bundleIndex = markup.indexOf("LEC 001");
+  assert.match(markup, /bg-blue-100/);
+});
 
+test("ScheduleCalendar uses green badge classes for LAB", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LAB" })]} />,
+  );
+
+  assert.match(markup, /bg-green-100/);
+});
+
+test("ScheduleCalendar uses orange badge classes for DIS", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "DIS" })]} />,
+  );
+
+  assert.match(markup, /bg-orange-100/);
+});
+
+test("ScheduleCalendar renders location before time range", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[makeEntry({ buildingName: "Grainger Hall", room: "140" })]}
+    />,
+  );
+
+  const locationIndex = markup.indexOf("Grainger Hall");
+  const timeIndex = markup.indexOf("9:00 AM-9:50 AM");
+
+  assert.ok(locationIndex !== -1, "location should appear in markup");
   assert.ok(timeIndex !== -1, "time range should appear in markup");
-  assert.ok(bundleIndex !== -1, "section bundle label should appear in markup");
-  assert.ok(timeIndex < bundleIndex, "time range should appear before section bundle label");
+  assert.ok(locationIndex < timeIndex, "location should appear before time range");
+});
+
+test("ScheduleCalendar does not render section bundle label", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[makeEntry({ sectionBundleLabel: "UNIQUE-BUNDLE-XYZ", sectionType: "LEC", sectionNumber: "001" })]}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /UNIQUE-BUNDLE-XYZ/);
 });
