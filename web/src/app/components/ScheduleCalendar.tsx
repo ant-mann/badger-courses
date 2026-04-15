@@ -1,7 +1,6 @@
 import React from "react";
 
 import {
-  getVisibleWeekdays,
   type GeneratedSchedule,
   type ScheduleCalendarEntry,
   type VisibleWeekday,
@@ -21,6 +20,8 @@ const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
   S: "Sat",
   U: "Sun",
 };
+
+const CALENDAR_WEEKDAYS: VisibleWeekday[] = ["M", "T", "W", "R", "F", "S", "U"];
 
 const HOUR_HEIGHT_REM = 4;
 
@@ -57,9 +58,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
     );
   }
 
-  const visibleWeekdays = getVisibleWeekdays(entries).filter((weekday) =>
-    entries.some((entry) => entry.weekday === weekday),
-  );
+  const visibleWeekdays = CALENDAR_WEEKDAYS;
   const timeWindow = deriveTimeWindow(entries);
   const timeLabels = buildTimeLabels(timeWindow.startMinutes, timeWindow.endMinutes);
   const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
