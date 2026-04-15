@@ -857,7 +857,10 @@ test("ScheduleCalendar renders all seven weekdays for the selected schedule", ()
 test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule()}
+      schedule={makeSchedule({
+        earliest_start_minute_local: 600,
+        latest_end_minute_local: 660,
+      })}
       entries={[
         {
           weekday: "M",
@@ -884,7 +887,10 @@ test("ScheduleCalendar uses a 9:00 AM to 5:00 PM baseline for daytime schedules"
 test("ScheduleCalendar expands earlier schedules with one extra padded hour", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule()}
+      schedule={makeSchedule({
+        earliest_start_minute_local: 510,
+        latest_end_minute_local: 570,
+      })}
       entries={[
         {
           weekday: "M",
@@ -910,7 +916,10 @@ test("ScheduleCalendar expands earlier schedules with one extra padded hour", ()
 test("ScheduleCalendar expands later schedules with one extra padded hour", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule()}
+      schedule={makeSchedule({
+        earliest_start_minute_local: 600,
+        latest_end_minute_local: 1100,
+      })}
       entries={[
         {
           weekday: "M",
@@ -936,7 +945,10 @@ test("ScheduleCalendar expands later schedules with one extra padded hour", () =
 test("ScheduleCalendar expands both sides independently for early and late schedules", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
-      schedule={makeSchedule()}
+      schedule={makeSchedule({
+        earliest_start_minute_local: 430,
+        latest_end_minute_local: 1240,
+      })}
       entries={[
         {
           weekday: "M",
