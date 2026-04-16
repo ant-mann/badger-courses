@@ -24,6 +24,7 @@
 | Raw prerequisite parse inspection | `prerequisite_rule_overview_v` |
 
 - For AI-facing non-schedule queries, prefer the canonical views above over raw `packages`, `sections`, or `meetings`.
+- For course keyword/designation search, use `course_search_fts` plus `course_overview_v` instead of ad hoc `LIKE` scans.
 - Use base tables only when a view does not expose the detail you need.
 - Do not query raw `meetings` directly for schedule questions unless you intentionally want every package copy. For canonical meeting rows, use `schedule_planning_v`, which already follows the selected `source_package_id`.
 - Do not derive local meeting times with ad hoc timezone math; use persisted `*_minute_local` fields and `meeting_summary_local`.
@@ -31,6 +32,7 @@
 ### Key column notes
 
 - `course_designation` — the human-readable course label, e.g. `'COMP SCI 577'`. Use this for most lookups.
+- `course_search_fts` — FTS5 index over canonical designations, cross-list aliases, titles, and a compact designation variant (for searches like `lis 102` against `L I S 102`).
 - `subject_code` — numeric code, e.g. `'266'` for Computer Sciences. Prefer `course_designation` unless you need all courses within a department.
 - `section_class_number` — the registrar class number (e.g. `35469`). Synthetic negative values appear only when the source omits a real number.
 - `has_open_seats`, `is_full`, `has_waitlist` — all 0/1 integers. `NULL` means the seat count is unknown.
@@ -389,14 +391,23 @@ ORDER BY c.course_designation;
 
 ### Searching by topic or keyword
 
+`course_search_fts` uses normalized token-prefix matching:
+- split user input into lowercase alphanumeric tokens
+- require every token to match (`AND` semantics)
+- apply prefix search to each token (for example `algorithms` → `algorithms*`)
+- ignore punctuation/operator characters instead of passing raw FTS syntax through
+
 **"What courses are about machine learning?"**
 
 ```sql
-SELECT course_designation, title, minimum_credits
-FROM courses
-WHERE title LIKE '%machine learning%'
-   OR description LIKE '%machine learning%'
-ORDER BY course_designation;
+SELECT co.course_designation, co.title, co.minimum_credits
+FROM course_search_fts cs
+JOIN course_overview_v co
+  ON co.term_code = cs.term_code
+ AND co.course_id = cs.course_id
+WHERE course_search_fts MATCH 'machine* learning*'
+GROUP BY co.term_code, co.course_id
+ORDER BY MIN(bm25(course_search_fts)), co.course_designation;
 ```
 
 **"What statistics courses are available?"**
@@ -406,6 +417,19 @@ SELECT course_designation, title, minimum_credits, maximum_credits
 FROM course_overview_v
 WHERE course_designation LIKE 'STAT%'
 ORDER BY catalog_number;
+```
+
+**"Find COMP SCI 240 even if the user types a cross-list alias like MATH 240."**
+
+```sql
+SELECT co.course_designation, co.title, co.cross_list_designations_json
+FROM course_search_fts cs
+JOIN course_overview_v co
+  ON co.term_code = cs.term_code
+ AND co.course_id = cs.course_id
+WHERE course_search_fts MATCH 'math* 240*'
+GROUP BY co.term_code, co.course_id
+ORDER BY MIN(bm25(course_search_fts)), co.course_designation;
 ```
 
 ---

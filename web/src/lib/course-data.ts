@@ -322,29 +322,71 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
   const query = params.query?.trim() ?? "";
   const subject = params.subject?.trim() ?? "";
   const limit = clampLimit(params.limit);
-  const where: string[] = [];
-  const bindings: SqlitePrimitive[] = [];
+  const normalizedSubjectPrefix = subject ? `${escapeLike(subject.toUpperCase())}%` : null;
+  const searchContext = buildCourseSearchContext(query);
+  let rows: Row[];
 
-  if (query) {
-    const searchLike = `%${escapeLike(query.toUpperCase())}%`;
-    where.push(
-      `(
-        UPPER(course_designation) LIKE ? ESCAPE '\\'
-        OR UPPER(title) LIKE ? ESCAPE '\\'
-      )`,
-    );
-    bindings.push(searchLike, searchLike);
-  }
+  if (searchContext.matchQuery) {
+    const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
+    const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
 
-  if (subject) {
-    where.push("UPPER(course_designation) LIKE ? ESCAPE '\\'");
-    bindings.push(`${escapeLike(subject.toUpperCase())}%`);
-  }
-
-  const rows = db
-    .prepare(
-      `
-        WITH ranked_courses AS (
+    rows = db
+      .prepare(
+        `
+          WITH search_matches AS (
+            SELECT
+              term_code,
+              course_id,
+              MIN(bm25(course_search_fts)) AS best_search_rank,
+              MAX(CASE WHEN alias_course_designation_normalized = ? THEN 1 ELSE 0 END) AS exact_alias_match,
+              MAX(CASE WHEN alias_course_designation_compact = ? THEN 1 ELSE 0 END) AS exact_compact_alias_match,
+              MAX(CASE WHEN alias_course_designation_normalized LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_alias_match,
+              MAX(CASE WHEN alias_course_designation_compact LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_compact_alias_match,
+              MAX(CASE WHEN title_normalized = ? THEN 1 ELSE 0 END) AS exact_title_match,
+              MAX(CASE WHEN title_normalized LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_title_match
+            FROM course_search_fts
+            WHERE course_search_fts MATCH ?
+            GROUP BY term_code, course_id
+          ),
+          ranked_courses AS (
+            SELECT
+              co.course_designation,
+              co.title,
+              co.minimum_credits,
+              co.maximum_credits,
+              co.cross_list_designations_json,
+              co.section_count,
+              co.has_any_open_seats,
+              co.has_any_waitlist,
+              co.has_any_full_section,
+              sm.best_search_rank,
+              sm.exact_alias_match,
+              sm.exact_compact_alias_match,
+              sm.prefix_alias_match,
+              sm.prefix_compact_alias_match,
+              sm.exact_title_match,
+              sm.prefix_title_match,
+              ROW_NUMBER() OVER (
+                PARTITION BY co.course_designation
+                ORDER BY
+                  sm.exact_alias_match DESC,
+                  sm.exact_compact_alias_match DESC,
+                  sm.prefix_alias_match DESC,
+                  sm.prefix_compact_alias_match DESC,
+                  sm.exact_title_match DESC,
+                  sm.prefix_title_match DESC,
+                  sm.best_search_rank ASC,
+                  COALESCE(co.section_count, 0) DESC,
+                  COALESCE(co.has_any_open_seats, 0) DESC,
+                  COALESCE(co.has_any_full_section, 0) DESC,
+                  co.title ASC,
+                  co.course_id ASC
+              ) AS designation_rank
+            FROM search_matches sm
+            JOIN course_overview_v co
+              ON co.term_code = sm.term_code AND co.course_id = sm.course_id
+            ${normalizedSubjectPrefix ? "WHERE UPPER(co.course_designation) LIKE ? ESCAPE '\\'" : ""}
+          )
           SELECT
             course_designation,
             title,
@@ -354,36 +396,83 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
             section_count,
             has_any_open_seats,
             has_any_waitlist,
-            has_any_full_section,
-            ROW_NUMBER() OVER (
-              PARTITION BY course_designation
-              ORDER BY
-                COALESCE(section_count, 0) DESC,
-                COALESCE(has_any_open_seats, 0) DESC,
-                COALESCE(has_any_full_section, 0) DESC,
-                title ASC,
-                course_id ASC
-            ) AS designation_rank
-          FROM course_overview_v
-          ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
-        )
-        SELECT
-          course_designation,
-          title,
-          minimum_credits,
-          maximum_credits,
-          cross_list_designations_json,
-          section_count,
-          has_any_open_seats,
-          has_any_waitlist,
-          has_any_full_section
-        FROM ranked_courses
-        WHERE designation_rank = 1
-        ORDER BY COALESCE(has_any_open_seats, 0) DESC, COALESCE(section_count, 0) DESC, course_designation ASC
-        LIMIT ?
-      `,
-    )
-    .all(...bindings, limit) as Row[];
+            has_any_full_section
+          FROM ranked_courses
+          WHERE designation_rank = 1
+          ORDER BY
+            exact_alias_match DESC,
+            exact_compact_alias_match DESC,
+            prefix_alias_match DESC,
+            prefix_compact_alias_match DESC,
+            exact_title_match DESC,
+            prefix_title_match DESC,
+            best_search_rank ASC,
+            COALESCE(has_any_open_seats, 0) DESC,
+            COALESCE(section_count, 0) DESC,
+            course_designation ASC
+          LIMIT ?
+        `,
+      )
+      .all(
+        searchContext.normalizedQuery,
+        searchContext.compactQuery,
+        normalizedQueryLike,
+        compactQueryLike,
+        searchContext.normalizedQuery,
+        normalizedQueryLike,
+        searchContext.matchQuery,
+        ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
+        limit,
+      ) as Row[];
+  } else {
+    if (query && !subject) {
+      return [];
+    }
+
+    rows = db
+      .prepare(
+        `
+          WITH ranked_courses AS (
+            SELECT
+              course_designation,
+              title,
+              minimum_credits,
+              maximum_credits,
+              cross_list_designations_json,
+              section_count,
+              has_any_open_seats,
+              has_any_waitlist,
+              has_any_full_section,
+              ROW_NUMBER() OVER (
+                PARTITION BY course_designation
+                ORDER BY
+                  COALESCE(section_count, 0) DESC,
+                  COALESCE(has_any_open_seats, 0) DESC,
+                  COALESCE(has_any_full_section, 0) DESC,
+                  title ASC,
+                  course_id ASC
+              ) AS designation_rank
+            FROM course_overview_v
+            ${normalizedSubjectPrefix ? "WHERE UPPER(course_designation) LIKE ? ESCAPE '\\'" : ""}
+          )
+          SELECT
+            course_designation,
+            title,
+            minimum_credits,
+            maximum_credits,
+            cross_list_designations_json,
+            section_count,
+            has_any_open_seats,
+            has_any_waitlist,
+            has_any_full_section
+          FROM ranked_courses
+          WHERE designation_rank = 1
+          ORDER BY COALESCE(has_any_open_seats, 0) DESC, COALESCE(section_count, 0) DESC, course_designation ASC
+          LIMIT ?
+        `,
+      )
+      .all(...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []), limit) as Row[];
+  }
 
   return rows.map(mapCourseListItem);
 }
@@ -804,6 +893,56 @@ function clampLimit(value: number | undefined): number {
 
 function escapeLike(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function buildCourseSearchContext(query: string): {
+  normalizedQuery: string;
+  compactQuery: string;
+  matchQuery: string | null;
+} {
+  const normalizedQuery = normalizeSearchText(query);
+  const compactQuery = makeCompactCourseDesignation(query);
+
+  if (!normalizedQuery) {
+    return {
+      normalizedQuery,
+      compactQuery,
+      matchQuery: null,
+    };
+  }
+
+  return {
+    normalizedQuery,
+    compactQuery,
+    matchQuery: normalizedQuery
+      .split(" ")
+      .filter((token) => token.length > 0)
+      .map((token) => `${token}*`)
+      .join(" "),
+  };
+}
+
+function normalizeSearchText(value: string): string {
+  return tokenizeSearchText(value).join(" ");
+}
+
+function tokenizeSearchText(value: string): string[] {
+  return value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+}
+
+function makeCompactCourseDesignation(value: string): string {
+  const tokens = tokenizeSearchText(value);
+
+  if (tokens.length === 0) {
+    return "";
+  }
+
+  const numericTokenIndex = tokens.findIndex((token) => /\d/.test(token));
+  if (numericTokenIndex <= 0) {
+    return tokens.join(" ");
+  }
+
+  return [tokens.slice(0, numericTokenIndex).join(""), ...tokens.slice(numericTokenIndex)].join(" ");
 }
 
 function asString(value: SqlitePrimitive): string {

@@ -495,6 +495,20 @@ CREATE INDEX idx_canonical_meetings_package_time ON canonical_meetings(package_i
 CREATE INDEX idx_schedulable_packages_designation_open ON schedulable_packages(course_designation, has_temporary_restriction, open_seats);
 CREATE INDEX idx_schedulable_packages_designation_day_start ON schedulable_packages(course_designation, campus_day_count, earliest_start_minute_local);
 
+CREATE VIRTUAL TABLE course_search_fts USING fts5(
+  term_code UNINDEXED,
+  course_id UNINDEXED,
+  canonical_course_designation UNINDEXED,
+  alias_course_designation,
+  alias_course_designation_normalized UNINDEXED,
+  alias_course_designation_compact,
+  title,
+  title_normalized UNINDEXED,
+  description,
+  tokenize = 'unicode61 remove_diacritics 2',
+  prefix = '2 3 4'
+);
+
 CREATE VIEW course_cross_listing_overview_v AS
 SELECT
   ccl.term_code,

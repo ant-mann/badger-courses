@@ -1777,6 +1777,27 @@ test('schema creates prerequisite graph tables and indexes', () => {
   }
 });
 
+test('schema creates the course_search_fts virtual table', () => {
+  const db = createSchemaDb();
+
+  try {
+    const ftsTable = db
+      .prepare(
+        `
+          SELECT name, sql
+          FROM sqlite_master
+          WHERE type = 'table' AND name = 'course_search_fts'
+        `,
+      )
+      .get();
+
+    assert.equal(ftsTable.name, 'course_search_fts');
+    assert.match(ftsTable.sql, /USING fts5/i);
+  } finally {
+    db.close();
+  }
+});
+
 test('schema ties prerequisite summary rows to the owning rule and course tuple', () => {
   const db = createSchemaDb();
   const insertCourse = db.prepare(`
@@ -2512,6 +2533,12 @@ test('build-course-db materializes cross-listed aliases for shared course ids', 
       FROM course_overview_v
       WHERE term_code = ? AND course_id = ?
     `).get('1272', '011630');
+    const searchMatches = fixture.db.prepare(`
+      SELECT canonical_course_designation, alias_course_designation, course_id
+      FROM course_search_fts
+      WHERE course_search_fts MATCH ?
+      ORDER BY alias_course_designation
+    `).all('math* 240*');
 
     assert.deepEqual(crossListings, [
       {
@@ -2546,6 +2573,13 @@ test('build-course-db materializes cross-listed aliases for shared course ids', 
     assert.deepEqual(JSON.parse(overviewRow.cross_list_designations_json), [
       'COMP SCI 240',
       'MATH 240',
+    ]);
+    assert.deepEqual(searchMatches, [
+      {
+        canonical_course_designation: 'COMP SCI 240',
+        alias_course_designation: 'MATH 240',
+        course_id: '011630',
+      },
     ]);
   } finally {
     fixture.cleanup();
