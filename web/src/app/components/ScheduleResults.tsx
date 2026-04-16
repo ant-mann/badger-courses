@@ -48,21 +48,21 @@ export function ScheduleResults({
   const resultsCountLabel = `${schedules.length} schedule${schedules.length === 1 ? "" : "s"} generated`;
 
   return (
-    <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+    <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Schedule Results
         </h2>
-        <p className="text-sm leading-7 text-text-weak">
+        <p className="text-sm leading-6 text-text-weak">
           Review ranked schedule cards and keep the selected option in view.
         </p>
         {!loading && !errorMessage ? (
-          <p className="text-sm font-medium text-text-faint" aria-live="polite">{resultsCountLabel}</p>
+          <p className="text-sm font-medium text-calendar-meta" aria-live="polite">{resultsCountLabel}</p>
         ) : null}
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
+        <div className="rounded-lg border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           Generating schedules...
         </div>
       ) : null}
@@ -85,20 +85,20 @@ export function ScheduleResults({
       ) : null}
 
       {!loading && !errorMessage && requestState === "idle" && schedules.length === 0 ? (
-        <div className="rounded-xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
+        <div className="rounded-lg border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           <p>Add courses and section constraints to generate schedules.</p>
         </div>
       ) : null}
 
       {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && zeroLimit ? (
-        <div className="rounded-xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
+        <div className="rounded-lg border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           <p>Result limit is set to 0, so the builder is not returning any schedules.</p>
           <p>Increase the limit to generate schedules.</p>
         </div>
       ) : null}
 
       {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && !zeroLimit ? (
-        <div className="rounded-xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
+        <div className="rounded-lg border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           <p>No conflict-free schedules matched these courses and section constraints.</p>
           <p>Try unlocking or excluding fewer sections.</p>
         </div>
@@ -106,9 +106,9 @@ export function ScheduleResults({
 
       {!loading && !errorMessage && schedules.length > 0 ? (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
             <h3 className="text-base font-semibold">Ranked schedules</h3>
-            <span className="text-sm text-text-faint">Tap a card to update the calendar</span>
+            <span className="text-sm text-calendar-meta">Tap a card to update the calendar</span>
           </div>
           {schedules.map((schedule, index) => {
             const isSelected = index === selectedScheduleIndex;
@@ -119,7 +119,7 @@ export function ScheduleResults({
                 type="button"
                 onClick={() => onSelectSchedule(index)}
                 aria-pressed={isSelected}
-                className={`rounded-xl border p-4 text-left transition ${isSelected ? "border-blue/25 bg-blue/[0.05]" : "border-border bg-muted hover:border-blue/20 hover:bg-blue/[0.03]"}`}
+                className={`rounded-lg border p-4 text-left transition ${isSelected ? "border-blue/25 bg-blue/[0.05]" : "border-border bg-muted/60 hover:border-blue/20 hover:bg-blue/[0.03]"}`}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex flex-col gap-2">
@@ -131,7 +131,7 @@ export function ScheduleResults({
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-sm text-text-faint">
+                    <p className="text-sm text-calendar-meta">
                       {schedule.packages.length} section choice{schedule.packages.length === 1 ? "" : "s"} • {formatTimeRange(schedule)}
                     </p>
                     <div className="flex flex-col gap-1 text-sm leading-7 text-text-weak">
@@ -143,7 +143,7 @@ export function ScheduleResults({
                     </div>
                   </div>
 
-                  <div className="text-sm text-text-faint">
+                  <div className="text-sm text-calendar-meta">
                     {schedule.campus_day_count ?? "-"} campus days
                   </div>
                 </div>

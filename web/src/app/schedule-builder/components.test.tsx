@@ -400,6 +400,29 @@ test("ScheduleResults shows a retry action for error states", () => {
   assert.match(markup, /Retry/i);
 });
 
+test("ScheduleResults keeps selected state and uses quieter secondary framing", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[
+        makeSchedule(),
+        makeSchedule({
+          package_ids: ["pkg-2"],
+          packages: [{ ...makeSchedule().packages[0], source_package_id: "pkg-2" }],
+        }),
+      ]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Schedule 1/);
+  assert.match(markup, /Selected/);
+  assert.match(markup, /aria-pressed="false" class="[^"]*rounded-lg[^"]*border-border[^"]*bg-muted\/60/);
+});
+
 test("SchedulePriorityList shows ordered rules, guidance copy, and move controls", () => {
   const markup = renderToStaticMarkup(
     <SchedulePriorityList
