@@ -14,7 +14,7 @@ type SelectedCourseListProps = {
 
 export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseListProps) {
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
+    <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Selected Courses
@@ -22,7 +22,7 @@ export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseLi
       </div>
 
       {courses.length === 0 ? (
-        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
+        <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           No courses selected yet. Add a course to start building schedules.
         </div>
       ) : (
@@ -30,7 +30,7 @@ export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseLi
           {courses.map((course) => (
             <article
               key={course.designation}
-              className="rounded-3xl border border-border bg-muted p-4"
+              className="rounded-xl border border-border bg-muted p-4"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex flex-col gap-1">

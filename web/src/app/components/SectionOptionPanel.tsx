@@ -176,7 +176,7 @@ export function SectionOptionPanel({
   const packageCount = course.schedule_packages.length;
 
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
+    <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
@@ -202,19 +202,19 @@ export function SectionOptionPanel({
       </button>
 
       {isOpen && loading ? (
-        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
+        <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           Loading section options...
         </div>
       ) : null}
 
       {isOpen && errorMessage ? (
-        <div className="rounded-3xl border border-red-500/20 bg-red-500/8 p-4 text-sm leading-7 text-red-900 dark:text-red-100">
+        <div className="rounded-xl border border-red-500/20 bg-red-500/8 p-4 text-sm leading-7 text-red-900 dark:text-red-100">
           {errorMessage}
         </div>
       ) : null}
 
       {isOpen && !loading && !errorMessage && course.schedule_packages.length === 0 ? (
-        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
+        <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           No section combinations are available for this course right now.
         </div>
       ) : null}
@@ -229,7 +229,7 @@ export function SectionOptionPanel({
             return (
               <article
                 key={schedulePackage.sourcePackageId}
-                className="rounded-3xl border border-border bg-muted p-4"
+                className="rounded-xl border border-border bg-muted p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex flex-col gap-2">
@@ -268,10 +268,11 @@ export function SectionOptionPanel({
                       {schedulePackage.campusDayCount !== null ? `, ${schedulePackage.campusDayCount} campus days` : ""}
                     </p>
                     {schedulePackage.restrictionNote ? (
-                      <details className="rounded-2xl border border-border bg-surface px-4 py-3">
+                      <details className="group rounded-lg border border-border bg-surface px-4 py-3">
                         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-text-weak marker:content-none">
                           <span>More details</span>
-                          <span aria-hidden="true">+</span>
+                          <span aria-hidden="true" className="group-open:hidden">+</span>
+                          <span aria-hidden="true" className="hidden group-open:block">−</span>
                         </summary>
                         <p className="mt-3 text-sm leading-7 text-text-faint">
                           {schedulePackage.restrictionNote}

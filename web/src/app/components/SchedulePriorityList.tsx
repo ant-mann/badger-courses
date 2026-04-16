@@ -15,7 +15,7 @@ export function SchedulePriorityList({
   onMoveRule,
 }: SchedulePriorityListProps) {
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
+    <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
           Schedule Priorities
@@ -30,7 +30,7 @@ export function SchedulePriorityList({
         {preferenceOrder.map((ruleId, index) => (
           <article
             key={ruleId}
-            className="flex flex-col gap-3 rounded-3xl border border-border bg-muted p-4 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 rounded-xl border border-border bg-muted p-4 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-text-faint">{index + 1}.</span>
@@ -43,7 +43,7 @@ export function SchedulePriorityList({
                 disabled={index === 0}
                 onClick={() => onMoveRule(ruleId, -1)}
                 aria-label="Move up"
-                className="min-h-11 flex-1 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-55"
+                className="min-h-11 flex-1 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ↑
               </button>
@@ -52,7 +52,7 @@ export function SchedulePriorityList({
                 disabled={index === preferenceOrder.length - 1}
                 onClick={() => onMoveRule(ruleId, 1)}
                 aria-label="Move down"
-                className="min-h-11 flex-1 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-55"
+                className="min-h-11 flex-1 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ↓
               </button>

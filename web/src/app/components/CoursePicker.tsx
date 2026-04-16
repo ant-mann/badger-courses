@@ -24,7 +24,7 @@ export function CoursePicker({
   onAddCourse,
 }: CoursePickerProps) {
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
+    <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Add Courses
@@ -47,13 +47,13 @@ export function CoursePicker({
       </label>
 
       {maxCoursesReached ? (
-        <div className="rounded-3xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm leading-7 text-amber-950 dark:text-amber-100">
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm leading-7 text-amber-950 dark:text-amber-100">
           You have reached the 8-course limit. Remove a course to add another one.
         </div>
       ) : null}
 
       {errorMessage ? (
-        <div className="rounded-3xl border border-red-500/20 bg-red-500/8 p-4 text-sm leading-7 text-red-900 dark:text-red-100">
+        <div className="rounded-xl border border-red-500/20 bg-red-500/8 p-4 text-sm leading-7 text-red-900 dark:text-red-100">
           {errorMessage}
         </div>
       ) : null}
@@ -64,7 +64,7 @@ export function CoursePicker({
       </div>
 
       {!loading && results.length === 0 ? (
-        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
+        <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           {query.trim().length === 0
             ? "Search to see matching courses."
             : "No matching courses found for this search."}
@@ -77,7 +77,7 @@ export function CoursePicker({
             return (
               <article
                 key={course.designation}
-                className="flex flex-col gap-3 rounded-3xl border border-border bg-muted p-4 sm:flex-row sm:items-start sm:justify-between"
+                className="flex flex-col gap-3 rounded-xl border border-border bg-muted p-4 sm:flex-row sm:items-start sm:justify-between"
               >
                 <div className="flex flex-col gap-1">
                   <h3 className="text-base font-semibold">{course.designation}</h3>
@@ -87,7 +87,7 @@ export function CoursePicker({
                   type="button"
                   disabled={isSelected || maxCoursesReached}
                   onClick={() => onAddCourse(course.designation)}
-                  className="min-h-11 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-55"
+                  className="min-h-11 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isSelected ? "Added" : "Add course"}
                 </button>
