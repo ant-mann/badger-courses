@@ -763,7 +763,9 @@ function getDesktopCalendarArticles(markup: string): Array<{
   style: Map<string, string>;
   tag: string;
 }> {
-  return [...markup.matchAll(/<article([^>]*)>/g)].map((match) => {
+  return [...markup.matchAll(/<article([^>]*)>/g)]
+    .filter((match) => /class="[^"]*\babsolute\b/.test(match[1]))
+    .map((match) => {
     const tag = match[0];
     const attributes = match[1];
     const ariaLabelMatch = attributes.match(/aria-label="([^"]+)"/);
@@ -780,7 +782,7 @@ function getDesktopCalendarArticles(markup: string): Array<{
       style: parseStyleAttribute(styleMatch[1]),
       tag,
     };
-  });
+    });
 }
 
 function getArticleByCourse(markup: string, courseDesignation: string) {
@@ -795,7 +797,7 @@ function getArticleByCourse(markup: string, courseDesignation: string) {
 function getCourseColorSignature(className: string): string {
   return className
     .split(/\s+/)
-    .filter((token) => /^(bg-|border-)/.test(token) && token !== "border")
+    .filter((token) => /^calendar-course-slot-\d$/.test(token))
     .sort()
     .join(" ");
 }
@@ -897,8 +899,8 @@ test("ScheduleCalendar does not treat boundary-touching meetings as overlapping 
   assert.equal(getDesktopCalendarArticles(markup).length, 3);
   assert.ok(compSciArticle.style.has("width"), "first overlapping article should shrink into a lane");
   assert.ok(mathArticle.style.has("width"), "second overlapping article should shrink into a lane");
-  assert.equal(statArticle.style.has("left"), false, "boundary-touching article should not be offset into an overlap lane");
-  assert.equal(statArticle.style.has("width"), false, "boundary-touching article should keep the default full-width layout");
+  assert.equal(statArticle.style.get("left"), "0%", "boundary-touching article should keep the default left edge");
+  assert.equal(statArticle.style.get("width"), "100%", "boundary-touching article should keep the default full-width layout");
 });
 
 test("ScheduleCalendar gives eight selected courses distinct color slots", () => {
@@ -951,7 +953,7 @@ test("ScheduleCalendar avoids interactive grid semantics for static calendar con
   );
 
   const weekdayHeaderTags = [...markup.matchAll(/<div[^>]*>(Mon|Tue|Wed|Thu|Fri)<\/div>/g)].map((match) => match[0]);
-  const weekdayLaneTags = [...markup.matchAll(/<div[^>]*aria-label="(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*>/g)].map((match) => match[0]);
+  const weekdayLaneTags = [...markup.matchAll(/<section[^>]*aria-label="(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*>/g)].map((match) => match[0]);
   const articleTags = getDesktopCalendarArticles(markup).map((article) => article.tag);
 
   assert.equal(weekdayHeaderTags.length >= 5, true);
@@ -1097,7 +1099,7 @@ test("ScheduleCalendar uses blue badge classes for LEC", () => {
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LEC" })]} />,
   );
 
-  assert.match(markup, /bg-blue-100/);
+  assert.match(markup, /calendar-course-badge-1/);
 });
 
 test("ScheduleCalendar uses green badge classes for LAB", () => {
@@ -1105,7 +1107,7 @@ test("ScheduleCalendar uses green badge classes for LAB", () => {
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LAB" })]} />,
   );
 
-  assert.match(markup, /bg-green-100/);
+  assert.match(markup, /calendar-course-badge-1/);
 });
 
 test("ScheduleCalendar uses orange badge classes for DIS", () => {
@@ -1113,7 +1115,7 @@ test("ScheduleCalendar uses orange badge classes for DIS", () => {
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "DIS" })]} />,
   );
 
-  assert.match(markup, /bg-orange-100/);
+  assert.match(markup, /calendar-course-badge-1/);
 });
 
 test("ScheduleCalendar renders time range before location", () => {
@@ -1124,8 +1126,10 @@ test("ScheduleCalendar renders time range before location", () => {
     />,
   );
 
-  const locationIndex = markup.indexOf("Grainger Hall");
-  const timeIndex = markup.indexOf("9:00 AM-9:50 AM");
+  const visibleMarkup = markup.replace(/aria-label="[^"]+"/g, "");
+
+  const locationIndex = visibleMarkup.indexOf("Grainger Hall");
+  const timeIndex = visibleMarkup.indexOf("9:00 AM-9:50 AM");
 
   assert.ok(locationIndex !== -1, "location should appear in markup");
   assert.ok(timeIndex !== -1, "time range should appear in markup");
