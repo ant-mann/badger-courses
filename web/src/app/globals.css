@@ -4,24 +4,52 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --navy:        #181d26;
+  --blue:        #1b61c9;
+  --surface:     #ffffff;
+  --bg:          #ffffff;
+  --border:      #e0e2e6;
+  --muted:       rgba(0, 0, 0, 0.03);
+  --text-weak:   rgba(4, 14, 32, 0.62);
+  --text-faint:  rgba(4, 14, 32, 0.40);
+  --card-shadow: rgba(0,0,0,0.32) 0px 0px 1px,
+                 rgba(0,0,0,0.08) 0px 0px 2px,
+                 rgba(45,127,249,0.28) 0px 1px 3px,
+                 rgba(0,0,0,0.06) 0px 0px 0px 0.5px inset;
+  --soft-shadow: rgba(15, 48, 106, 0.05) 0px 0px 20px;
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --navy:        #e8edf5;
+  --blue:        #6b9fff;
+  --surface:     rgba(255, 255, 255, 0.04);
+  --bg:          #181d26;
+  --border:      rgba(255, 255, 255, 0.09);
+  --muted:       rgba(255, 255, 255, 0.05);
+  --text-weak:   rgba(232, 237, 245, 0.58);
+  --text-faint:  rgba(232, 237, 245, 0.38);
+  --card-shadow: rgba(0,0,0,0.5) 0px 0px 1px,
+                 rgba(0,0,0,0.2) 0px 0px 2px,
+                 rgba(45,127,249,0.15) 0px 1px 3px;
+  --soft-shadow: rgba(0, 0, 0, 0.3) 0px 0px 20px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-navy:       var(--navy);
+  --color-blue:       var(--blue);
+  --color-surface:    var(--surface);
+  --color-bg:         var(--bg);
+  --color-border:     var(--border);
+  --color-muted:      var(--muted);
+  --color-text-weak:  var(--text-weak);
+  --color-text-faint: var(--text-faint);
+  --shadow-card:      var(--card-shadow);
+  --shadow-soft:      var(--soft-shadow);
+  --font-sans:        var(--font-inter);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--navy);
+  letter-spacing: 0.14px;
 }
