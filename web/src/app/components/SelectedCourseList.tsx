@@ -14,7 +14,7 @@ type SelectedCourseListProps = {
 
 export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseListProps) {
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Selected Courses
@@ -22,7 +22,7 @@ export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseLi
       </div>
 
       {courses.length === 0 ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           No courses selected yet. Add a course to start building schedules.
         </div>
       ) : (
@@ -30,16 +30,16 @@ export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseLi
           {courses.map((course) => (
             <article
               key={course.designation}
-              className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04]"
+              className="rounded-3xl border border-border bg-muted p-4"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex flex-col gap-1">
                   <h3 className="text-base font-semibold">{course.designation}</h3>
                   {course.title ? (
-                    <p className="text-sm leading-7 text-black/68 dark:text-white/68">{course.title}</p>
+                    <p className="text-sm leading-7 text-text-weak">{course.title}</p>
                   ) : null}
                   {course.loading ? (
-                    <p className="text-sm text-black/60 dark:text-white/60">Loading section options...</p>
+                    <p className="text-sm text-text-faint">Loading section options...</p>
                   ) : null}
                   {course.errorMessage ? (
                     <p className="text-sm leading-7 text-red-900 dark:text-red-100">{course.errorMessage}</p>
@@ -49,7 +49,7 @@ export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseLi
                 <button
                   type="button"
                   onClick={() => onRemoveCourse(course.designation)}
-                  className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                  className="min-h-11 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03]"
                 >
                   Remove
                 </button>

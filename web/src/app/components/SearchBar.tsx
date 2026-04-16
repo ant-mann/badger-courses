@@ -37,8 +37,8 @@ export function SearchBar({ initialQuery = "" }: SearchBarProps) {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-3xl border border-black/10 bg-white/75 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.03] sm:p-5">
-      <label className="text-sm font-medium text-black/70 dark:text-white/70" htmlFor="course-search">
+    <section className="flex flex-col gap-3 rounded-3xl border border-border bg-surface p-4 shadow-soft backdrop-blur sm:p-5">
+      <label className="text-sm font-medium text-text-weak" htmlFor="course-search">
         Search courses
       </label>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -49,9 +49,9 @@ export function SearchBar({ initialQuery = "" }: SearchBarProps) {
           value={query}
           onChange={(event) => updateQuery(event.target.value)}
           placeholder="COMP SCI 577"
-          className="min-h-12 flex-1 rounded-2xl border border-black/10 bg-transparent px-4 text-base outline-none transition focus:border-black/30 dark:border-white/10 dark:focus:border-white/30"
+          className="min-h-12 flex-1 rounded-2xl border border-border bg-transparent px-4 text-base outline-none transition focus:border-blue"
         />
-        <div className="min-w-24 text-sm text-black/55 dark:text-white/55">
+        <div className="min-w-24 text-sm text-text-faint">
           {isPending ? "Loading..." : "Ready"}
         </div>
       </div>

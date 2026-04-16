@@ -24,17 +24,17 @@ export function CoursePicker({
   onAddCourse,
 }: CoursePickerProps) {
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Add Courses
         </h2>
-        <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+        <p className="text-sm leading-7 text-text-weak">
           Search by designation, title, or subject prefix, then add courses to the builder.
         </p>
       </div>
 
-      <label className="flex flex-col gap-3 text-sm font-medium text-black/70 dark:text-white/70" htmlFor="schedule-builder-course-picker">
+      <label className="flex flex-col gap-3 text-sm font-medium text-text-weak" htmlFor="schedule-builder-course-picker">
         Course search
         <input
           id="schedule-builder-course-picker"
@@ -42,7 +42,7 @@ export function CoursePicker({
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="COMP SCI 577"
-          className="min-h-12 rounded-2xl border border-black/10 bg-transparent px-4 text-base font-normal outline-none transition focus:border-black/30 dark:border-white/10 dark:focus:border-white/30"
+          className="min-h-12 rounded-2xl border border-border bg-transparent px-4 text-base font-normal outline-none transition focus:border-blue"
         />
       </label>
 
@@ -58,13 +58,13 @@ export function CoursePicker({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between text-sm text-black/60 dark:text-white/60">
+      <div className="flex items-center justify-between text-sm text-text-faint">
         <span>{loading ? "Searching courses..." : `${results.length} course option${results.length === 1 ? "" : "s"}`}</span>
         <span>{selectedCourseDesignations.length} selected</span>
       </div>
 
       {!loading && results.length === 0 ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           {query.trim().length === 0
             ? "Search to see matching courses."
             : "No matching courses found for this search."}
@@ -77,17 +77,17 @@ export function CoursePicker({
             return (
               <article
                 key={course.designation}
-                className="flex flex-col gap-3 rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04] sm:flex-row sm:items-start sm:justify-between"
+                className="flex flex-col gap-3 rounded-3xl border border-border bg-muted p-4 sm:flex-row sm:items-start sm:justify-between"
               >
                 <div className="flex flex-col gap-1">
                   <h3 className="text-base font-semibold">{course.designation}</h3>
-                  <p className="text-sm leading-7 text-black/68 dark:text-white/68">{course.title}</p>
+                  <p className="text-sm leading-7 text-text-weak">{course.title}</p>
                 </div>
                 <button
                   type="button"
                   disabled={isSelected || maxCoursesReached}
                   onClick={() => onAddCourse(course.designation)}
-                  className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                  className="min-h-11 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {isSelected ? "Added" : "Add course"}
                 </button>
