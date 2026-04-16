@@ -741,6 +741,156 @@ test("ScheduleCalendar gives equal-duration meetings equal heights", () => {
   assert.equal(heightMatches[0], heightMatches[1]);
 });
 
+test("ScheduleCalendar assigns separate desktop lanes to overlapping meetings", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-1", "pkg-2"],
+        packages: [
+          makeSchedule().packages[0],
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-2",
+            course_designation: "MATH 240",
+            title: "Linear Algebra",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          startMinutes: 540,
+          endMinutes: 600,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+          startMinutes: 555,
+          endMinutes: 615,
+        }),
+      ]}
+    />,
+  );
+
+  const desktopCardStyles = [...markup.matchAll(/<article[^>]*style="([^"]+)"/g)].map((match) => match[1]);
+
+  assert.equal(desktopCardStyles.length, 2);
+  assert.match(desktopCardStyles[0], /left:/);
+  assert.match(desktopCardStyles[0], /width:/);
+  assert.match(desktopCardStyles[1], /left:/);
+  assert.match(desktopCardStyles[1], /width:/);
+  assert.notEqual(desktopCardStyles[0], desktopCardStyles[1]);
+});
+
+test("ScheduleCalendar does not treat boundary-touching meetings as overlapping lanes", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-1", "pkg-2", "pkg-3"],
+        packages: [
+          makeSchedule().packages[0],
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-2",
+            course_designation: "MATH 240",
+            title: "Linear Algebra",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-3",
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          startMinutes: 540,
+          endMinutes: 600,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+          startMinutes: 555,
+          endMinutes: 615,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-3",
+          courseDesignation: "STAT 340",
+          title: "Data Science Modeling I",
+          startMinutes: 615,
+          endMinutes: 675,
+        }),
+      ]}
+    />,
+  );
+
+  const desktopCardStyles = [...markup.matchAll(/<article[^>]*style="([^"]+)"/g)].map((match) => match[1]);
+
+  assert.equal(desktopCardStyles.length, 3);
+  assert.match(desktopCardStyles[0], /width:/);
+  assert.match(desktopCardStyles[1], /width:/);
+  assert.doesNotMatch(desktopCardStyles[2], /width:(?!100(?:\.0+)?%)/);
+});
+
+test("ScheduleCalendar gives eight selected courses distinct color slots", () => {
+  const entries = Array.from({ length: 8 }, (_, index) => makeEntry({
+    sourcePackageId: `pkg-${index + 1}`,
+    courseDesignation: `COURSE ${index + 1}`,
+    title: `Course ${index + 1}`,
+    startMinutes: 540 + index * 70,
+    endMinutes: 590 + index * 70,
+  }));
+
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: entries.map((entry) => entry.sourcePackageId),
+        packages: entries.map((entry, index) => ({
+          ...makeSchedule().packages[0],
+          source_package_id: entry.sourcePackageId,
+          course_designation: entry.courseDesignation,
+          title: entry.title,
+          section_bundle_label: `LEC ${String(index + 1).padStart(3, "0")}`,
+        })),
+      })}
+      entries={entries}
+    />,
+  );
+
+  const desktopCardClasses = [...markup.matchAll(/<article[^>]*class="([^"]+)"/g)].map((match) => match[1]);
+
+  assert.equal(desktopCardClasses.length, 8);
+  assert.equal(new Set(desktopCardClasses).size, 8);
+});
+
+test("ScheduleCalendar avoids interactive grid semantics for static calendar content", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule()}
+      entries={[
+        makeEntry({ weekday: "M" }),
+        makeEntry({
+          weekday: "W",
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+        }),
+      ]}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /role="grid"/);
+  assert.doesNotMatch(markup, /role="columnheader"/);
+  assert.doesNotMatch(markup, /role="gridcell"/);
+  assert.doesNotMatch(markup, /tabindex="0"/i);
+});
+
 test("CoursePicker stays prop-driven and presentational", () => {
   const markup = renderToStaticMarkup(
     <CoursePicker
