@@ -18,7 +18,6 @@ export function ThemeToggle() {
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       aria-hidden={!mounted}
       disabled={!mounted}
-      tabIndex={mounted ? 0 : -1}
       className={`flex h-9 w-9 items-center justify-center rounded-full border border-border text-text-weak transition-colors ${
         mounted ? "hover:bg-muted hover:text-navy" : "pointer-events-none opacity-0"
       }`}
