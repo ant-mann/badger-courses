@@ -8,19 +8,27 @@ const NAV_ITEMS = [
   { href: "/schedule-builder", label: "Schedule Builder" },
 ];
 
+export function isNavItemActive(href: string, pathname: string): boolean {
+  if (href === "/") {
+    return pathname === "/" || pathname.startsWith("/courses/");
+  }
+
+  return pathname.startsWith(href);
+}
+
 export function NavLinks() {
   const pathname = usePathname();
 
   return (
     <>
       {NAV_ITEMS.map(({ href, label }) => {
-        const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+        const isActive = isNavItemActive(href, pathname);
 
         return (
           <Link
             key={href}
             href={href}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium leading-5 transition-colors ${
               isActive
                 ? "bg-blue/10 text-blue"
                 : "text-text-weak hover:text-navy"
