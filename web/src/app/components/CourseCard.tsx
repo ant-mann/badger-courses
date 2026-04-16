@@ -32,7 +32,7 @@ export function CourseCard({ course }: CourseCardProps) {
   return (
     <Link
       href={`/courses/${encodeURIComponent(course.designation)}`}
-      className="group rounded-3xl border border-black/10 bg-white/70 p-5 shadow-sm transition hover:border-black/20 hover:bg-white dark:border-white/10 dark:bg-white/[0.03] dark:hover:border-white/20 dark:hover:bg-white/[0.05]"
+      className="group rounded-3xl border border-border bg-surface p-5 shadow-soft transition hover:shadow-card hover:border-blue/20"
     >
       <article className="flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -40,22 +40,22 @@ export function CourseCard({ course }: CourseCardProps) {
             <h2 className="text-xl font-semibold tracking-[-0.02em] group-hover:underline">
               {course.designation}
             </h2>
-            <p className="text-sm leading-6 text-black/68 dark:text-white/68">{course.title}</p>
+            <p className="text-sm leading-6 text-text-weak">{course.title}</p>
           </div>
-          <span className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-black/55 dark:border-white/10 dark:text-white/55">
+          <span className="rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-text-faint">
             {course.sectionCount} sections
           </span>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-sm text-black/62 dark:text-white/62">
-          <span className="rounded-full bg-black/[0.04] px-3 py-1 dark:bg-white/[0.06]">
+        <div className="flex flex-wrap gap-2 text-sm text-text-weak">
+          <span className="rounded-full bg-muted px-3 py-1">
             {formatCredits(course.minimumCredits, course.maximumCredits)}
           </span>
-          <span className="rounded-full bg-black/[0.04] px-3 py-1 dark:bg-white/[0.06]">
+          <span className="rounded-full bg-muted px-3 py-1">
             {seatLabel(course.hasAnyOpenSeats, course.hasAnyFullSection)}
           </span>
           {course.crossListDesignations.length > 1 ? (
-            <span className="rounded-full bg-black/[0.04] px-3 py-1 dark:bg-white/[0.06]">
+            <span className="rounded-full bg-muted px-3 py-1">
               Cross-listed with {course.crossListDesignations.filter((item) => item !== course.designation).join(", ")}
             </span>
           ) : null}

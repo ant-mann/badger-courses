@@ -20,20 +20,20 @@ export function PrerequisiteSummary({
 
   if (!prerequisite && !enrollmentPrerequisites) {
     return (
-      <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+      <div className="rounded-3xl border border-border bg-muted p-5 text-sm text-text-weak">
         No prerequisite information is available.
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-3xl border border-black/10 bg-white/70 p-5 dark:border-white/10 dark:bg-white/[0.03]">
+    <div className="flex flex-col gap-4 rounded-3xl border border-border bg-surface p-5">
       {prerequisite?.courseGroups.length ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-black/70 dark:text-white/70">Required course groups</p>
+          <p className="text-sm font-medium text-text-weak">Required course groups</p>
           <div className="flex flex-col gap-2">
             {prerequisite.courseGroups.map((group, index) => (
-              <p key={`${group.join("-")}-${index}`} className="text-sm leading-7 text-black/75 dark:text-white/75">
+              <p key={`${group.join("-")}-${index}`} className="text-sm leading-7 text-text-weak">
                 Group {index + 1}: {group.join(" or ")}
               </p>
             ))}
@@ -43,8 +43,8 @@ export function PrerequisiteSummary({
 
       {prerequisite?.escapeClauses.length ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-black/70 dark:text-white/70">Alternative ways to satisfy prerequisites</p>
-          <div className="flex flex-col gap-2 text-sm leading-7 text-black/75 dark:text-white/75">
+          <p className="text-sm font-medium text-text-weak">Alternative ways to satisfy prerequisites</p>
+          <div className="flex flex-col gap-2 text-sm leading-7 text-text-weak">
             {prerequisite.escapeClauses.map((clause) => (
               <p key={clause}>{clause}</p>
             ))}
@@ -54,7 +54,7 @@ export function PrerequisiteSummary({
 
       {enrollmentPrerequisites ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm leading-7 text-black/75 dark:text-white/75">{enrollmentPrerequisites}</p>
+          <p className="text-sm leading-7 text-text-weak">{enrollmentPrerequisites}</p>
         </div>
       ) : null}
 

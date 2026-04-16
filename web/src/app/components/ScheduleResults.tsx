@@ -48,21 +48,21 @@ export function ScheduleResults({
   const resultsCountLabel = `${schedules.length} schedule${schedules.length === 1 ? "" : "s"} generated`;
 
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Schedule Results
         </h2>
-        <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+        <p className="text-sm leading-7 text-text-weak">
           Review ranked schedule cards and keep the selected option in view.
         </p>
         {!loading && !errorMessage ? (
-          <p className="text-sm font-medium text-black/60 dark:text-white/60">{resultsCountLabel}</p>
+          <p className="text-sm font-medium text-text-faint">{resultsCountLabel}</p>
         ) : null}
       </div>
 
       {loading ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           Generating schedules...
         </div>
       ) : null}
@@ -85,20 +85,20 @@ export function ScheduleResults({
       ) : null}
 
       {!loading && !errorMessage && requestState === "idle" && schedules.length === 0 ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           <p>Add courses and section constraints to generate schedules.</p>
         </div>
       ) : null}
 
       {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && zeroLimit ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           <p>Result limit is set to 0, so the builder is not returning any schedules.</p>
           <p>Increase the limit to generate schedules.</p>
         </div>
       ) : null}
 
       {!loading && !errorMessage && requestState === "ready" && schedules.length === 0 && !zeroLimit ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           <p>No conflict-free schedules matched these courses and section constraints.</p>
           <p>Try unlocking or excluding fewer sections.</p>
         </div>
@@ -108,7 +108,7 @@ export function ScheduleResults({
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold">Ranked schedules</h3>
-            <span className="text-sm text-black/60 dark:text-white/60">Tap a card to update the calendar</span>
+            <span className="text-sm text-text-faint">Tap a card to update the calendar</span>
           </div>
           {schedules.map((schedule, index) => {
             const isSelected = index === selectedScheduleIndex;
@@ -118,7 +118,7 @@ export function ScheduleResults({
                 key={schedule.package_ids.join("|") || `schedule-${index}`}
                 type="button"
                 onClick={() => onSelectSchedule(index)}
-                className={`rounded-3xl border p-4 text-left transition ${isSelected ? "border-black/25 bg-black/[0.04] dark:border-white/25 dark:bg-white/[0.06]" : "border-black/10 bg-black/[0.02] hover:border-black/20 hover:bg-black/[0.03] dark:border-white/10 dark:bg-white/[0.04] dark:hover:border-white/20 dark:hover:bg-white/[0.06]"}`}
+                className={`rounded-3xl border p-4 text-left transition ${isSelected ? "border-blue/25 bg-blue/[0.05]" : "border-border bg-muted hover:border-blue/20 hover:bg-blue/[0.03]"}`}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex flex-col gap-2">
@@ -130,10 +130,10 @@ export function ScheduleResults({
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-sm text-black/60 dark:text-white/60">
+                    <p className="text-sm text-text-faint">
                       {schedule.packages.length} section choice{schedule.packages.length === 1 ? "" : "s"} • {formatTimeRange(schedule)}
                     </p>
-                    <div className="flex flex-col gap-1 text-sm leading-7 text-black/68 dark:text-white/68">
+                    <div className="flex flex-col gap-1 text-sm leading-7 text-text-weak">
                       {schedule.packages.map((schedulePackage) => (
                         <p key={schedulePackage.source_package_id}>
                           <span className="font-medium">{schedulePackage.course_designation}</span>: {schedulePackage.section_bundle_label}
@@ -142,7 +142,7 @@ export function ScheduleResults({
                     </div>
                   </div>
 
-                  <div className="text-sm text-black/60 dark:text-white/60">
+                  <div className="text-sm text-text-faint">
                     {schedule.campus_day_count ?? "-"} campus days
                   </div>
                 </div>

@@ -404,17 +404,17 @@ export function ScheduleBuilder() {
           }}
         />
 
-        <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold tracking-[-0.02em]">
               Settings
             </h2>
-            <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+            <p className="text-sm leading-7 text-text-weak">
               Your courses, section choices, and preferences are saved in the URL and can be shared. Generated schedules themselves are not included.
             </p>
           </div>
 
-          <label className="flex flex-col gap-3 text-sm font-medium text-black/70 dark:text-white/70" htmlFor="schedule-builder-limit">
+          <label className="flex flex-col gap-3 text-sm font-medium text-text-weak" htmlFor="schedule-builder-limit">
             Max results
             <input
               id="schedule-builder-limit"
@@ -428,7 +428,7 @@ export function ScheduleBuilder() {
                   limit: clampScheduleLimit(Number.parseInt(event.target.value, 10)),
                 }));
               }}
-              className="min-h-12 rounded-2xl border border-black/10 bg-transparent px-4 text-base font-normal outline-none transition focus:border-black/30 dark:border-white/10 dark:focus:border-white/30"
+              className="min-h-12 rounded-2xl border border-border bg-transparent px-4 text-base font-normal outline-none transition focus:border-blue"
             />
           </label>
 
@@ -443,7 +443,7 @@ export function ScheduleBuilder() {
             }}
           />
 
-          <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+          <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
             {isRoutingPending ? "Updating..." : "Schedules regenerate automatically when your inputs change."}
           </div>
         </section>

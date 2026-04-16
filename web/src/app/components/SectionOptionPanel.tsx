@@ -176,7 +176,7 @@ export function SectionOptionPanel({
   const packageCount = course.schedule_packages.length;
 
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
@@ -186,9 +186,9 @@ export function SectionOptionPanel({
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">
             {course.course.designation}
           </h2>
-          <p className="text-sm leading-7 text-black/68 dark:text-white/68">{course.course.title}</p>
+          <p className="text-sm leading-7 text-text-weak">{course.course.title}</p>
           {!isOpen && !loading && packageCount > 0 ? (
-            <p className="text-sm text-black/50 dark:text-white/50">{packageCount} section{packageCount === 1 ? "" : "s"} available</p>
+            <p className="text-sm text-text-faint">{packageCount} section{packageCount === 1 ? "" : "s"} available</p>
           ) : null}
         </div>
         <span
@@ -202,7 +202,7 @@ export function SectionOptionPanel({
       </button>
 
       {isOpen && loading ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           Loading section options...
         </div>
       ) : null}
@@ -214,7 +214,7 @@ export function SectionOptionPanel({
       ) : null}
 
       {isOpen && !loading && !errorMessage && course.schedule_packages.length === 0 ? (
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
           No section combinations are available for this course right now.
         </div>
       ) : null}
@@ -229,7 +229,7 @@ export function SectionOptionPanel({
             return (
               <article
                 key={schedulePackage.sourcePackageId}
-                className="rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04]"
+                className="rounded-3xl border border-border bg-muted p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex flex-col gap-2">
@@ -247,33 +247,33 @@ export function SectionOptionPanel({
                       ) : null}
                     </div>
                     {meetingLines ? (
-                      <div className="flex flex-col gap-1 text-sm leading-7 text-black/68 dark:text-white/68">
+                      <div className="flex flex-col gap-1 text-sm leading-7 text-text-weak">
                         {meetingLines.map((meetingLine, index) => (
                           <div
                             key={`${schedulePackage.sourcePackageId}-${meetingLine.label}-${meetingLine.detail}-${index}`}
                             className="flex flex-wrap gap-2"
                           >
-                            <span className="font-medium text-black/78 dark:text-white/78">{meetingLine.label}</span>
+                            <span className="font-medium text-navy">{meetingLine.label}</span>
                             <span>{meetingLine.detail}</span>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+                      <p className="text-sm leading-7 text-text-weak">
                         {schedulePackage.meetingSummaryLocal ?? "Meeting summary unavailable."}
                       </p>
                     )}
-                    <p className="text-sm text-black/60 dark:text-white/60">
+                    <p className="text-sm text-text-faint">
                       {seatsLabel(schedulePackage)}
                       {schedulePackage.campusDayCount !== null ? `, ${schedulePackage.campusDayCount} campus days` : ""}
                     </p>
                     {schedulePackage.restrictionNote ? (
-                      <details className="rounded-2xl border border-black/10 bg-white/45 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-black/72 marker:content-none dark:text-white/72">
+                      <details className="rounded-2xl border border-border bg-surface px-4 py-3">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-text-weak marker:content-none">
                           <span>More details</span>
                           <span aria-hidden="true">+</span>
                         </summary>
-                        <p className="mt-3 text-sm leading-7 text-black/60 dark:text-white/60">
+                        <p className="mt-3 text-sm leading-7 text-text-faint">
                           {schedulePackage.restrictionNote}
                         </p>
                       </details>
@@ -284,14 +284,14 @@ export function SectionOptionPanel({
                     <button
                       type="button"
                       onClick={() => onLockSection(locked ? null : schedulePackage.sourcePackageId)}
-                      className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                      className="min-h-11 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03]"
                     >
                       {locked ? "Unlock section" : "Lock section"}
                     </button>
                     <button
                       type="button"
                       onClick={() => onExcludeSection(schedulePackage.sourcePackageId, !excluded)}
-                      className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                      className="min-h-11 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03]"
                     >
                       {excluded ? "Include section" : "Exclude section"}
                     </button>

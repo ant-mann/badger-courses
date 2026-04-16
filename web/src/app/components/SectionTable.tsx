@@ -23,17 +23,17 @@ function seatState(section: CourseSection): string {
 export function SectionTable({ sections }: SectionTableProps) {
   if (sections.length === 0) {
     return (
-      <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+      <div className="rounded-3xl border border-border bg-muted p-5 text-sm text-text-weak">
         No sections found for this course.
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-black/10 dark:border-white/10">
+    <div className="overflow-hidden rounded-3xl border border-border">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-black/10 text-sm dark:divide-white/10">
-          <thead className="bg-black/[0.03] text-left dark:bg-white/[0.04]">
+        <table className="min-w-full divide-y divide-border text-sm">
+          <thead className="bg-muted text-left">
             <tr>
               <th className="px-4 py-3 font-medium">Section</th>
               <th className="px-4 py-3 font-medium">Mode</th>
@@ -43,7 +43,7 @@ export function SectionTable({ sections }: SectionTableProps) {
               <th className="px-4 py-3 font-medium">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-black/8 dark:divide-white/8">
+          <tbody className="divide-y divide-border">
             {sections.map((section) => (
               <tr key={`${section.sectionType}-${section.sectionNumber}-${section.sectionClassNumber ?? "na"}`}>
                 <td className="px-4 py-3 align-top font-medium">
@@ -52,11 +52,11 @@ export function SectionTable({ sections }: SectionTableProps) {
                       {section.sectionType} {section.sectionNumber}
                     </span>
                     {section.sectionTitle ? (
-                      <span className="font-normal text-black/62 dark:text-white/62">{section.sectionTitle}</span>
+                      <span className="font-normal text-text-weak">{section.sectionTitle}</span>
                     ) : null}
                   </div>
                 </td>
-                <td className="px-4 py-3 align-top text-black/68 dark:text-white/68">
+                <td className="px-4 py-3 align-top text-text-weak">
                   {section.instructionMode ?? "Unknown"}
                 </td>
                 <td className="px-4 py-3 align-top">{section.openSeats ?? "-"}</td>
