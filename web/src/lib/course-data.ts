@@ -333,19 +333,29 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
     rows = db
       .prepare(
         `
-          WITH search_matches AS (
+          WITH raw_search_matches AS (
             SELECT
               term_code,
               course_id,
-              MIN(bm25(course_search_fts)) AS best_search_rank,
+              alias_course_designation_normalized,
+              alias_course_designation_compact,
+              title_normalized,
+              rank AS search_rank
+            FROM course_search_fts
+            WHERE course_search_fts MATCH ?
+          ),
+          search_matches AS (
+            SELECT
+              term_code,
+              course_id,
+              MIN(search_rank) AS best_search_rank,
               MAX(CASE WHEN alias_course_designation_normalized = ? THEN 1 ELSE 0 END) AS exact_alias_match,
               MAX(CASE WHEN alias_course_designation_compact = ? THEN 1 ELSE 0 END) AS exact_compact_alias_match,
               MAX(CASE WHEN alias_course_designation_normalized LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_alias_match,
               MAX(CASE WHEN alias_course_designation_compact LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_compact_alias_match,
               MAX(CASE WHEN title_normalized = ? THEN 1 ELSE 0 END) AS exact_title_match,
               MAX(CASE WHEN title_normalized LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_title_match
-            FROM course_search_fts
-            WHERE course_search_fts MATCH ?
+            FROM raw_search_matches
             GROUP BY term_code, course_id
           ),
           ranked_courses AS (
@@ -414,13 +424,13 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
         `,
       )
       .all(
+        searchContext.matchQuery,
         searchContext.normalizedQuery,
         searchContext.compactQuery,
         normalizedQueryLike,
         compactQueryLike,
         searchContext.normalizedQuery,
         normalizedQueryLike,
-        searchContext.matchQuery,
         ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
         limit,
       ) as Row[];

@@ -1232,6 +1232,7 @@ export function buildCourseDatabase({
   const courseSearchRows = buildCourseSearchRows(courseRows, courseCrossListingRows);
 
   fs.mkdirSync(path.dirname(outputDbPath), { recursive: true });
+  fs.rmSync(outputDbPath, { force: true });
 
   const db = new Database(outputDbPath);
 

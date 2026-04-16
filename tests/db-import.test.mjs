@@ -2577,6 +2577,11 @@ test('build-course-db materializes cross-listed aliases for shared course ids', 
     assert.deepEqual(searchMatches, [
       {
         canonical_course_designation: 'COMP SCI 240',
+        alias_course_designation: 'COMP SCI 240',
+        course_id: '011630',
+      },
+      {
+        canonical_course_designation: 'COMP SCI 240',
         alias_course_designation: 'MATH 240',
         course_id: '011630',
       },

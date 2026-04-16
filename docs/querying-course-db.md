@@ -407,7 +407,7 @@ JOIN course_overview_v co
  AND co.course_id = cs.course_id
 WHERE course_search_fts MATCH 'machine* learning*'
 GROUP BY co.term_code, co.course_id
-ORDER BY MIN(bm25(course_search_fts)), co.course_designation;
+ORDER BY MIN(cs.rank), co.course_designation;
 ```
 
 **"What statistics courses are available?"**
@@ -429,7 +429,7 @@ JOIN course_overview_v co
  AND co.course_id = cs.course_id
 WHERE course_search_fts MATCH 'math* 240*'
 GROUP BY co.term_code, co.course_id
-ORDER BY MIN(bm25(course_search_fts)), co.course_designation;
+ORDER BY MIN(cs.rank), co.course_designation;
 ```
 
 ---
