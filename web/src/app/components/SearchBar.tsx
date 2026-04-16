@@ -51,9 +51,9 @@ export function SearchBar({ initialQuery = "" }: SearchBarProps) {
           placeholder="COMP SCI 577"
           className="min-h-12 flex-1 rounded-2xl border border-border bg-transparent px-4 text-base outline-none transition focus:border-blue"
         />
-        <div className="min-w-24 text-sm text-text-faint">
-          {isPending ? "Loading..." : "Ready"}
-        </div>
+        {isPending ? (
+          <div className="min-w-24 text-sm text-text-faint">Loading...</div>
+        ) : null}
       </div>
     </section>
   );
