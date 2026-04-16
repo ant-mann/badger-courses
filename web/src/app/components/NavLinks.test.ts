@@ -14,3 +14,9 @@ test("NavLinks marks Schedule Builder active for schedule-builder routes", () =>
   assert.equal(navLinks.isNavItemActive?.("/schedule-builder", "/schedule-builder"), true);
   assert.equal(navLinks.isNavItemActive?.("/", "/schedule-builder"), false);
 });
+
+test("NavLinks does not mark Schedule Builder active for prefix collisions", () => {
+  assert.equal(typeof navLinks.isNavItemActive, "function");
+  assert.equal(navLinks.isNavItemActive?.("/schedule-builder", "/schedule-builder-archive"), false);
+  assert.equal(navLinks.isNavItemActive?.("/schedule-builder", "/schedule-builder/archive"), true);
+});

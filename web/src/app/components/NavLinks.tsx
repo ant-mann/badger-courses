@@ -13,14 +13,14 @@ export function isNavItemActive(href: string, pathname: string): boolean {
     return pathname === "/" || pathname.startsWith("/courses/");
   }
 
-  return pathname.startsWith(href);
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function NavLinks() {
   const pathname = usePathname();
 
   return (
-    <>
+    <div className="flex flex-wrap items-center gap-1">
       {NAV_ITEMS.map(({ href, label }) => {
         const isActive = isNavItemActive(href, pathname);
 
@@ -38,6 +38,6 @@ export function NavLinks() {
           </Link>
         );
       })}
-    </>
+    </div>
   );
 }
