@@ -7,3 +7,10 @@ web/.env.local
 pnpm-debug.log*
 .git
 .worktrees
+
+# Exclude large data files not needed in Docker build context.
+# Only data/fall-2026.sqlite is needed (copied by download-db.mjs during build).
+data/madgrades/
+data/fall-2026-courses.json
+data/fall-2026-enrollment-packages.json
+data/node_modules
