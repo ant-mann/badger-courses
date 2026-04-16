@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PrerequisiteSummary } from "@/app/components/PrerequisiteSummary";
@@ -47,6 +48,13 @@ export default async function CoursePage({ params }: CoursePageProps) {
   return (
     <main className="flex-1 bg-bg text-navy">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10 sm:px-10 sm:py-14">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-text-weak transition hover:text-navy"
+        >
+          <span aria-hidden="true">←</span>
+          Course Explorer
+        </Link>
         <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-6 shadow-soft">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex flex-col gap-2">

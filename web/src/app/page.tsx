@@ -1,6 +1,7 @@
 import React from "react";
 import { Suspense } from "react";
 import Link from "next/link";
+import type { Metadata } from "next";
 
 import { CourseCard } from "@/app/components/CourseCard";
 import { SearchBar } from "@/app/components/SearchBar";
@@ -17,6 +18,15 @@ function firstParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
+export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
+  const resolvedSearchParams = await searchParams;
+  const query = firstParam(resolvedSearchParams?.q).trim();
+  if (query) {
+    return { title: `${query} – Badger Courses` };
+  }
+  return { title: "Badger Courses" };
+}
+
 export default async function Home({ searchParams }: HomePageProps) {
   const resolvedSearchParams = await searchParams;
   const query = firstParam(resolvedSearchParams?.q).trim();
@@ -29,7 +39,7 @@ export default async function Home({ searchParams }: HomePageProps) {
   try {
     courses = hasSearch ? searchCourses({ query, subject }) : [];
   } catch (error) {
-    errorMessage = error instanceof Error ? error.message : "Unable to load courses right now.";
+    errorMessage = "Unable to load courses right now. Please try again.";
   }
 
   return (
@@ -63,7 +73,7 @@ export default async function Home({ searchParams }: HomePageProps) {
 
         {!hasSearch ? (
           <section className="rounded-3xl border border-border bg-muted p-6 text-sm leading-7 text-text-weak">
-            Enter a search to see matching courses. Results load on the server from the shared course data module.
+            Enter a search to see matching courses.
           </section>
         ) : null}
 
