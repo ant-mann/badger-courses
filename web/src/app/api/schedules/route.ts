@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
 
 import { generateSchedules } from '@madgrades/schedule';
-import {
-  normalizePreferenceOrder,
-  type PreferenceRuleId,
-} from '@/app/schedule-builder/preferences';
+import { type PreferenceRuleId } from '@/app/schedule-builder/preferences';
 
 import {
   clampScheduleLimit,
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
 import { getDb } from '@/lib/db';
+import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
 
 type ScheduleRequestBody = {
   courses?: unknown;
@@ -79,30 +77,6 @@ function normalizeLimit(value: unknown): number | null {
   }
 
   return clampScheduleLimit(value);
-}
-
-export function normalizePreferenceOrderInput(value: unknown): PreferenceRuleId[] | null {
-  if (value === undefined) {
-    return normalizePreferenceOrder([]);
-  }
-
-  if (!isStringArray(value)) {
-    return null;
-  }
-
-  return normalizePreferenceOrder(value);
-}
-
-export function normalizeBooleanInput(value: unknown): boolean | null {
-  if (value === undefined) {
-    return false;
-  }
-
-  if (typeof value !== 'boolean') {
-    return null;
-  }
-
-  return value;
 }
 
 export async function POST(request: Request) {

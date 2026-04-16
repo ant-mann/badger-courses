@@ -5,11 +5,11 @@ import { buildCourseDbFixture, makeCourse } from "../../../../../tests/helpers/m
 
 import { GET as getCourseDetail } from "./[designation]/route";
 import { DEFAULT_PREFERENCE_ORDER } from "@/app/schedule-builder/preferences";
+import { POST as buildSchedules } from "../schedules/route";
 import {
-  POST as buildSchedules,
   normalizeBooleanInput,
   normalizePreferenceOrderInput,
-} from "../schedules/route";
+} from "../schedules/normalize";
 import { GET as searchCourses } from "./search/route";
 
 const fixture = buildCourseDbFixture({
