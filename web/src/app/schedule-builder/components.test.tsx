@@ -741,6 +741,65 @@ test("ScheduleCalendar gives equal-duration meetings equal heights", () => {
   assert.equal(heightMatches[0], heightMatches[1]);
 });
 
+function parseStyleAttribute(style: string): Map<string, string> {
+  return new Map(
+    style
+      .split(";")
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .map((declaration) => {
+        const separatorIndex = declaration.indexOf(":");
+        return [
+          declaration.slice(0, separatorIndex).trim(),
+          declaration.slice(separatorIndex + 1).trim(),
+        ];
+      }),
+  );
+}
+
+function getDesktopCalendarArticles(markup: string): Array<{
+  ariaLabel: string;
+  className: string;
+  style: Map<string, string>;
+  tag: string;
+}> {
+  return [...markup.matchAll(/<article([^>]*)>/g)].map((match) => {
+    const tag = match[0];
+    const attributes = match[1];
+    const ariaLabelMatch = attributes.match(/aria-label="([^"]+)"/);
+    const classNameMatch = attributes.match(/class="([^"]+)"/);
+    const styleMatch = attributes.match(/style="([^"]+)"/);
+
+    assert.ok(ariaLabelMatch, "calendar article should include an aria-label");
+    assert.ok(classNameMatch, "calendar article should include classes");
+    assert.ok(styleMatch, "calendar article should include inline positioning styles");
+
+    return {
+      ariaLabel: ariaLabelMatch[1],
+      className: classNameMatch[1],
+      style: parseStyleAttribute(styleMatch[1]),
+      tag,
+    };
+  });
+}
+
+function getArticleByCourse(markup: string, courseDesignation: string) {
+  const article = getDesktopCalendarArticles(markup).find((candidate) =>
+    candidate.ariaLabel.startsWith(courseDesignation),
+  );
+
+  assert.ok(article, `expected calendar article for ${courseDesignation}`);
+  return article;
+}
+
+function getCourseColorSignature(className: string): string {
+  return className
+    .split(/\s+/)
+    .filter((token) => /^(bg-|border-)/.test(token) && token !== "border")
+    .sort()
+    .join(" ");
+}
+
 test("ScheduleCalendar assigns separate desktop lanes to overlapping meetings", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
@@ -774,14 +833,15 @@ test("ScheduleCalendar assigns separate desktop lanes to overlapping meetings", 
     />,
   );
 
-  const desktopCardStyles = [...markup.matchAll(/<article[^>]*style="([^"]+)"/g)].map((match) => match[1]);
+  const compSciArticle = getArticleByCourse(markup, "COMP SCI 577");
+  const mathArticle = getArticleByCourse(markup, "MATH 240");
 
-  assert.equal(desktopCardStyles.length, 2);
-  assert.match(desktopCardStyles[0], /left:/);
-  assert.match(desktopCardStyles[0], /width:/);
-  assert.match(desktopCardStyles[1], /left:/);
-  assert.match(desktopCardStyles[1], /width:/);
-  assert.notEqual(desktopCardStyles[0], desktopCardStyles[1]);
+  assert.equal(getDesktopCalendarArticles(markup).length, 2);
+  assert.ok(compSciArticle.style.has("left"), "overlapping article should get a lane offset");
+  assert.ok(compSciArticle.style.has("width"), "overlapping article should get a lane width");
+  assert.ok(mathArticle.style.has("left"), "second overlapping article should get a lane offset");
+  assert.ok(mathArticle.style.has("width"), "second overlapping article should get a lane width");
+  assert.notEqual(compSciArticle.style.get("left"), mathArticle.style.get("left"));
 });
 
 test("ScheduleCalendar does not treat boundary-touching meetings as overlapping lanes", () => {
@@ -830,12 +890,15 @@ test("ScheduleCalendar does not treat boundary-touching meetings as overlapping 
     />,
   );
 
-  const desktopCardStyles = [...markup.matchAll(/<article[^>]*style="([^"]+)"/g)].map((match) => match[1]);
+  const compSciArticle = getArticleByCourse(markup, "COMP SCI 577");
+  const mathArticle = getArticleByCourse(markup, "MATH 240");
+  const statArticle = getArticleByCourse(markup, "STAT 340");
 
-  assert.equal(desktopCardStyles.length, 3);
-  assert.match(desktopCardStyles[0], /width:/);
-  assert.match(desktopCardStyles[1], /width:/);
-  assert.doesNotMatch(desktopCardStyles[2], /width:(?!100(?:\.0+)?%)/);
+  assert.equal(getDesktopCalendarArticles(markup).length, 3);
+  assert.ok(compSciArticle.style.has("width"), "first overlapping article should shrink into a lane");
+  assert.ok(mathArticle.style.has("width"), "second overlapping article should shrink into a lane");
+  assert.equal(statArticle.style.has("left"), false, "boundary-touching article should not be offset into an overlap lane");
+  assert.equal(statArticle.style.has("width"), false, "boundary-touching article should keep the default full-width layout");
 });
 
 test("ScheduleCalendar gives eight selected courses distinct color slots", () => {
@@ -863,10 +926,12 @@ test("ScheduleCalendar gives eight selected courses distinct color slots", () =>
     />,
   );
 
-  const desktopCardClasses = [...markup.matchAll(/<article[^>]*class="([^"]+)"/g)].map((match) => match[1]);
+  const colorSignatures = getDesktopCalendarArticles(markup).map((article) =>
+    getCourseColorSignature(article.className),
+  );
 
-  assert.equal(desktopCardClasses.length, 8);
-  assert.equal(new Set(desktopCardClasses).size, 8);
+  assert.equal(colorSignatures.length, 8);
+  assert.equal(new Set(colorSignatures).size, 8);
 });
 
 test("ScheduleCalendar avoids interactive grid semantics for static calendar content", () => {
@@ -885,10 +950,18 @@ test("ScheduleCalendar avoids interactive grid semantics for static calendar con
     />,
   );
 
-  assert.doesNotMatch(markup, /role="grid"/);
-  assert.doesNotMatch(markup, /role="columnheader"/);
-  assert.doesNotMatch(markup, /role="gridcell"/);
-  assert.doesNotMatch(markup, /tabindex="0"/i);
+  const gridTag = markup.match(/<div[^>]*class="grid grid-cols-\[4rem_repeat\(var\(--calendar-columns\),minmax\(0,1fr\)\)\] gap-3"[^>]*>/)?.[0];
+  const columnHeaderTags = [...markup.matchAll(/<div[^>]*class="rounded-lg bg-surface px-3 py-2 text-center text-sm font-semibold"[^>]*>/g)].map((match) => match[0]);
+  const weekdayCellTags = [...markup.matchAll(/<div[^>]*aria-label="(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*class="relative rounded-lg border border-border bg-surface"[^>]*>/g)].map((match) => match[0]);
+  const articleTags = getDesktopCalendarArticles(markup).map((article) => article.tag);
+
+  assert.ok(gridTag, "desktop calendar grid wrapper should be present");
+  assert.equal(columnHeaderTags.length >= 5, true);
+  assert.equal(weekdayCellTags.length >= 5, true);
+  assert.doesNotMatch(gridTag, /role=/);
+  assert.equal(columnHeaderTags.some((tag) => /role=/.test(tag)), false);
+  assert.equal(weekdayCellTags.some((tag) => /role=/.test(tag)), false);
+  assert.equal(articleTags.some((tag) => /tabindex=/i.test(tag)), false);
 });
 
 test("CoursePicker stays prop-driven and presentational", () => {
