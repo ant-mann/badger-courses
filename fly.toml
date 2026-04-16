@@ -1,0 +1,26 @@
+app = "uw-madison-courses"
+primary_region = "ord"
+
+[build]
+  # Deploy from the repo root so the Dockerfile can copy shared workspace files.
+  dockerfile = "web/Dockerfile"
+
+  [build.args]
+    MADGRADES_DB_SOURCE_PATH = "../data/fall-2026.sqlite"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  MADGRADES_DB_PATH = "/app/web/data/fall-2026.sqlite"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
