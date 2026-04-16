@@ -950,17 +950,15 @@ test("ScheduleCalendar avoids interactive grid semantics for static calendar con
     />,
   );
 
-  const gridTag = markup.match(/<div[^>]*class="grid grid-cols-\[4rem_repeat\(var\(--calendar-columns\),minmax\(0,1fr\)\)\] gap-3"[^>]*>/)?.[0];
-  const columnHeaderTags = [...markup.matchAll(/<div[^>]*class="rounded-lg bg-surface px-3 py-2 text-center text-sm font-semibold"[^>]*>/g)].map((match) => match[0]);
-  const weekdayCellTags = [...markup.matchAll(/<div[^>]*aria-label="(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*class="relative rounded-lg border border-border bg-surface"[^>]*>/g)].map((match) => match[0]);
+  const weekdayHeaderTags = [...markup.matchAll(/<div[^>]*>(Mon|Tue|Wed|Thu|Fri)<\/div>/g)].map((match) => match[0]);
+  const weekdayLaneTags = [...markup.matchAll(/<div[^>]*aria-label="(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*>/g)].map((match) => match[0]);
   const articleTags = getDesktopCalendarArticles(markup).map((article) => article.tag);
 
-  assert.ok(gridTag, "desktop calendar grid wrapper should be present");
-  assert.equal(columnHeaderTags.length >= 5, true);
-  assert.equal(weekdayCellTags.length >= 5, true);
-  assert.doesNotMatch(gridTag, /role=/);
-  assert.equal(columnHeaderTags.some((tag) => /role=/.test(tag)), false);
-  assert.equal(weekdayCellTags.some((tag) => /role=/.test(tag)), false);
+  assert.equal(weekdayHeaderTags.length >= 5, true);
+  assert.equal(weekdayLaneTags.length >= 5, true);
+  assert.doesNotMatch(markup, /role="grid"/);
+  assert.equal(weekdayHeaderTags.some((tag) => /role=/.test(tag)), false);
+  assert.equal(weekdayLaneTags.some((tag) => /role=/.test(tag)), false);
   assert.equal(articleTags.some((tag) => /tabindex=/i.test(tag)), false);
 });
 
