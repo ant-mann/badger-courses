@@ -16,3 +16,8 @@ export function getDb(): Database.Database {
 
   return cachedDb;
 }
+
+export function __resetDbForTests(): void {
+  cachedDb?.close();
+  cachedDb = null;
+}

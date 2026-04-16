@@ -127,8 +127,14 @@ const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 
 let hasInstructorHistoryView: boolean | null = null;
+let hasCourseSearchFtsTable: boolean | null = null;
 
 export const normalizeDesignation = normalizeCourseDesignation;
+
+export function __resetCourseDataCachesForTests(): void {
+  hasInstructorHistoryView = null;
+  hasCourseSearchFtsTable = null;
+}
 
 export function parseStringArrayJson(value: string | null): string[] {
   if (!value) {
@@ -326,7 +332,7 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
   const searchContext = buildCourseSearchContext(query);
   let rows: Row[];
 
-  if (searchContext.matchQuery) {
+  if (searchContext.matchQuery && hasCourseSearchTable(db)) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
 
@@ -431,6 +437,124 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
         compactQueryLike,
         searchContext.normalizedQuery,
         normalizedQueryLike,
+        ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
+        limit,
+      ) as Row[];
+  } else if (searchContext.matchQuery) {
+    const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
+    const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
+    const queryTokens = searchContext.normalizedQuery.split(" ").filter((token) => token.length > 0);
+    const tokenMatchClauses = queryTokens
+      .map(
+        () => `
+              (
+                EXISTS (
+                  SELECT 1
+                  FROM course_cross_listing_overview_v ccl_match
+                  WHERE ccl_match.term_code = co.term_code
+                    AND ccl_match.course_id = co.course_id
+                    AND (
+                      LOWER(ccl_match.alias_course_designation) LIKE ? ESCAPE '\\'
+                      OR REPLACE(LOWER(ccl_match.alias_course_designation), ' ', '') LIKE ? ESCAPE '\\'
+                    )
+                )
+                OR LOWER(co.title) LIKE ? ESCAPE '\\'
+                OR LOWER(c.description) LIKE ? ESCAPE '\\'
+              )
+            `,
+      )
+      .join(" AND ");
+    const tokenMatchParams = queryTokens.flatMap((token) => {
+      const tokenLike = `%${escapeLike(token)}%`;
+      return [tokenLike, tokenLike, tokenLike, tokenLike];
+    });
+
+    rows = db
+      .prepare(
+        `
+          WITH matched_courses AS (
+            SELECT
+              co.term_code,
+              co.course_id,
+              MAX(CASE WHEN LOWER(ccl.alias_course_designation) = ? THEN 1 ELSE 0 END) AS exact_alias_match,
+              MAX(CASE WHEN LOWER(ccl.alias_course_designation) LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_alias_match,
+              MAX(CASE WHEN REPLACE(LOWER(ccl.alias_course_designation), ' ', '') LIKE REPLACE(?, ' ', '') ESCAPE '\\' THEN 1 ELSE 0 END) AS compact_alias_match,
+              MAX(CASE WHEN LOWER(co.title) = ? THEN 1 ELSE 0 END) AS exact_title_match,
+              MAX(CASE WHEN LOWER(co.title) LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_title_match
+            FROM course_overview_v co
+            JOIN courses c
+              ON c.term_code = co.term_code AND c.course_id = co.course_id
+            JOIN course_cross_listing_overview_v ccl
+              ON ccl.term_code = co.term_code AND ccl.course_id = co.course_id
+            WHERE ${tokenMatchClauses}
+            GROUP BY co.term_code, co.course_id
+          ),
+          combined_matches AS (
+            SELECT
+              co.course_designation,
+              co.title,
+              co.minimum_credits,
+              co.maximum_credits,
+              co.cross_list_designations_json,
+              co.section_count,
+              co.has_any_open_seats,
+              co.has_any_waitlist,
+              co.has_any_full_section,
+              mc.exact_alias_match,
+              mc.prefix_alias_match,
+              mc.compact_alias_match,
+              mc.exact_title_match,
+              mc.prefix_title_match,
+              ROW_NUMBER() OVER (
+                PARTITION BY co.course_designation
+                ORDER BY
+                  mc.exact_alias_match DESC,
+                  mc.compact_alias_match DESC,
+                  mc.prefix_alias_match DESC,
+                  mc.exact_title_match DESC,
+                  mc.prefix_title_match DESC,
+                  COALESCE(co.section_count, 0) DESC,
+                  COALESCE(co.has_any_open_seats, 0) DESC,
+                  COALESCE(co.has_any_full_section, 0) DESC,
+                  co.title ASC,
+                  co.course_id ASC
+              ) AS designation_rank
+            FROM course_overview_v co
+            JOIN matched_courses mc
+              ON mc.term_code = co.term_code AND mc.course_id = co.course_id
+            ${normalizedSubjectPrefix ? "WHERE UPPER(co.course_designation) LIKE ? ESCAPE '\\'" : ""}
+          )
+          SELECT
+            course_designation,
+            title,
+            minimum_credits,
+            maximum_credits,
+            cross_list_designations_json,
+            section_count,
+            has_any_open_seats,
+            has_any_waitlist,
+            has_any_full_section
+          FROM combined_matches
+          WHERE designation_rank = 1
+          ORDER BY
+            exact_alias_match DESC,
+            compact_alias_match DESC,
+            prefix_alias_match DESC,
+            exact_title_match DESC,
+            prefix_title_match DESC,
+            COALESCE(has_any_open_seats, 0) DESC,
+            COALESCE(section_count, 0) DESC,
+            course_designation ASC
+          LIMIT ?
+        `,
+      )
+      .all(
+        searchContext.normalizedQuery,
+        normalizedQueryLike,
+        compactQueryLike,
+        searchContext.normalizedQuery,
+        normalizedQueryLike,
+        ...tokenMatchParams,
         ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
         limit,
       ) as Row[];
@@ -827,6 +951,19 @@ function supportsInstructorHistoryView(db: Database.Database): boolean {
 
   hasInstructorHistoryView = row?.name === "current_term_section_instructor_grade_overview_v";
   return hasInstructorHistoryView;
+}
+
+function hasCourseSearchTable(db: Database.Database): boolean {
+  if (hasCourseSearchFtsTable !== null) {
+    return hasCourseSearchFtsTable;
+  }
+
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'")
+    .get() as Row | undefined;
+
+  hasCourseSearchFtsTable = row?.name === "course_search_fts";
+  return hasCourseSearchFtsTable;
 }
 
 function resolveCanonicalCourse(

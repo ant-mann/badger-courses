@@ -2,7 +2,9 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildCourseDbFixture, makeCourse } from "../../../tests/helpers/madgrades-db-fixture.mjs";
+import { __resetDbForTests } from "./db";
 import {
+  __resetCourseDataCachesForTests,
   getCourseDetail,
   normalizeDesignation,
   parseCourseGroupsJson,
@@ -13,14 +15,17 @@ import {
 function buildCourseDataFixture() {
   return buildCourseDbFixture({
     courses: [
-      makeCourse({
-        termCode: "1272",
-        courseId: "005770",
-        subjectCode: "302",
-        catalogNumber: "577",
-        courseDesignation: "COMP SCI 577",
-        title: "Algorithms for Large Data",
-      }),
+      {
+        ...makeCourse({
+          termCode: "1272",
+          courseId: "005770",
+          subjectCode: "302",
+          catalogNumber: "577",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+        }),
+        description: "Covers petabyte-scale systems and external-memory techniques.",
+      },
       makeCourse({
         termCode: "1272",
         courseId: "023191",
@@ -707,7 +712,11 @@ const fixture = buildCourseDataFixture();
 seedCourseDetailRows(fixture.db);
 seedTopicVariantRows(fixture.db);
 process.env.MADGRADES_DB_PATH = fixture.dbPath;
-after(() => fixture.cleanup());
+after(() => {
+  __resetDbForTests();
+  __resetCourseDataCachesForTests();
+  fixture.cleanup();
+});
 
 test("normalizeDesignation uppercases and trims values", () => {
   assert.equal(normalizeDesignation("  Comp Sci 577  "), "COMP SCI 577");
@@ -784,6 +793,174 @@ test("searchCourses matches cross-listed alias designations through the FTS inde
     hasAnyWaitlist: false,
     hasAnyFullSection: true,
   });
+});
+
+test("searchCourses falls back when the FTS table is missing", () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP TABLE course_search_fts");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+
+    const results = searchCourses({ query: "engl 462", limit: 99 });
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0], {
+      designation: "ASIAN AM 462",
+      title: "Topic in Asian American Literature",
+      minimumCredits: 3,
+      maximumCredits: 3,
+      crossListDesignations: ["ASIAN AM 462", "ENGL 462"],
+      sectionCount: 2,
+      hasAnyOpenSeats: true,
+      hasAnyWaitlist: false,
+      hasAnyFullSection: true,
+    });
+  } finally {
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  }
+});
+
+test("searchCourses fallback matches reordered alias tokens when the FTS table is missing", () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP TABLE course_search_fts");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+
+    const results = searchCourses({ query: "462 engl", limit: 99 });
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0], {
+      designation: "ASIAN AM 462",
+      title: "Topic in Asian American Literature",
+      minimumCredits: 3,
+      maximumCredits: 3,
+      crossListDesignations: ["ASIAN AM 462", "ENGL 462"],
+      sectionCount: 2,
+      hasAnyOpenSeats: true,
+      hasAnyWaitlist: false,
+      hasAnyFullSection: true,
+    });
+  } finally {
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  }
+});
+
+test("searchCourses fallback matches tokens split across alias and title when the FTS table is missing", () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP TABLE course_search_fts");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+
+    const results = searchCourses({ query: "engl literature", limit: 99 });
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0], {
+      designation: "ASIAN AM 462",
+      title: "Topic in Asian American Literature",
+      minimumCredits: 3,
+      maximumCredits: 3,
+      crossListDesignations: ["ASIAN AM 462", "ENGL 462"],
+      sectionCount: 2,
+      hasAnyOpenSeats: true,
+      hasAnyWaitlist: false,
+      hasAnyFullSection: true,
+    });
+  } finally {
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  }
+});
+
+test("searchCourses fallback matches description-only queries when the FTS table is missing", () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP TABLE course_search_fts");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+
+    const results = searchCourses({ query: "petabyte", limit: 99 });
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0], {
+      designation: "COMP SCI 577",
+      title: "Algorithms for Large Data",
+      minimumCredits: 3,
+      maximumCredits: 3,
+      crossListDesignations: ["COMP SCI 577"],
+      sectionCount: 1,
+      hasAnyOpenSeats: true,
+      hasAnyWaitlist: false,
+      hasAnyFullSection: false,
+    });
+  } finally {
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  }
+});
+
+test("searchCourses fallback does not return false positives from token precedence when the FTS table is missing", () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP TABLE course_search_fts");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+
+    assert.deepEqual(searchCourses({ query: "engl data", limit: 99 }), []);
+  } finally {
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  }
+});
+
+test("searchCourses fallback applies subject filtering when the FTS table is missing", () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP TABLE course_search_fts");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+
+    const results = searchCourses({ query: "literature", subject: "comp sci", limit: 99 });
+
+    assert.deepEqual(results, []);
+  } finally {
+    __resetDbForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  }
 });
 
 test("searchCourses matches compact subject queries for spaced-letter aliases", () => {
