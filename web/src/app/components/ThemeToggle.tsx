@@ -10,15 +10,18 @@ export function ThemeToggle() {
   // Avoid hydration mismatch — only render after mount
   useEffect(() => setMounted(true), []);
 
-  if (!mounted) return null;
-
   const isDark = resolvedTheme === "dark";
 
   return (
     <button
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-text-weak transition-colors hover:bg-muted hover:text-navy"
+      aria-hidden={!mounted}
+      disabled={!mounted}
+      tabIndex={mounted ? 0 : -1}
+      className={`flex h-9 w-9 items-center justify-center rounded-full border border-border text-text-weak transition-colors ${
+        mounted ? "hover:bg-muted hover:text-navy" : "pointer-events-none opacity-0"
+      }`}
     >
       {isDark ? (
         // Sun icon

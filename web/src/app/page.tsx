@@ -33,11 +33,11 @@ export default async function Home({ searchParams }: HomePageProps) {
   }
 
   return (
-    <main className="min-h-screen bg-bg text-navy">
+    <main className="flex-1 bg-bg text-navy">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10 sm:px-10 sm:py-14">
         <section className="flex flex-col gap-4">
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
-            UW-Madison Course Explorer
+            Badger Courses
           </p>
           <div className="flex flex-col gap-3">
             <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">

@@ -3,7 +3,7 @@ import { ScheduleBuilder } from "./ScheduleBuilder";
 
 export default function ScheduleBuilderPage() {
   return (
-    <main className="min-h-screen bg-bg text-navy">
+    <main className="flex-1 bg-bg text-navy">
       <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 px-6 py-10 sm:px-10 sm:py-14">
         <section className="flex flex-col gap-4">
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
