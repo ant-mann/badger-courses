@@ -769,6 +769,44 @@ test("searchCourses collapses duplicate designations and keeps the live offering
   });
 });
 
+test("searchCourses matches cross-listed alias designations through the FTS index", () => {
+  const results = searchCourses({ query: "engl 462", limit: 99 });
+
+  assert.equal(results.length, 1);
+  assert.deepEqual(results[0], {
+    designation: "ASIAN AM 462",
+    title: "Topic in Asian American Literature",
+    minimumCredits: 3,
+    maximumCredits: 3,
+    crossListDesignations: ["ASIAN AM 462", "ENGL 462"],
+    sectionCount: 2,
+    hasAnyOpenSeats: true,
+    hasAnyWaitlist: false,
+    hasAnyFullSection: true,
+  });
+});
+
+test("searchCourses matches compact subject queries for spaced-letter aliases", () => {
+  const results = searchCourses({ query: "lis 102", limit: 99 });
+
+  assert.equal(results.length, 1);
+  assert.deepEqual(results[0], {
+    designation: "COMP SCI 102",
+    title: "Computing Ideas",
+    minimumCredits: 3,
+    maximumCredits: 3,
+    crossListDesignations: ["COMP SCI 102", "L I S 102"],
+    sectionCount: 2,
+    hasAnyOpenSeats: true,
+    hasAnyWaitlist: false,
+    hasAnyFullSection: false,
+  });
+});
+
+test("searchCourses returns a controlled empty list for punctuation-only queries", () => {
+  assert.deepEqual(searchCourses({ query: "((( )))", limit: 99 }), []);
+});
+
 test("getCourseDetail returns sections meetings prerequisites grades and schedule packages", () => {
   const detail = getCourseDetail(" comp sci 577 ");
 

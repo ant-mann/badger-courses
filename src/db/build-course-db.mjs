@@ -104,6 +104,60 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function tokenizeSearchText(value) {
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  return value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+}
+
+function normalizeSearchText(value) {
+  return tokenizeSearchText(value).join(' ');
+}
+
+function makeCompactCourseDesignation(value) {
+  const tokens = tokenizeSearchText(value);
+
+  if (tokens.length === 0) {
+    return '';
+  }
+
+  const numericTokenIndex = tokens.findIndex((token) => /\d/.test(token));
+  if (numericTokenIndex <= 0) {
+    return tokens.join(' ');
+  }
+
+  return [tokens.slice(0, numericTokenIndex).join(''), ...tokens.slice(numericTokenIndex)].join(' ');
+}
+
+function buildCourseSearchRows(courseRows, courseCrossListingRows) {
+  const courseRowsByKey = new Map(
+    courseRows.map((courseRow) => [`${courseRow.term_code}:${courseRow.course_id}`, courseRow]),
+  );
+
+  return courseCrossListingRows.flatMap((aliasRow) => {
+    const courseRow = courseRowsByKey.get(`${aliasRow.term_code}:${aliasRow.course_id}`);
+    if (!courseRow) {
+      return [];
+    }
+
+    const aliasDesignation = aliasRow.course_designation ?? courseRow.course_designation ?? '';
+
+    return {
+      term_code: String(aliasRow.term_code ?? courseRow.term_code ?? ''),
+      course_id: String(aliasRow.course_id ?? courseRow.course_id ?? ''),
+      canonical_course_designation: String(courseRow.course_designation ?? ''),
+      alias_course_designation: String(aliasDesignation),
+      alias_course_designation_normalized: normalizeSearchText(aliasDesignation),
+      alias_course_designation_compact: makeCompactCourseDesignation(aliasDesignation),
+      title: String(courseRow.title ?? ''),
+      title_normalized: normalizeSearchText(courseRow.title ?? ''),
+      description: String(courseRow.description ?? ''),
+    };
+  });
+}
+
 function derivePackageId(pkg, entry, entryIndex, packageIndex) {
   const termCode = entry.course?.termCode ?? pkg.termCode ?? 'unknown-term';
   const subjectCode = entry.course?.subjectCode ?? pkg.subjectCode ?? 'unknown-subject';
@@ -1175,8 +1229,10 @@ export function buildCourseDatabase({
   const sourceTermCode = packageSnapshot.termCode ?? courses[0]?.termCode ?? mergedPackageRecords[0]?.termCode ?? 'unknown';
   const packageMetadata = buildPackageMetadata(mergedPackageRecords, courseRecordsByKey);
   const prerequisiteRows = buildPrerequisiteRows(courseRows);
+  const courseSearchRows = buildCourseSearchRows(courseRows, courseCrossListingRows);
 
   fs.mkdirSync(path.dirname(outputDbPath), { recursive: true });
+  fs.rmSync(outputDbPath, { force: true });
 
   const db = new Database(outputDbPath);
 
@@ -1214,6 +1270,17 @@ export function buildCourseDatabase({
     ) VALUES (
       @term_code, @course_id, @course_designation, @full_course_designation,
       @subject_code, @catalog_number, @is_primary
+    )
+    `);
+    const insertCourseSearch = db.prepare(`
+    INSERT INTO course_search_fts (
+      term_code, course_id, canonical_course_designation, alias_course_designation,
+      alias_course_designation_normalized, alias_course_designation_compact, title, title_normalized,
+      description
+    ) VALUES (
+      @term_code, @course_id, @canonical_course_designation, @alias_course_designation,
+      @alias_course_designation_normalized, @alias_course_designation_compact, @title, @title_normalized,
+      @description
     )
     `);
     const insertSection = db.prepare(`
@@ -1307,6 +1374,7 @@ export function buildCourseDatabase({
     const insertAll = db.transaction(() => {
       for (const row of courseRows) insertCourse.run(row);
       for (const row of courseCrossListingRows) insertCourseCrossListing.run(row);
+      for (const row of courseSearchRows) insertCourseSearch.run(row);
       for (const row of prerequisiteRows.rules) insertPrerequisiteRule.run(row);
       for (const row of prerequisiteRows.summaries) insertPrerequisiteCourseSummary.run(row);
       for (const row of prerequisiteRows.nodes) insertPrerequisiteNode.run(row);

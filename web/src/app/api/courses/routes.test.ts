@@ -233,6 +233,36 @@ test("course search route requires q or subject", async () => {
   });
 });
 
+test("course search route returns FTS-backed matches", async () => {
+  const response = searchCourses(new Request("https://example.test/api/courses/search?q=algorithms"));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    courses: [
+      {
+        designation: "COMP SCI 577",
+        title: "Algorithms for Large Data",
+        minimumCredits: 3,
+        maximumCredits: 3,
+        crossListDesignations: ["COMP SCI 577"],
+        sectionCount: 1,
+        hasAnyOpenSeats: true,
+        hasAnyWaitlist: false,
+        hasAnyFullSection: false,
+      },
+    ],
+  });
+});
+
+test("course search route returns a controlled empty list for punctuation-only queries", async () => {
+  const response = searchCourses(new Request("https://example.test/api/courses/search?q=%28%28%28"));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    courses: [],
+  });
+});
+
 test("course detail route returns 404 json for missing courses", async () => {
   const response = await getCourseDetail(new Request("https://example.test/api/courses/NOPE"), {
     params: Promise.resolve({ designation: "NOPE 999" }),
