@@ -39,13 +39,13 @@ function badgeClasses(sectionType: string | null): string {
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   if (!schedule) {
     return (
-      <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">
             Weekly Calendar
           </h2>
         </div>
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           Select a generated schedule to see its meetings laid out across the week.
         </div>
       </section>
@@ -54,13 +54,13 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
 
   if (entries.length === 0) {
     return (
-      <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">
             Weekly Calendar
           </h2>
         </div>
-        <div className="rounded-3xl border border-black/10 bg-black/[0.02] p-5 text-sm leading-7 text-black/65 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65">
+        <div className="rounded-3xl border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
           No calendar meetings are available for this selected schedule.
         </div>
       </section>
@@ -75,21 +75,21 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
 
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Weekly Calendar
         </h2>
-        <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+        <p className="text-sm leading-7 text-text-weak">
           {schedule.packages.length} section choice{schedule.packages.length === 1 ? "" : "s"} in the selected result.
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04]">
+      <div className="overflow-x-auto rounded-3xl border border-border bg-muted p-4">
         <div className="grid min-w-[60rem] grid-cols-[4rem_repeat(var(--calendar-columns),minmax(0,1fr))] gap-3" style={{ ["--calendar-columns" as string]: visibleWeekdays.length }}>
           <div />
           {visibleWeekdays.map((weekday) => (
-            <div key={weekday} className="rounded-2xl bg-white/70 px-3 py-2 text-center text-sm font-semibold dark:bg-white/[0.05]">
+            <div key={weekday} className="rounded-2xl bg-surface px-3 py-2 text-center text-sm font-semibold">
               {WEEKDAY_LABELS[weekday]}
             </div>
           ))}
@@ -101,7 +101,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
               return (
                 <div
                   key={labelMinute}
-                  className="absolute left-0 right-0 -translate-y-1/2 text-xs text-black/50 dark:text-white/50"
+                  className="absolute left-0 right-0 -translate-y-1/2 text-xs text-text-faint"
                   style={{ top: `${top}%` }}
                 >
                   {formatMinutes(labelMinute)}
@@ -117,7 +117,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
               <div
                 key={weekday}
                 aria-label={WEEKDAY_LABELS[weekday]}
-                className="relative rounded-2xl border border-black/10 bg-white/70 dark:border-white/10 dark:bg-white/[0.05]"
+                className="relative rounded-2xl border border-border bg-surface"
                 style={{ height: `${calendarHeightRem}rem` }}
               >
                 {timeLabels.map((labelMinute) => {
@@ -126,7 +126,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                   return (
                     <div
                       key={labelMinute}
-                      className="absolute left-0 right-0 border-t border-dashed border-black/20 dark:border-white/10"
+                      className="absolute left-0 right-0 border-t border-dashed border-border"
                       style={{ top: `${top}%` }}
                     />
                   );
@@ -140,7 +140,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                   return (
                     <article
                       key={`${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}-${entry.meetingType ?? "meeting"}`}
-                      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-black/10 bg-black/[0.06] p-1 dark:border-white/10 dark:bg-white/[0.1]"
+                      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-border bg-navy/[0.06] p-1"
                       style={{ top: `${top}%`, height: `${Math.max(height, 6)}%`, position: "absolute" }}
                     >
                       <div className="flex flex-col gap-0 text-xs leading-tight">
@@ -152,10 +152,10 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                             </span>
                           ) : null}
                         </div>
-                        <p className="text-black/60 dark:text-white/60">
+                        <p className="text-text-faint">
                           {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
                         </p>
-                        <p className="truncate text-black/60 dark:text-white/60">
+                        <p className="truncate text-text-faint">
                           {[entry.buildingName, entry.room].filter(Boolean).join(" • ") || "Location unavailable"}
                         </p>
                       </div>

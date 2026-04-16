@@ -15,13 +15,13 @@ export function SchedulePriorityList({
   onMoveRule,
 }: SchedulePriorityListProps) {
   return (
-    <section className="flex flex-col gap-4 rounded-[2rem] border border-black/10 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+    <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-black/55 dark:text-white/55">
+        <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
           Schedule Priorities
         </p>
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">Choose ranking order</h2>
-        <p className="text-sm leading-7 text-black/68 dark:text-white/68">
+        <p className="text-sm leading-7 text-text-weak">
           Schedules are generated using this priority order top to bottom.
         </p>
       </div>
@@ -30,10 +30,10 @@ export function SchedulePriorityList({
         {preferenceOrder.map((ruleId, index) => (
           <article
             key={ruleId}
-            className="flex flex-col gap-3 rounded-3xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.04] sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 rounded-3xl border border-border bg-muted p-4 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-black/55 dark:text-white/55">{index + 1}.</span>
+              <span className="text-sm font-medium text-text-faint">{index + 1}.</span>
               <span className="text-base font-semibold">{PREFERENCE_RULE_LABELS[ruleId]}</span>
             </div>
 
@@ -43,7 +43,7 @@ export function SchedulePriorityList({
                 disabled={index === 0}
                 onClick={() => onMoveRule(ruleId, -1)}
                 aria-label="Move up"
-                className="min-h-11 flex-1 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                className="min-h-11 flex-1 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-55"
               >
                 ↑
               </button>
@@ -52,7 +52,7 @@ export function SchedulePriorityList({
                 disabled={index === preferenceOrder.length - 1}
                 onClick={() => onMoveRule(ruleId, 1)}
                 aria-label="Move down"
-                className="min-h-11 flex-1 rounded-full border border-black/10 px-4 text-sm font-medium transition hover:border-black/20 hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/[0.06]"
+                className="min-h-11 flex-1 rounded-full border border-border px-4 text-sm font-medium transition hover:border-blue/20 hover:bg-blue/[0.03] disabled:cursor-not-allowed disabled:opacity-55"
               >
                 ↓
               </button>
