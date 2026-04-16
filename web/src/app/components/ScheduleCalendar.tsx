@@ -235,52 +235,41 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
 function buildPositionedEntries(entries: ScheduleCalendarEntry[]): PositionedCalendarEntry[] {
   const sortedEntries = [...entries].sort(compareEntriesByTime);
   const positionedEntries: PositionedCalendarEntry[] = [];
-  let clusterEntries: ScheduleCalendarEntry[] = [];
-  let clusterEnd = -1;
+  const activeEntries: PositionedCalendarEntry[] = [];
+  const laneEndTimes: number[] = [];
 
   for (const entry of sortedEntries) {
-    if (clusterEntries.length === 0 || entry.startMinutes < clusterEnd) {
-      clusterEntries.push(entry);
-      clusterEnd = Math.max(clusterEnd, entry.endMinutes);
-      continue;
+    for (let index = activeEntries.length - 1; index >= 0; index -= 1) {
+      if (activeEntries[index].entry.endMinutes <= entry.startMinutes) {
+        activeEntries.splice(index, 1);
+      }
     }
 
-    positionedEntries.push(...positionClusterEntries(clusterEntries));
-    clusterEntries = [entry];
-    clusterEnd = entry.endMinutes;
-  }
+    let laneIndex = laneEndTimes.findIndex((endMinutes) => endMinutes <= entry.startMinutes);
 
-  if (clusterEntries.length > 0) {
-    positionedEntries.push(...positionClusterEntries(clusterEntries));
+    if (laneIndex === -1) {
+      laneIndex = laneEndTimes.length;
+      laneEndTimes.push(entry.endMinutes);
+    } else {
+      laneEndTimes[laneIndex] = entry.endMinutes;
+    }
+
+    const laneCount = activeEntries.length + 1;
+    const positionedEntry: PositionedCalendarEntry = {
+      entry,
+      laneIndex,
+      laneCount,
+    };
+
+    for (const activeEntry of activeEntries) {
+      activeEntry.laneCount = Math.max(activeEntry.laneCount, laneCount);
+    }
+
+    activeEntries.push(positionedEntry);
+    positionedEntries.push(positionedEntry);
   }
 
   return positionedEntries;
-}
-
-function positionClusterEntries(clusterEntries: ScheduleCalendarEntry[]): PositionedCalendarEntry[] {
-  const activeLaneEndTimes: number[] = [];
-  const laneIndexes = new Map<ScheduleCalendarEntry, number>();
-  let laneCount = 0;
-
-  for (const entry of clusterEntries) {
-    let laneIndex = activeLaneEndTimes.findIndex((endMinutes) => endMinutes <= entry.startMinutes);
-
-    if (laneIndex === -1) {
-      laneIndex = activeLaneEndTimes.length;
-      activeLaneEndTimes.push(entry.endMinutes);
-    } else {
-      activeLaneEndTimes[laneIndex] = entry.endMinutes;
-    }
-
-    laneIndexes.set(entry, laneIndex);
-    laneCount = Math.max(laneCount, activeLaneEndTimes.length);
-  }
-
-  return clusterEntries.map((entry) => ({
-    entry,
-    laneIndex: laneIndexes.get(entry) ?? 0,
-    laneCount,
-  }));
 }
 
 function buildLaneStyle(laneIndex: number, laneCount: number): { left: string; width: string } {

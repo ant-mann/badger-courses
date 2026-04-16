@@ -802,6 +802,24 @@ function getCourseColorSignature(className: string): string {
     .join(" ");
 }
 
+function parseWidthPercent(styleValue: string | undefined): number | null {
+  if (!styleValue) {
+    return null;
+  }
+
+  if (styleValue === "100%") {
+    return 100;
+  }
+
+  const calcMatch = styleValue.match(/^calc\(\(100% - ([0-9.]+)%\) \/ ([0-9]+)\)$/);
+
+  if (!calcMatch) {
+    return null;
+  }
+
+  return (100 - Number(calcMatch[1])) / Number(calcMatch[2]);
+}
+
 test("ScheduleCalendar assigns separate desktop lanes to overlapping meetings", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar
@@ -901,6 +919,75 @@ test("ScheduleCalendar does not treat boundary-touching meetings as overlapping 
   assert.ok(mathArticle.style.has("width"), "second overlapping article should shrink into a lane");
   assert.equal(statArticle.style.get("left"), "0%", "boundary-touching article should keep the default left edge");
   assert.equal(statArticle.style.get("width"), "100%", "boundary-touching article should keep the default full-width layout");
+});
+
+test("ScheduleCalendar expands chained overlaps once earlier conflicts end", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-1", "pkg-2", "pkg-3", "pkg-4"],
+        packages: [
+          makeSchedule().packages[0],
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-2",
+            course_designation: "MATH 240",
+            title: "Linear Algebra",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-3",
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-4",
+            course_designation: "ECON 310",
+            title: "Statistics: Measurement in Economics",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          startMinutes: 540,
+          endMinutes: 600,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+          startMinutes: 555,
+          endMinutes: 615,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-3",
+          courseDesignation: "STAT 340",
+          title: "Data Science Modeling I",
+          startMinutes: 570,
+          endMinutes: 630,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-4",
+          courseDesignation: "ECON 310",
+          title: "Statistics: Measurement in Economics",
+          startMinutes: 615,
+          endMinutes: 675,
+        }),
+      ]}
+    />,
+  );
+
+  const statArticle = getArticleByCourse(markup, "STAT 340");
+  const econArticle = getArticleByCourse(markup, "ECON 310");
+  const statWidth = parseWidthPercent(statArticle.style.get("width"));
+  const econWidth = parseWidthPercent(econArticle.style.get("width"));
+
+  assert.notEqual(statWidth, null, "expected a parsable width for the continuing overlap article");
+  assert.notEqual(econWidth, null, "expected a parsable width for the later chained-overlap article");
+  assert.ok(econWidth! > statWidth!, "later chained overlap should widen after the earlier 3-way conflict ends");
 });
 
 test("ScheduleCalendar gives eight selected courses distinct color slots", () => {
