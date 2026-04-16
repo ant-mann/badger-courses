@@ -38,7 +38,7 @@ export default async function Home({ searchParams }: HomePageProps) {
 
   try {
     courses = hasSearch ? searchCourses({ query, subject }) : [];
-  } catch (error) {
+  } catch {
     errorMessage = "Unable to load courses right now. Please try again.";
   }
 
