@@ -39,8 +39,10 @@
   --color-blue:       var(--blue);
   --color-surface:    var(--surface);
   --color-bg:         var(--bg);
+  --color-background: var(--bg);
   --color-border:     var(--border);
   --color-muted:      var(--muted);
+  --color-foreground: var(--navy);
   --color-text-weak:  var(--text-weak);
   --color-text-faint: var(--text-faint);
   --shadow-card:      var(--card-shadow);
