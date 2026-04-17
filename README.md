@@ -136,6 +136,14 @@ pnpm run publish:course-db
 pnpm run publish:madgrades-db
 ```
 
+The publish commands now refresh the existing Turso databases in place via the Turso CLI. They require:
+
+- `turso auth login`
+- `sqlite3` on your `PATH`
+- `TURSO_COURSE_DATABASE_URL` and `TURSO_MADGRADES_DATABASE_URL`
+
+The scripts resolve the configured database names from `turso db list`, dump the local SQLite files, clear remote user tables/views, and load the new dump through `turso db shell`. They no longer use the one-time `/v1/upload` API path.
+
 ### 4. Generate schedule options
 
 Finds conflict-free section combinations for a set of courses and ranks them.
@@ -273,7 +281,7 @@ Configure these Fly runtime env vars in `web/fly.toml` or via per-environment ov
 
 The checked-in `web/fly.toml` may leave `TURSO_COURSE_DATABASE_URL` and `TURSO_MADGRADES_DATABASE_URL` empty as placeholders. You must set both before deploying, either by overriding them per environment or by supplying them through Fly-managed configuration. If they remain empty, the app will fail at runtime.
 
-Set `TURSO_COURSE_AUTH_TOKEN` and `TURSO_MADGRADES_AUTH_TOKEN` as Fly secrets. The app syncs local embedded-replica cache files at the configured replica paths instead of reading a bundled production SQLite database.
+Set `TURSO_COURSE_AUTH_TOKEN` and `TURSO_MADGRADES_AUTH_TOKEN` as Fly secrets for the web app runtime. The app syncs local embedded-replica cache files at the configured replica paths instead of reading a bundled production SQLite database. The local `publish:*` scripts use your authenticated Turso CLI session instead.
 
 ## Key Dependencies
 

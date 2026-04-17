@@ -12,19 +12,13 @@ export async function publishMadgradesDb({
   publishImpl = publishSqliteToTurso,
 } = {}) {
   const databaseUrl = env.TURSO_MADGRADES_DATABASE_URL;
-  const authToken = env.TURSO_MADGRADES_AUTH_TOKEN;
 
   if (!databaseUrl) {
     throw new Error('Missing TURSO_MADGRADES_DATABASE_URL');
   }
 
-  if (!authToken) {
-    throw new Error('Missing TURSO_MADGRADES_AUTH_TOKEN');
-  }
-
   await publishImpl({
     databaseUrl,
-    authToken,
     dbPath: path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite'),
   });
 }
