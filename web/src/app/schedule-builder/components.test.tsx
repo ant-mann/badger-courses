@@ -812,6 +812,7 @@ function getDesktopCalendarSegments(markup: string): Array<{
   ariaLabel: string;
   className: string;
   entryId: string;
+  entryKey: string | null;
   startMinutes: number;
   endMinutes: number;
   style: Map<string, string>;
@@ -819,6 +820,7 @@ function getDesktopCalendarSegments(markup: string): Array<{
 }> {
   return getDesktopCalendarArticles(markup).flatMap((article) => {
     const entryIdMatch = article.tag.match(/data-calendar-entry="([^"]+)"/);
+    const entryKeyMatch = article.tag.match(/data-calendar-entry-key="([^"]+)"/);
     const startMatch = article.tag.match(/data-calendar-segment-start="([0-9]+)"/);
     const endMatch = article.tag.match(/data-calendar-segment-end="([0-9]+)"/);
 
@@ -829,6 +831,7 @@ function getDesktopCalendarSegments(markup: string): Array<{
     return [{
       ...article,
       entryId: entryIdMatch[1],
+      entryKey: entryKeyMatch?.[1] ?? null,
       startMinutes: Number(startMatch[1]),
       endMinutes: Number(endMatch[1]),
     }];
@@ -859,6 +862,15 @@ function getArticleByCourse(markup: string, courseDesignation: string) {
 
   assert.ok(article, `expected calendar article for ${courseDesignation}`);
   return article;
+}
+
+function getArticlesByCourse(markup: string, courseDesignation: string) {
+  const articles = getDesktopCalendarArticles(markup).filter((candidate) =>
+    candidate.ariaLabel.startsWith(courseDesignation),
+  );
+
+  assert.ok(articles.length > 0, `expected calendar articles for ${courseDesignation}`);
+  return articles;
 }
 
 function getCourseColorSignature(className: string): string {
@@ -948,15 +960,15 @@ test("ScheduleCalendar assigns separate desktop lanes to overlapping meetings", 
     />,
   );
 
-  const compSciArticle = getArticleByCourse(markup, "COMP SCI 577");
-  const mathArticle = getArticleByCourse(markup, "MATH 240");
+  const compSciOverlapSegment = getDesktopCalendarSegmentByRange(markup, "pkg-1", 555, 600);
+  const mathOverlapSegment = getDesktopCalendarSegmentByRange(markup, "pkg-2", 555, 600);
 
-  assert.equal(getDesktopCalendarArticles(markup).length, 2);
-  assert.ok(compSciArticle.style.has("left"), "overlapping article should get a lane offset");
-  assert.ok(compSciArticle.style.has("width"), "overlapping article should get a lane width");
-  assert.ok(mathArticle.style.has("left"), "second overlapping article should get a lane offset");
-  assert.ok(mathArticle.style.has("width"), "second overlapping article should get a lane width");
-  assert.notEqual(compSciArticle.style.get("left"), mathArticle.style.get("left"));
+  assert.equal(getDesktopCalendarSegments(markup).length, 4);
+  assert.ok(compSciOverlapSegment.style.has("left"), "overlapping segment should get a lane offset");
+  assert.ok(compSciOverlapSegment.style.has("width"), "overlapping segment should get a lane width");
+  assert.ok(mathOverlapSegment.style.has("left"), "second overlapping segment should get a lane offset");
+  assert.ok(mathOverlapSegment.style.has("width"), "second overlapping segment should get a lane width");
+  assert.notEqual(compSciOverlapSegment.style.get("left"), mathOverlapSegment.style.get("left"));
 });
 
 test("ScheduleCalendar does not treat boundary-touching meetings as overlapping lanes", () => {
@@ -1005,13 +1017,13 @@ test("ScheduleCalendar does not treat boundary-touching meetings as overlapping 
     />,
   );
 
-  const compSciArticle = getArticleByCourse(markup, "COMP SCI 577");
-  const mathArticle = getArticleByCourse(markup, "MATH 240");
+  const compSciArticles = getArticlesByCourse(markup, "COMP SCI 577");
+  const mathArticles = getArticlesByCourse(markup, "MATH 240");
   const statArticle = getArticleByCourse(markup, "STAT 340");
 
-  assert.equal(getDesktopCalendarArticles(markup).length, 3);
-  assert.ok(compSciArticle.style.has("width"), "first overlapping article should shrink into a lane");
-  assert.ok(mathArticle.style.has("width"), "second overlapping article should shrink into a lane");
+  assert.equal(getDesktopCalendarArticles(markup).length >= 3, true);
+  assert.ok(compSciArticles[0].style.has("width"), "first overlapping article should shrink into a lane");
+  assert.ok(mathArticles[0].style.has("width"), "second overlapping article should shrink into a lane");
   assert.equal(statArticle.style.get("left"), "0%", "boundary-touching article should keep the default left edge");
   assert.equal(statArticle.style.get("width"), "100%", "boundary-touching article should keep the default full-width layout");
 });
@@ -1075,21 +1087,25 @@ test("ScheduleCalendar expands chained overlaps once earlier conflicts end", () 
     />,
   );
 
-  const statArticle = getArticleByCourse(markup, "STAT 340");
-  const econArticle = getArticleByCourse(markup, "ECON 310");
-  const statWidth = parseWidthPercent(statArticle.style.get("width"));
-  const econWidth = parseWidthPercent(econArticle.style.get("width"));
-  const statLeft = parseLeftPercent(statArticle.style.get("left"));
-  const econLeft = parseLeftPercent(econArticle.style.get("left"));
+  const statEarlySegment = getDesktopCalendarSegmentByRange(markup, "pkg-3", 570, 600);
+  const statLateSegment = getDesktopCalendarSegmentByRange(markup, "pkg-3", 600, 630);
+  const econSegment = getDesktopCalendarSegmentByRange(markup, "pkg-4", 615, 630);
+  const statEarlyWidth = parseWidthPercent(statEarlySegment.style.get("width"));
+  const statLateWidth = parseWidthPercent(statLateSegment.style.get("width"));
+  const econWidth = parseWidthPercent(econSegment.style.get("width"));
+  const statLateLeft = parseLeftPercent(statLateSegment.style.get("left"));
+  const econLeft = parseLeftPercent(econSegment.style.get("left"));
 
-  assert.notEqual(statWidth, null, "expected a parsable width for the continuing overlap article");
+  assert.notEqual(statEarlyWidth, null, "expected a parsable width for the early continuing overlap segment");
+  assert.notEqual(statLateWidth, null, "expected a parsable width for the late continuing overlap segment");
   assert.notEqual(econWidth, null, "expected a parsable width for the later chained-overlap article");
-  assert.notEqual(statLeft, null, "expected a parsable left offset for the continuing overlap article");
+  assert.notEqual(statLateLeft, null, "expected a parsable left offset for the late continuing overlap segment");
   assert.notEqual(econLeft, null, "expected a parsable left offset for the later chained-overlap article");
-  assert.equal(statWidth, econWidth, "the remaining overlap pair should be reflowed to equal-width lanes");
-  assert.notEqual(statLeft, econLeft, "the remaining overlap pair should occupy different lanes");
+  assert.ok(statLateWidth! > statEarlyWidth!, "the continuing overlap segment should widen after the earlier 3-way conflict ends");
+  assert.equal(statLateWidth, econWidth, "the remaining overlap pair should be reflowed to equal-width lanes");
+  assert.notEqual(statLateLeft, econLeft, "the remaining overlap pair should occupy different lanes");
   assert.ok(
-    Math.abs(statLeft! - econLeft!) <= statWidth! + 1.5,
+    Math.abs(statLateLeft! - econLeft!) <= statLateWidth! + 1.5,
     "the remaining overlap pair should stay contiguous after the earlier 3-way conflict ends",
   );
 });
@@ -1159,12 +1175,12 @@ test("ScheduleCalendar compacts chained overlaps without leaving a dead middle l
     />,
   );
 
-  const longArticle = getArticleByCourse(markup, "C 101");
-  const laterArticle = getArticleByCourse(markup, "D 101");
-  const longWidth = parseWidthPercent(longArticle.style.get("width"));
-  const laterWidth = parseWidthPercent(laterArticle.style.get("width"));
-  const longLeft = parseLeftPercent(longArticle.style.get("left"));
-  const laterLeft = parseLeftPercent(laterArticle.style.get("left"));
+  const longSegment = getDesktopCalendarSegmentByRange(markup, "pkg-c", 600, 660);
+  const laterSegment = getDesktopCalendarSegmentByRange(markup, "pkg-d", 600, 660);
+  const longWidth = parseWidthPercent(longSegment.style.get("width"));
+  const laterWidth = parseWidthPercent(laterSegment.style.get("width"));
+  const longLeft = parseLeftPercent(longSegment.style.get("left"));
+  const laterLeft = parseLeftPercent(laterSegment.style.get("left"));
 
   assert.notEqual(longWidth, null, "expected a parsable width for the continuing meeting");
   assert.notEqual(laterWidth, null, "expected a parsable width for the later meeting");
@@ -1244,26 +1260,26 @@ test("ScheduleCalendar splits middle-survivor overlap topology into compact desk
   );
 
   const renderedSegments = getDesktopCalendarSegments(markup);
-  const earlyAArticle = getArticleByCourse(markup, "A 101");
-  const earlyBArticle = getArticleByCourse(markup, "B 101");
-  const earlyCArticle = getArticleByCourse(markup, "C 101");
-  const laterBArticle = getArticleByCourse(markup, "B 101");
-  const laterDArticle = getArticleByCourse(markup, "D 101");
-  const earlyThreeWayLefts = [earlyAArticle, earlyBArticle, earlyCArticle].map((article) =>
-    parseLeftPercent(article.style.get("left")),
+  const earlyASegment = getDesktopCalendarSegmentByRange(markup, "pkg-a", 570, 600);
+  const earlyBSegment = getDesktopCalendarSegmentByRange(markup, "pkg-b", 570, 600);
+  const earlyCSegment = getDesktopCalendarSegmentByRange(markup, "pkg-c", 570, 600);
+  const laterBSegment = getDesktopCalendarSegmentByRange(markup, "pkg-b", 600, 660);
+  const laterDSegment = getDesktopCalendarSegmentByRange(markup, "pkg-d", 630, 660);
+  const earlyThreeWayLefts = [earlyASegment, earlyBSegment, earlyCSegment].map((segment) =>
+    parseLeftPercent(segment.style.get("left")),
   );
-  const earlyThreeWayWidths = [earlyAArticle, earlyBArticle, earlyCArticle].map((article) =>
-    parseWidthPercent(article.style.get("width")),
+  const earlyThreeWayWidths = [earlyASegment, earlyBSegment, earlyCSegment].map((segment) =>
+    parseWidthPercent(segment.style.get("width")),
   );
-  const earlyAWidth = parseWidthPercent(earlyAArticle.style.get("width"));
-  const earlyBLegacyWidth = parseWidthPercent(earlyBArticle.style.get("width"));
-  const earlyCWidth = parseWidthPercent(earlyCArticle.style.get("width"));
-  const laterBLegacyWidth = parseWidthPercent(laterBArticle.style.get("width"));
-  const laterDWidth = parseWidthPercent(laterDArticle.style.get("width"));
-  const laterBLeft = parseLeftPercent(laterBArticle.style.get("left"));
-  const laterDLeft = parseLeftPercent(laterDArticle.style.get("left"));
+  const earlyAWidth = parseWidthPercent(earlyASegment.style.get("width"));
+  const earlyBWidth = parseWidthPercent(earlyBSegment.style.get("width"));
+  const earlyCWidth = parseWidthPercent(earlyCSegment.style.get("width"));
+  const laterBWidth = parseWidthPercent(laterBSegment.style.get("width"));
+  const laterDWidth = parseWidthPercent(laterDSegment.style.get("width"));
+  const laterBLeft = parseLeftPercent(laterBSegment.style.get("left"));
+  const laterDLeft = parseLeftPercent(laterDSegment.style.get("left"));
 
-  assert.equal(renderedSegments.length, 0, "segment helpers should ignore legacy whole-meeting articles");
+  assert.equal(renderedSegments.length >= 5, true, "segmented desktop overlap should render multiple desktop segments");
 
   assert.equal(
     earlyThreeWayLefts.every((left) => left !== null),
@@ -1281,27 +1297,142 @@ test("ScheduleCalendar splits middle-survivor overlap topology into compact desk
     "the early three-way overlap should place each segment in a separate lane",
   );
   assert.notEqual(earlyAWidth, null, "expected a parsable width for the early A article");
-  assert.notEqual(earlyBLegacyWidth, null, "expected a parsable width for the early B article");
+  assert.notEqual(earlyBWidth, null, "expected a parsable width for the early B segment");
   assert.notEqual(earlyCWidth, null, "expected a parsable width for the early C article");
-  assert.notEqual(laterBLegacyWidth, null, "expected a parsable width for the later B article");
+  assert.notEqual(laterBWidth, null, "expected a parsable width for the later B segment");
   assert.notEqual(laterDWidth, null, "expected a parsable width for the later D segment");
   assert.notEqual(laterBLeft, null, "expected a parsable left offset for the later B segment");
   assert.notEqual(laterDLeft, null, "expected a parsable left offset for the later D segment");
   assert.equal(earlyAWidth, earlyCWidth, "the short-lived early overlap neighbors should share the same width");
-  assert.equal(laterBLegacyWidth, laterDWidth, "the later two-way overlap should compact to equal-width lanes");
+  assert.equal(laterBWidth, laterDWidth, "the later two-way overlap should compact to equal-width lanes");
   assert.ok(
-    earlyBLegacyWidth! < laterDWidth!,
+    earlyBWidth! < laterDWidth!,
     "the continuing middle-survivor meeting should be narrower during the early three-way overlap than the later compact two-way lane",
   );
   assert.notEqual(laterBLeft, laterDLeft, "the later two-way overlap should occupy separate lanes");
   assert.ok(
-    Math.abs(laterBLeft! - laterDLeft!) <= laterBLegacyWidth! + 1.5,
+    Math.abs(laterBLeft! - laterDLeft!) <= laterBWidth! + 1.5,
     "the remaining two-meeting overlap should stay contiguous without a dead middle gap",
   );
   assert.ok(
-    Math.max(laterBLeft!, laterDLeft!) + laterBLegacyWidth! <= 100,
+    Math.max(laterBLeft!, laterDLeft!) + laterBWidth! <= 100,
     "the remaining two-meeting overlap should fit within the day column without horizontal overflow",
   );
+});
+
+test("ScheduleCalendar keeps same-package same-time desktop meetings distinct across slices", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-shared", "pkg-2"],
+        packages: [
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-shared",
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-2",
+            course_designation: "MATH 240",
+            title: "Linear Algebra",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-shared",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionType: "LEC",
+          sectionNumber: "001",
+          buildingName: "Computer Sciences",
+          startMinutes: 540,
+          endMinutes: 660,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-shared",
+          courseDesignation: "COMP SCI 577",
+          title: "Algorithms for Large Data",
+          sectionType: "LAB",
+          sectionNumber: "301",
+          buildingName: "Engineering Centers Building",
+          startMinutes: 540,
+          endMinutes: 660,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+          sectionType: "LEC",
+          sectionNumber: "002",
+          buildingName: "Van Vleck Hall",
+          startMinutes: 570,
+          endMinutes: 600,
+        }),
+      ]}
+    />,
+  );
+
+  const sharedMiddleSegments = getDesktopCalendarSegments(markup).filter(
+    (segment) =>
+      segment.entryId === "pkg-shared" && segment.startMinutes === 570 && segment.endMinutes === 600,
+  );
+
+  assert.equal(sharedMiddleSegments.length, 2, "both same-package meetings should survive the shared middle slice");
+  assert.equal(new Set(sharedMiddleSegments.map((segment) => segment.entryKey)).size, 2, "same-package meetings should expose distinct segment identities in the DOM");
+  assert.notEqual(
+    sharedMiddleSegments[0]?.style.get("left"),
+    sharedMiddleSegments[1]?.style.get("left"),
+    "the same-package meetings should still occupy distinct lanes in the shared middle slice",
+  );
+});
+
+test("ScheduleCalendar hides continuation desktop segments from the accessibility tree", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-1", "pkg-2"],
+        packages: [
+          makeSchedule().packages[0],
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-2",
+            course_designation: "MATH 240",
+            title: "Linear Algebra",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-1",
+          courseDesignation: "COMP SCI 577",
+          startMinutes: 540,
+          endMinutes: 660,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-2",
+          courseDesignation: "MATH 240",
+          title: "Linear Algebra",
+          startMinutes: 570,
+          endMinutes: 600,
+        }),
+      ]}
+    />,
+  );
+
+  const continuingCourseSegments = getDesktopCalendarSegments(markup).filter(
+    (segment) => segment.entryId === "pkg-1",
+  );
+  const accessibleSegments = continuingCourseSegments.filter(
+    (segment) => !/aria-hidden="true"/.test(segment.tag),
+  );
+  const hiddenSegments = continuingCourseSegments.filter((segment) => /aria-hidden="true"/.test(segment.tag));
+
+  assert.equal(continuingCourseSegments.length, 3, "the continuing meeting should be split into three desktop segments");
+  assert.equal(accessibleSegments.length, 1, "only one desktop segment should remain exposed to assistive technology");
+  assert.equal(hiddenSegments.length, 2, "non-content continuation segments should be hidden from the accessibility tree");
 });
 
 test("ScheduleCalendar gives eight selected courses distinct color slots", () => {

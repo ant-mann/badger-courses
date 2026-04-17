@@ -11,12 +11,26 @@ type ScheduleCalendarProps = {
   entries: ScheduleCalendarEntry[];
 };
 
-type PositionedCalendarEntry = {
+type DesktopCalendarSegment = {
   entry: ScheduleCalendarEntry;
+  startMinutes: number;
+  endMinutes: number;
   laneIndex: number;
   laneCount: number;
-  leftPercent: number;
-  widthPercent: number;
+  isSegmentStart: boolean;
+  isSegmentEnd: boolean;
+  showContent: boolean;
+};
+
+type DesktopCalendarSlice = {
+  startMinutes: number;
+  endMinutes: number;
+  entries: ScheduleCalendarEntry[];
+};
+
+type ActiveLaneAssignment = {
+  entry: ScheduleCalendarEntry;
+  laneIndex: number;
 };
 
 const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
@@ -160,7 +174,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
             </div>
 
             {visibleWeekdays.map((weekday) => {
-              const positionedEntries = buildPositionedEntries(
+              const segments = buildDesktopSegments(
                 entries.filter((entry) => entry.weekday === weekday),
               );
 
@@ -183,10 +197,11 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                     );
                   })}
 
-                  {positionedEntries.map(({ entry, laneCount, leftPercent, widthPercent }) => {
-                    const top = getOffsetPercent(entry.startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
+                  {segments.map((segment) => {
+                    const { entry, startMinutes, endMinutes, laneIndex, laneCount, isSegmentStart, isSegmentEnd, showContent } = segment;
+                    const top = getOffsetPercent(startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
                     const height = Math.max(
-                      getOffsetPercent(entry.endMinutes, timeWindow.startMinutes, timeWindow.endMinutes) - top,
+                      getOffsetPercent(endMinutes, timeWindow.startMinutes, timeWindow.endMinutes) - top,
                       6,
                     );
                     const slot = courseSlots.get(entry.courseDesignation) ?? 1;
@@ -194,34 +209,44 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                     const medium = height >= 11 && height < 18;
                     const laneStyle =
                       laneCount > 1
-                        ? buildLaneStyle(leftPercent, widthPercent)
+                        ? buildLaneStyle(laneIndex, laneCount)
                         : { left: "0%", width: "100%" };
+                    const segmentRadiusClass = getSegmentRadiusClass(isSegmentStart, isSegmentEnd);
 
                     return (
                       <article
-                        key={`${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}-${entry.meetingType ?? "meeting"}`}
+                        key={`${buildSegmentKey(entry)}-${startMinutes}-${endMinutes}`}
                         aria-label={buildEntryAriaLabel(entry)}
-                        className={`calendar-course-slot-${slot} absolute overflow-hidden rounded-md border px-2 py-1.5`}
+                        aria-hidden={showContent ? undefined : true}
+                        data-calendar-entry={entry.sourcePackageId}
+                        data-calendar-entry-key={buildSegmentDomKey(entry)}
+                        data-calendar-segment-start={startMinutes}
+                        data-calendar-segment-end={endMinutes}
+                        className={`calendar-course-slot-${slot} absolute overflow-hidden border px-2 py-1.5 ${segmentRadiusClass}`}
                         style={{
                           top: `${top}%`,
                           height: `${height}%`,
                           ...laneStyle,
                         }}
                       >
-                        <div className="flex h-full flex-col gap-1 text-[11px] leading-tight">
-                          <div className="flex items-start justify-between gap-1.5">
-                            <p className="min-w-0 truncate font-semibold leading-tight">{entry.courseDesignation}</p>
-                            {renderTypeBadge(entry, slot)}
-                          </div>
-                          <p className="font-medium text-calendar-meta">
-                            {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
-                          </p>
-                          {!compact ? (
-                            <p className={`${medium ? "truncate" : "leading-tight"} text-calendar-meta`}>
-                              {formatLocation(entry)}
+                        {showContent ? (
+                          <div className="flex h-full flex-col gap-1 text-[11px] leading-tight">
+                            <div className="flex items-start justify-between gap-1.5">
+                              <p className="min-w-0 truncate font-semibold leading-tight">{entry.courseDesignation}</p>
+                              {renderTypeBadge(entry, slot)}
+                            </div>
+                            <p className="font-medium text-calendar-meta">
+                              {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
                             </p>
-                          ) : null}
-                        </div>
+                            {!compact ? (
+                              <p className={`${medium ? "truncate" : "leading-tight"} text-calendar-meta`}>
+                                {formatLocation(entry)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div aria-hidden="true" className="h-full w-full" />
+                        )}
                       </article>
                     );
                   })}
@@ -235,38 +260,137 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   );
 }
 
-function buildPositionedEntries(entries: ScheduleCalendarEntry[]): PositionedCalendarEntry[] {
+function buildDesktopSegments(entries: ScheduleCalendarEntry[]): DesktopCalendarSegment[] {
   const sortedEntries = [...entries].sort(compareEntriesByTime);
-  const positionedEntries: PositionedCalendarEntry[] = [];
-  const activeEntries: PositionedCalendarEntry[] = [];
+  const slices = buildDesktopSlices(sortedEntries);
+  let previousAssignments = new Map<string, number>();
+  const entrySegments = new Map<string, DesktopCalendarSegment[]>();
 
-  for (const entry of sortedEntries) {
-    for (let index = activeEntries.length - 1; index >= 0; index -= 1) {
-      if (activeEntries[index].entry.endMinutes <= entry.startMinutes) {
-        activeEntries.splice(index, 1);
+  for (const slice of slices) {
+    const assignments = assignSliceLanes(slice.entries, previousAssignments);
+    const laneCount = assignments.length;
+
+    for (const assignment of assignments) {
+      const segmentKey = buildSegmentKey(assignment.entry);
+      const existingSegments = entrySegments.get(segmentKey) ?? [];
+      const previousSegment = existingSegments[existingSegments.length - 1];
+
+      if (
+        previousSegment &&
+        previousSegment.endMinutes === slice.startMinutes &&
+        previousSegment.laneIndex === assignment.laneIndex &&
+        previousSegment.laneCount === laneCount
+      ) {
+        previousSegment.endMinutes = slice.endMinutes;
+      } else {
+        existingSegments.push({
+          entry: assignment.entry,
+          startMinutes: slice.startMinutes,
+          endMinutes: slice.endMinutes,
+          laneIndex: assignment.laneIndex,
+          laneCount,
+          isSegmentStart: true,
+          isSegmentEnd: true,
+          showContent: false,
+        });
       }
+
+      entrySegments.set(segmentKey, existingSegments);
     }
 
-    const laneIndex = findNextLaneIndex(activeEntries);
-
-    const positionedEntry: PositionedCalendarEntry = {
-      entry,
-      laneIndex,
-      laneCount: 1,
-      leftPercent: 0,
-      widthPercent: 100,
-    };
-
-    activeEntries.push(positionedEntry);
-    reflowActiveEntries(activeEntries);
-    positionedEntries.push(positionedEntry);
+    previousAssignments = new Map(
+      assignments.map((assignment) => [buildSegmentKey(assignment.entry), assignment.laneIndex]),
+    );
   }
 
-  return positionedEntries;
+  return [...entrySegments.values()]
+    .flatMap((segmentsForEntry) => {
+      const contentIndex = segmentsForEntry.findIndex((segment) => getSegmentDuration(segment) >= 45)
+        ?? -1;
+
+      return segmentsForEntry.map((segment, index) => ({
+        ...segment,
+        isSegmentStart: index === 0,
+        isSegmentEnd: index === segmentsForEntry.length - 1,
+        showContent: contentIndex === -1 ? index === 0 : index === contentIndex,
+      }));
+    })
+    .sort((left, right) =>
+      left.startMinutes - right.startMinutes ||
+      left.endMinutes - right.endMinutes ||
+      left.laneIndex - right.laneIndex ||
+      compareEntriesByTime(left.entry, right.entry),
+    );
 }
 
-function findNextLaneIndex(activeEntries: PositionedCalendarEntry[]): number {
-  const occupiedLaneIndexes = new Set(activeEntries.map((entry) => entry.laneIndex));
+function buildDesktopSlices(entries: ScheduleCalendarEntry[]): DesktopCalendarSlice[] {
+  const boundaries = [...new Set(entries.flatMap((entry) => [entry.startMinutes, entry.endMinutes]))].sort(
+    (left, right) => left - right,
+  );
+  const slices: DesktopCalendarSlice[] = [];
+
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const startMinutes = boundaries[index];
+    const endMinutes = boundaries[index + 1];
+
+    if (endMinutes <= startMinutes) {
+      continue;
+    }
+
+    const activeEntries = entries.filter(
+      (entry) => entry.startMinutes < endMinutes && entry.endMinutes > startMinutes,
+    );
+
+    if (activeEntries.length === 0) {
+      continue;
+    }
+
+    slices.push({
+      startMinutes,
+      endMinutes,
+      entries: [...activeEntries].sort(compareEntriesByTime),
+    });
+  }
+
+  return slices;
+}
+
+function assignSliceLanes(
+  entries: ScheduleCalendarEntry[],
+  previousAssignments: Map<string, number>,
+): ActiveLaneAssignment[] {
+  const assignments: ActiveLaneAssignment[] = [];
+  const occupiedLaneIndexes = new Set<number>();
+
+  const continuingEntries = entries.filter((entry) => previousAssignments.has(buildSegmentKey(entry)));
+  const newEntries = entries.filter((entry) => !previousAssignments.has(buildSegmentKey(entry)));
+
+  for (const entry of continuingEntries) {
+    const laneIndex = previousAssignments.get(buildSegmentKey(entry));
+
+    if (laneIndex === undefined || occupiedLaneIndexes.has(laneIndex)) {
+      continue;
+    }
+
+    occupiedLaneIndexes.add(laneIndex);
+    assignments.push({ entry, laneIndex });
+  }
+
+  for (const entry of newEntries) {
+    const laneIndex = findNextAvailableLane(occupiedLaneIndexes);
+    occupiedLaneIndexes.add(laneIndex);
+    assignments.push({ entry, laneIndex });
+  }
+
+  return [...assignments]
+    .sort((left, right) => left.laneIndex - right.laneIndex || compareEntriesByTime(left.entry, right.entry))
+    .map((assignment, laneIndex) => ({
+      entry: assignment.entry,
+      laneIndex,
+    }));
+}
+
+function findNextAvailableLane(occupiedLaneIndexes: Set<number>): number {
   let laneIndex = 0;
 
   while (occupiedLaneIndexes.has(laneIndex)) {
@@ -276,25 +400,43 @@ function findNextLaneIndex(activeEntries: PositionedCalendarEntry[]): number {
   return laneIndex;
 }
 
-function reflowActiveEntries(activeEntries: PositionedCalendarEntry[]): void {
-  const laneCount = activeEntries.length;
-  const orderedEntries = [...activeEntries].sort(
-    (left, right) => left.laneIndex - right.laneIndex || compareEntriesByTime(left.entry, right.entry),
-  );
-
-  for (const [laneIndex, activeEntry] of orderedEntries.entries()) {
-    const geometry = buildLaneGeometry(laneIndex, laneCount);
-    activeEntry.laneIndex = laneIndex;
-    activeEntry.laneCount = laneCount;
-    activeEntry.leftPercent = geometry.leftPercent;
-    activeEntry.widthPercent = geometry.widthPercent;
-  }
+function buildSegmentKey(entry: ScheduleCalendarEntry): string {
+  return JSON.stringify([
+    entry.sourcePackageId,
+    entry.weekday,
+    entry.startMinutes,
+    entry.endMinutes,
+    entry.meetingType,
+    entry.sectionType,
+    entry.sectionNumber,
+    entry.sectionBundleLabel,
+    entry.title,
+    entry.buildingName,
+    entry.room,
+  ]);
 }
 
-function buildLaneStyle(leftPercent: number, widthPercent: number): { left: string; width: string } {
+function buildSegmentDomKey(entry: ScheduleCalendarEntry): string {
+  const source = buildSegmentKey(entry);
+  let hash = 5381;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash = ((hash << 5) + hash + source.charCodeAt(index)) >>> 0;
+  }
+
+  return `segment-${hash.toString(36)}`;
+}
+
+function getSegmentDuration(segment: Pick<DesktopCalendarSegment, "startMinutes" | "endMinutes">): number {
+  return segment.endMinutes - segment.startMinutes;
+}
+
+function buildLaneStyle(laneIndex: number, laneCount: number): { left: string; width: string } {
+  const geometry = buildLaneGeometry(laneIndex, laneCount);
+
   return {
-    left: `${leftPercent}%`,
-    width: `${widthPercent}%`,
+    left: `${geometry.leftPercent}%`,
+    width: `${geometry.widthPercent}%`,
   };
 }
 
@@ -312,12 +454,34 @@ function buildLaneGeometry(laneIndex: number, laneCount: number): { leftPercent:
   };
 }
 
+function getSegmentRadiusClass(isSegmentStart: boolean, isSegmentEnd: boolean): string {
+  if (isSegmentStart && isSegmentEnd) {
+    return "rounded-md";
+  }
+
+  if (isSegmentStart) {
+    return "rounded-t-md rounded-b-sm";
+  }
+
+  if (isSegmentEnd) {
+    return "rounded-t-sm rounded-b-md";
+  }
+
+  return "rounded-sm";
+}
+
 function compareEntriesByTime(left: ScheduleCalendarEntry, right: ScheduleCalendarEntry): number {
   return (
     left.startMinutes - right.startMinutes ||
     left.endMinutes - right.endMinutes ||
     left.courseDesignation.localeCompare(right.courseDesignation) ||
-    left.sourcePackageId.localeCompare(right.sourcePackageId)
+    left.sourcePackageId.localeCompare(right.sourcePackageId) ||
+    (left.sectionType ?? "").localeCompare(right.sectionType ?? "") ||
+    (left.sectionNumber ?? "").localeCompare(right.sectionNumber ?? "") ||
+    left.title.localeCompare(right.title) ||
+    (left.buildingName ?? "").localeCompare(right.buildingName ?? "") ||
+    (left.room ?? "").localeCompare(right.room ?? "") ||
+    left.sectionBundleLabel.localeCompare(right.sectionBundleLabel)
   );
 }
 
