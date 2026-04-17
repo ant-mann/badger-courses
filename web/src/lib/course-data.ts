@@ -222,12 +222,24 @@ function mergeRestrictionNotes(...notes: Array<string | null>): string | null {
   return fragments.size > 0 ? [...fragments].join(" | ") : null;
 }
 
-function hasDedicatedMadgradesConfig(): boolean {
+function hasValue(name: string): boolean {
+  return Boolean(process.env[name]?.trim());
+}
+
+function hasCompleteMadgradesConfig(): boolean {
   return [
     "TURSO_MADGRADES_DATABASE_URL",
     "TURSO_MADGRADES_AUTH_TOKEN",
     "MADGRADES_MADGRADES_REPLICA_PATH",
-  ].every((name) => Boolean(process.env[name]?.trim()));
+  ].every(hasValue);
+}
+
+function hasAnyMadgradesConfig(): boolean {
+  return [
+    "TURSO_MADGRADES_DATABASE_URL",
+    "TURSO_MADGRADES_AUTH_TOKEN",
+    "MADGRADES_MADGRADES_REPLICA_PATH",
+  ].some(hasValue);
 }
 
 function buildCourseTitleLookup(
@@ -907,7 +919,7 @@ async function getInstructorHistory(
   termCode: string,
   courseId: string,
 ): Promise<InstructorHistoryItem[]> {
-  if (!hasDedicatedMadgradesConfig()) {
+  if (!hasAnyMadgradesConfig()) {
     return getInstructorHistoryFromCompatibilityDb(db, termCode, courseId);
   }
 
@@ -941,8 +953,10 @@ async function getInstructorHistory(
     return [];
   }
 
+  const emptyRows = mapCurrentInstructorRows(currentSectionInstructorRows);
+  const madgradesDb = getMadgradesDb();
+
   try {
-    const madgradesDb = getMadgradesDb();
     const courseMatchRow = await firstRow(
       madgradesDb,
       `
@@ -1022,7 +1036,7 @@ async function getInstructorHistory(
         return left.sectionNumber.localeCompare(right.sectionNumber);
       });
   } catch {
-    return [];
+    return emptyRows;
   }
 }
 
@@ -1031,6 +1045,10 @@ function getInstructorHistoryFromCompatibilityDb(
   termCode: string,
   courseId: string,
 ): InstructorHistoryItem[] {
+  if (!supportsInstructorHistoryView(db)) {
+    return [];
+  }
+
   const rows = db
     .prepare(
       `
@@ -1060,6 +1078,38 @@ function getInstructorHistoryFromCompatibilityDb(
     courseHistoricalGpa: asNullableNumber(row.course_historical_gpa),
     instructorMatchStatus: asNullableString(row.instructor_match_status),
   }));
+}
+
+function mapCurrentInstructorRows(rows: Row[]): InstructorHistoryItem[] {
+  return rows
+    .map((row) => ({
+      sectionNumber: asString(row.section_number),
+      sectionType: asString(row.section_type),
+      instructorDisplayName: asNullableString(row.instructor_display_name),
+      sameCoursePriorOfferingCount: null,
+      sameCourseStudentCount: null,
+      sameCourseGpa: null,
+      courseHistoricalGpa: null,
+      instructorMatchStatus: null,
+    }))
+    .sort((left, right) => {
+      const sectionTypeDiff = left.sectionType.localeCompare(right.sectionType);
+      if (sectionTypeDiff !== 0) {
+        return sectionTypeDiff;
+      }
+
+      return left.sectionNumber.localeCompare(right.sectionNumber);
+    });
+}
+
+function supportsInstructorHistoryView(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'current_term_section_instructor_grade_overview_v'",
+    )
+    .get() as { name?: string } | undefined;
+
+  return row?.name === "current_term_section_instructor_grade_overview_v";
 }
 
 function mapPrerequisiteRule(row: Row): PrerequisiteRule {

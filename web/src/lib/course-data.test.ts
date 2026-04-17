@@ -1315,6 +1315,58 @@ test("getCourseDetail keeps the single-db instructor history path when dedicated
   }
 });
 
+test("getCourseDetail returns an empty instructor history when the single-db view is missing", async () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec("DROP VIEW current_term_section_instructor_grade_overview_v");
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    delete process.env.TURSO_MADGRADES_DATABASE_URL;
+    delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
+    delete process.env.MADGRADES_MADGRADES_REPLICA_PATH;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+
+    const detail = await getCourseDetail("COMP SCI 577");
+
+    assert.ok(detail);
+    assert.deepEqual(detail.instructorGrades, []);
+  } finally {
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+  }
+});
+
+test("getCourseDetail rejects partial dedicated madgrades config instead of falling back", async () => {
+  process.env.TURSO_MADGRADES_DATABASE_URL = "libsql://madgrades-db.example.turso.io";
+  delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
+  process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  try {
+    await assert.rejects(getCourseDetail("COMP SCI 577"), /TURSO_MADGRADES_AUTH_TOKEN/);
+  } finally {
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+  }
+});
+
 test("getCourseDetail collapses cross-listed duplicate lecture rows on the course page", async () => {
   const detail = await getCourseDetail("COMP SCI 102");
 
