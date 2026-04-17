@@ -1,59 +1,37 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 function resolveFromCwd(value: string, cwd = process.cwd()): string {
   return path.resolve(cwd, value);
 }
 
-const DEFAULT_DATABASE_PATHS = [
-  'web/data/fall-2026.sqlite',
-  'data/fall-2026.sqlite',
-  '../data/fall-2026.sqlite',
-  '../web/data/fall-2026.sqlite',
-];
-
-function getEnv(name: string): string | null {
+function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
 
-  return value || null;
-}
-
-function resolveFirstExistingPath(paths: string[], cwd = process.cwd()): string | null {
-  for (const candidate of paths) {
-    const resolvedCandidate = resolveFromCwd(candidate, cwd);
-
-    if (fs.existsSync(resolvedCandidate)) {
-      return resolvedCandidate;
-    }
+  if (!value) {
+    throw new Error(`${name} environment variable is required`);
   }
 
-  return null;
+  return value;
 }
 
-export function getDatabasePath(cwd = process.cwd()): string {
-  const dbPath = getEnv('MADGRADES_DB_PATH');
+export type LibsqlDatabaseConfig = {
+  url: string;
+  authToken: string;
+  replicaPath: string;
+};
 
-  if (dbPath) {
-    return resolveFromCwd(dbPath, cwd);
-  }
-
-  const fallbackPath = resolveFirstExistingPath(DEFAULT_DATABASE_PATHS, cwd);
-
-  if (fallbackPath) {
-    return fallbackPath;
-  }
-
-  throw new Error('MADGRADES_DB_PATH environment variable is required');
+export function getCourseDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConfig {
+  return {
+    url: requireEnv('TURSO_COURSE_DATABASE_URL'),
+    authToken: requireEnv('TURSO_COURSE_AUTH_TOKEN'),
+    replicaPath: resolveFromCwd(requireEnv('MADGRADES_COURSE_REPLICA_PATH'), cwd),
+  };
 }
 
-export function getDatabaseSourcePath(cwd = process.cwd()): string | null {
-  const sourcePath = getEnv('MADGRADES_DB_SOURCE_PATH');
-
-  return sourcePath ? resolveFromCwd(sourcePath, cwd) : null;
-}
-
-export function getDatabaseSourceUrl(): string | null {
-  const sourceUrl = getEnv('MADGRADES_DB_URL');
-
-  return sourceUrl || null;
+export function getMadgradesDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConfig {
+  return {
+    url: requireEnv('TURSO_MADGRADES_DATABASE_URL'),
+    authToken: requireEnv('TURSO_MADGRADES_AUTH_TOKEN'),
+    replicaPath: resolveFromCwd(requireEnv('MADGRADES_MADGRADES_REPLICA_PATH'), cwd),
+  };
 }

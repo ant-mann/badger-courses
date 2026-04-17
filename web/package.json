@@ -4,13 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/download-db.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test src/lib/course-designation.test.ts src/lib/env.test.ts src/lib/course-data.test.ts src/app/api/courses/routes.test.ts src/app/components/NavLinks.test.ts src/app/components/PrerequisiteSummary.test.tsx src/app/courses/[designation]/schedule-package-notes.test.ts src/app/courses/[designation]/shared-enrollment-notes.test.ts src/app/courses/[designation]/instructor-history.test.ts src/app/schedule-builder/builder-state.test.ts src/app/schedule-builder/schedule-data.test.ts src/app/schedule-builder/components.test.tsx src/app/schedule-builder/route-shell.test.tsx"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "better-sqlite3": "^11.8.1",
     "next": "15.5.15",
     "next-themes": "^0.4.6",
