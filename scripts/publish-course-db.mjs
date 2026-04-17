@@ -1,7 +1,9 @@
 import path from 'node:path';
 import process from 'node:process';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
@@ -20,13 +22,39 @@ function toTursoUploadUrl(databaseUrl) {
   throw new Error('TURSO database URL must use libsql:// or https://');
 }
 
+async function walExists(dbPath) {
+  try {
+    await stat(`${dbPath}-wal`);
+    return true;
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function readCheckpointedSqliteBytes(dbPath) {
+  if (await walExists(dbPath)) {
+    const db = new Database(dbPath, { fileMustExist: true });
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } finally {
+      db.close();
+    }
+  }
+
+  return readFile(dbPath);
+}
+
 export async function publishSqliteToTurso({
   databaseUrl,
   authToken,
   dbPath,
   fetchImpl = fetch,
 }) {
-  const sqliteBytes = await readFile(dbPath);
+  const sqliteBytes = await readCheckpointedSqliteBytes(dbPath);
   const uploadUrl = toTursoUploadUrl(databaseUrl);
   const response = await fetchImpl(uploadUrl, {
     method: 'POST',

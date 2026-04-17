@@ -15,17 +15,21 @@ let cachedCourseSqliteDb: Database.Database | null = null;
 let cachedCourseDb: Client | null = null;
 let cachedMadgradesDb: Client | null = null;
 let courseReplicaEnsured = false;
+let courseReplicaEnsureInFlight: Promise<void> | null = null;
 
 function hasValue(name: string): boolean {
   return Boolean(process.env[name]?.trim());
 }
 
 function hasCompleteCourseReplicaConfig(): boolean {
-  return [
-    "TURSO_COURSE_DATABASE_URL",
-    "TURSO_COURSE_AUTH_TOKEN",
-    "MADGRADES_COURSE_REPLICA_PATH",
-  ].every(hasValue);
+  const courseUrl = process.env.TURSO_COURSE_DATABASE_URL?.trim();
+  const replicaPath = process.env.MADGRADES_COURSE_REPLICA_PATH?.trim();
+
+  if (!courseUrl || !replicaPath) {
+    return false;
+  }
+
+  return courseUrl.startsWith("file:") || hasValue("TURSO_COURSE_AUTH_TOKEN");
 }
 
 function hasAnyCourseReplicaConfig(): boolean {
@@ -57,14 +61,22 @@ async function ensureCourseReplicaFile(): Promise<void> {
     return;
   }
 
-  const client = createReplicaClient(getCourseDatabaseConfig());
+  if (!courseReplicaEnsureInFlight) {
+    courseReplicaEnsureInFlight = (async () => {
+      const client = createReplicaClient(getCourseDatabaseConfig());
 
-  try {
-    await client.sync();
-    courseReplicaEnsured = true;
-  } finally {
-    client.close();
+      try {
+        await client.sync();
+        courseReplicaEnsured = true;
+      } finally {
+        client.close();
+      }
+    })().finally(() => {
+      courseReplicaEnsureInFlight = null;
+    });
   }
+
+  await courseReplicaEnsureInFlight;
 }
 
 export function getDb(): Database.Database {
@@ -141,4 +153,5 @@ export function __resetDbsForTests(): void {
   cachedCourseDb = null;
   cachedMadgradesDb = null;
   courseReplicaEnsured = false;
+  courseReplicaEnsureInFlight = null;
 }

@@ -234,14 +234,6 @@ function hasCompleteMadgradesConfig(): boolean {
   ].every(hasValue);
 }
 
-function hasAnyMadgradesConfig(): boolean {
-  return [
-    "TURSO_MADGRADES_DATABASE_URL",
-    "TURSO_MADGRADES_AUTH_TOKEN",
-    "MADGRADES_MADGRADES_REPLICA_PATH",
-  ].some(hasValue);
-}
-
 function buildCourseTitleLookup(
   db: Database.Database,
   termCode: string,

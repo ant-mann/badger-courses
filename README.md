@@ -260,12 +260,14 @@ pnpm test
 
 Fly deploys `web/Dockerfile` from the repo root. The runtime no longer packages a production SQLite file into `web/data` or passes `MADGRADES_DB_SOURCE_PATH` at build time.
 
-Set these Fly runtime env vars in `web/fly.toml`:
+Configure these Fly runtime env vars in `web/fly.toml` or via per-environment overrides:
 
 - `TURSO_COURSE_DATABASE_URL`
 - `TURSO_MADGRADES_DATABASE_URL`
 - `MADGRADES_COURSE_REPLICA_PATH` (default Fly example: `/tmp/course-replica.db`)
 - `MADGRADES_MADGRADES_REPLICA_PATH` (default Fly example: `/tmp/madgrades-replica.db`)
+
+The checked-in `web/fly.toml` may leave `TURSO_COURSE_DATABASE_URL` and `TURSO_MADGRADES_DATABASE_URL` empty as placeholders. You must set both before deploying, either by overriding them per environment or by supplying them through Fly-managed configuration. If they remain empty, the app will fail at runtime.
 
 Set `TURSO_COURSE_AUTH_TOKEN` and `TURSO_MADGRADES_AUTH_TOKEN` as Fly secrets. The app syncs local embedded-replica cache files at the configured replica paths instead of reading a bundled production SQLite database.
 

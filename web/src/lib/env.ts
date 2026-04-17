@@ -42,15 +42,25 @@ function resolveFirstExistingPath(paths: string[], cwd = process.cwd()): string 
 
 export type LibsqlDatabaseConfig = {
   url: string;
-  authToken: string;
+  authToken?: string;
   replicaPath: string;
 };
 
+function resolveAuthToken(url: string, envName: string): string | undefined {
+  if (url.startsWith("file:")) {
+    return undefined;
+  }
+
+  return requireEnv(envName);
+}
+
 export function getCourseDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConfig {
+  const url = requireEnv("TURSO_COURSE_DATABASE_URL");
+
   return {
-    url: requireEnv('TURSO_COURSE_DATABASE_URL'),
-    authToken: requireEnv('TURSO_COURSE_AUTH_TOKEN'),
-    replicaPath: resolveFromCwd(requireEnv('MADGRADES_COURSE_REPLICA_PATH'), cwd),
+    url,
+    authToken: resolveAuthToken(url, "TURSO_COURSE_AUTH_TOKEN"),
+    replicaPath: resolveFromCwd(requireEnv("MADGRADES_COURSE_REPLICA_PATH"), cwd),
   };
 }
 
@@ -71,9 +81,11 @@ export function getDatabasePath(cwd = process.cwd()): string {
 }
 
 export function getMadgradesDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConfig {
+  const url = requireEnv("TURSO_MADGRADES_DATABASE_URL");
+
   return {
-    url: requireEnv('TURSO_MADGRADES_DATABASE_URL'),
-    authToken: requireEnv('TURSO_MADGRADES_AUTH_TOKEN'),
-    replicaPath: resolveFromCwd(requireEnv('MADGRADES_MADGRADES_REPLICA_PATH'), cwd),
+    url,
+    authToken: resolveAuthToken(url, "TURSO_MADGRADES_AUTH_TOKEN"),
+    replicaPath: resolveFromCwd(requireEnv("MADGRADES_MADGRADES_REPLICA_PATH"), cwd),
   };
 }

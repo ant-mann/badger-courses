@@ -95,6 +95,30 @@ test("getMadgradesDatabaseConfig resolves the Madgrades replica path from cwd", 
   });
 });
 
+test("getCourseDatabaseConfig does not require a course auth token for file urls", () => {
+  process.env.TURSO_COURSE_DATABASE_URL = "file:/repo/data/course.db";
+  delete process.env.TURSO_COURSE_AUTH_TOKEN;
+  process.env.MADGRADES_COURSE_REPLICA_PATH = "./tmp/course-replica.db";
+
+  assert.deepEqual(getCourseDatabaseConfig("/repo/web"), {
+    url: "file:/repo/data/course.db",
+    authToken: undefined,
+    replicaPath: path.join("/repo/web", "tmp", "course-replica.db"),
+  });
+});
+
+test("getMadgradesDatabaseConfig does not require a Madgrades auth token for file urls", () => {
+  process.env.TURSO_MADGRADES_DATABASE_URL = "file:/repo/data/madgrades.db";
+  delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
+  process.env.MADGRADES_MADGRADES_REPLICA_PATH = "./tmp/madgrades-replica.db";
+
+  assert.deepEqual(getMadgradesDatabaseConfig("/repo/web"), {
+    url: "file:/repo/data/madgrades.db",
+    authToken: undefined,
+    replicaPath: path.join("/repo/web", "tmp", "madgrades-replica.db"),
+  });
+});
+
 test("getCourseDatabaseConfig throws when course env is incomplete", () => {
   delete process.env.TURSO_COURSE_DATABASE_URL;
   process.env.TURSO_COURSE_AUTH_TOKEN = "course-token";
@@ -103,10 +127,26 @@ test("getCourseDatabaseConfig throws when course env is incomplete", () => {
   assert.throws(() => getCourseDatabaseConfig("/repo/web"), /TURSO_COURSE_DATABASE_URL/);
 });
 
+test("getCourseDatabaseConfig still requires a course auth token for remote urls", () => {
+  process.env.TURSO_COURSE_DATABASE_URL = "libsql://course-db.example.turso.io";
+  delete process.env.TURSO_COURSE_AUTH_TOKEN;
+  process.env.MADGRADES_COURSE_REPLICA_PATH = "./tmp/course-replica.db";
+
+  assert.throws(() => getCourseDatabaseConfig("/repo/web"), /TURSO_COURSE_AUTH_TOKEN/);
+});
+
 test("getMadgradesDatabaseConfig throws when the replica path is missing", () => {
   process.env.TURSO_MADGRADES_DATABASE_URL = "libsql://madgrades-db.example.turso.io";
   process.env.TURSO_MADGRADES_AUTH_TOKEN = "madgrades-token";
   delete process.env.MADGRADES_MADGRADES_REPLICA_PATH;
 
   assert.throws(() => getMadgradesDatabaseConfig("/repo/web"), /MADGRADES_MADGRADES_REPLICA_PATH/);
+});
+
+test("getMadgradesDatabaseConfig still requires a Madgrades auth token for remote urls", () => {
+  process.env.TURSO_MADGRADES_DATABASE_URL = "libsql://madgrades-db.example.turso.io";
+  delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
+  process.env.MADGRADES_MADGRADES_REPLICA_PATH = "./tmp/madgrades-replica.db";
+
+  assert.throws(() => getMadgradesDatabaseConfig("/repo/web"), /TURSO_MADGRADES_AUTH_TOKEN/);
 });
