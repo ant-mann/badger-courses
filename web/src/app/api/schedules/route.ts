@@ -7,7 +7,7 @@ import {
   clampScheduleLimit,
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
-import { getDb } from '@/lib/db';
+import { getCourseSqliteDb } from '@/lib/db';
 import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
 
 type ScheduleRequestBody = {
@@ -31,7 +31,7 @@ type GenerateSchedulesOptions = {
 };
 
 const generateSchedulesTyped = generateSchedules as unknown as (
-  db: ReturnType<typeof getDb>,
+  db: Awaited<ReturnType<typeof getCourseSqliteDb>>,
   options: GenerateSchedulesOptions,
 ) => unknown[];
 
@@ -118,9 +118,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
+  const db = await getCourseSqliteDb();
+
   return NextResponse.json(
     {
-      schedules: generateSchedulesTyped(getDb(), {
+      schedules: generateSchedulesTyped(db, {
         courses,
         lockPackages,
         excludePackages,

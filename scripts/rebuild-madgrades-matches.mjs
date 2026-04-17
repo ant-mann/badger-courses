@@ -2,7 +2,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { runMadgradesImport } from '../src/madgrades/import-runner.mjs';
+import { rebuildMadgradesMatches } from '../src/madgrades/rebuild-match-tables.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
@@ -22,19 +22,9 @@ function readFlagValue(args, flagName) {
 }
 
 const args = process.argv.slice(2);
-const refreshApi = args.includes('--refresh-api');
-const explicitDbPath = readFlagValue(args, '--db');
-const dbPath = explicitDbPath ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite');
-const snapshotRoot = readFlagValue(args, '--snapshot-root') ?? path.join(repoRoot, 'data', 'madgrades');
-
-const result = await runMadgradesImport({
-  dbPath,
-  courseDbPath: path.join(repoRoot, 'data', 'fall-2026.sqlite'),
-  snapshotRoot,
-  refreshApi,
-  onProgress(message) {
-    process.stderr.write(`${message}\n`);
-  },
+const result = await rebuildMadgradesMatches({
+  courseDbPath: readFlagValue(args, '--course-db') ?? path.join(repoRoot, 'data', 'fall-2026.sqlite'),
+  madgradesDbPath: readFlagValue(args, '--madgrades-db') ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite'),
 });
 
 process.stdout.write(`${JSON.stringify(result)}\n`);

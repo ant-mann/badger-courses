@@ -2,6 +2,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildCourseDbFixture, makeCourse } from "../../../../../tests/helpers/madgrades-db-fixture.mjs";
+import { __resetDbsForTests } from "@/lib/db";
 
 import { GET as getCourseDetail } from "./[designation]/route";
 import { DEFAULT_PREFERENCE_ORDER } from "@/app/schedule-builder/preferences";
@@ -11,6 +12,93 @@ import {
   normalizePreferenceOrderInput,
 } from "../schedules/normalize";
 import { GET as searchCourses } from "./search/route";
+
+function seedCourseDetailRows(db: import("better-sqlite3").Database) {
+  const instructorKey = db.prepare(`
+    SELECT instructor_key
+    FROM instructors
+    WHERE email = ?
+  `).pluck().get("ada@example.edu");
+
+  db.prepare(`
+    INSERT INTO madgrades_courses (
+      madgrades_course_id,
+      subject_code,
+      catalog_number,
+      course_designation
+    ) VALUES (?, ?, ?, ?)
+  `).run(11, "302", "577", "COMP SCI 577");
+
+  db.prepare(`
+    INSERT INTO madgrades_instructors (
+      madgrades_instructor_id,
+      display_name
+    ) VALUES (?, ?)
+  `).run(11, "Ada Lovelace");
+
+  db.prepare(`
+    INSERT INTO madgrades_course_matches (
+      term_code,
+      course_id,
+      madgrades_course_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run("1272", "005770", 11, "matched", "2024-01-16T00:00:00Z");
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_matches (
+      instructor_key,
+      madgrades_instructor_id,
+      match_status,
+      matched_at
+    ) VALUES (?, ?, ?, ?)
+  `).run(instructorKey, 11, "matched", "2024-01-16T00:00:00Z");
+
+  db.prepare(`
+    INSERT INTO madgrades_refresh_runs (
+      madgrades_refresh_run_id,
+      snapshot_run_at,
+      last_refreshed_at,
+      source_term_code,
+      notes
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(11, "2024-01-15T00:00:00Z", "2024-01-16T00:00:00Z", "1272", "routes test");
+
+  db.prepare(`
+    INSERT INTO madgrades_course_grades (
+      madgrades_course_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_course_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(11, 11, 11, "1264", 20, 3.7);
+
+  db.prepare(`
+    INSERT INTO madgrades_instructor_grades (
+      madgrades_instructor_grade_id,
+      madgrades_refresh_run_id,
+      madgrades_instructor_id,
+      term_code,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(11, 11, 11, "1264", 20, 3.7);
+
+  db.prepare(`
+    INSERT INTO madgrades_course_offerings (
+      madgrades_course_offering_id,
+      madgrades_course_id,
+      madgrades_instructor_id,
+      term_code,
+      section_type,
+      student_count,
+      avg_gpa
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(11, 11, 11, "1264", "LEC", 20, 3.7);
+}
 
 const fixture = buildCourseDbFixture({
   courses: [
@@ -188,6 +276,12 @@ const fixture = buildCourseDbFixture({
                 instructionMode: "Classroom Instruction",
                 sessionCode: "A1",
                 published: true,
+                instructors: [
+                  {
+                    name: { first: "Ada", last: "Lovelace" },
+                    email: "ada@example.edu",
+                  },
+                ],
                 enrollmentStatus: {
                   openSeats: 2,
                   waitlistCurrentSize: 0,
@@ -220,12 +314,22 @@ const fixture = buildCourseDbFixture({
     ],
   },
 });
+seedCourseDetailRows(fixture.db);
 
 process.env.MADGRADES_DB_PATH = fixture.dbPath;
-after(() => fixture.cleanup());
+process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+after(() => {
+  __resetDbsForTests();
+  fixture.cleanup();
+});
 
 test("course search route requires q or subject", async () => {
-  const response = searchCourses(new Request("https://example.test/api/courses/search"));
+  const response = await searchCourses(new Request("https://example.test/api/courses/search"));
 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
@@ -234,7 +338,7 @@ test("course search route requires q or subject", async () => {
 });
 
 test("course search route returns FTS-backed matches", async () => {
-  const response = searchCourses(new Request("https://example.test/api/courses/search?q=algorithms"));
+  const response = await searchCourses(new Request("https://example.test/api/courses/search?q=algorithms"));
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
@@ -255,7 +359,7 @@ test("course search route returns FTS-backed matches", async () => {
 });
 
 test("course search route returns a controlled empty list for punctuation-only queries", async () => {
-  const response = searchCourses(new Request("https://example.test/api/courses/search?q=%28%28%28"));
+  const response = await searchCourses(new Request("https://example.test/api/courses/search?q=%28%28%28"));
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
@@ -272,6 +376,60 @@ test("course detail route returns 404 json for missing courses", async () => {
   assert.deepEqual(await response.json(), {
     error: "Course not found.",
   });
+});
+
+test("course detail route returns instructor grades for an existing course", async () => {
+  const response = await getCourseDetail(
+    new Request("https://example.test/api/courses/COMP%20SCI%20577"),
+    {
+      params: Promise.resolve({ designation: "COMP SCI 577" }),
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).instructor_grades, [
+    {
+      sectionNumber: "001",
+      sectionType: "LEC",
+      instructorDisplayName: "Ada Lovelace",
+      sameCoursePriorOfferingCount: 1,
+      sameCourseStudentCount: 20,
+      sameCourseGpa: 3.7,
+      courseHistoricalGpa: 3.7,
+      instructorMatchStatus: "matched",
+    },
+  ]);
+});
+
+test("schedule route uses the course database without requiring the compatibility db path", async () => {
+  process.env.MADGRADES_DB_PATH = "/tmp/does-not-exist.sqlite";
+  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+  process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+  __resetDbsForTests();
+
+  try {
+    const response = await buildSchedules(
+      new Request("https://example.test/api/schedules", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          courses: ["STAT 340", "COMP SCI 577"],
+          limit: 1,
+        }),
+      }),
+    );
+
+    assert.equal(response.status, 200);
+  } finally {
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    __resetDbsForTests();
+  }
 });
 
 test("schedule route rejects blank course strings with 400 json", async () => {

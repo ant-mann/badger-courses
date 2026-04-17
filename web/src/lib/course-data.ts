@@ -1,10 +1,11 @@
 import type Database from "better-sqlite3";
+import type { Client } from "@libsql/client";
 
 import { normalizeCourseDesignation } from "./course-designation";
-import { getDb } from "./db";
+import { getCourseDb, getCourseSqliteDb, getMadgradesDb } from "./db";
 
-type SqlitePrimitive = string | number | null;
-type Row = Record<string, SqlitePrimitive>;
+type QueryArg = string | number | null;
+type Row = Record<string, unknown>;
 
 type CourseSectionRow = CourseSection & {
   sessionCode: string | null;
@@ -126,13 +127,11 @@ export type CourseSearchParams = {
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 
-let hasInstructorHistoryView: boolean | null = null;
 let hasCourseSearchFtsTable: boolean | null = null;
 
 export const normalizeDesignation = normalizeCourseDesignation;
 
 export function __resetCourseDataCachesForTests(): void {
-  hasInstructorHistoryView = null;
   hasCourseSearchFtsTable = null;
 }
 
@@ -168,6 +167,16 @@ export function parseCourseGroupsJson(value: string | null): string[][] {
   } catch {
     return [];
   }
+}
+
+async function allRows(db: Client, sql: string, args: QueryArg[] = []): Promise<Row[]> {
+  const result = await db.execute({ sql, args });
+  return result.rows as Row[];
+}
+
+async function firstRow(db: Client, sql: string, args: QueryArg[] = []): Promise<Row | undefined> {
+  const rows = await allRows(db, sql, args);
+  return rows[0];
 }
 
 function parseSourcePackageSubjectCode(sourcePackageId: string): string | null {
@@ -211,6 +220,18 @@ function mergeRestrictionNotes(...notes: Array<string | null>): string | null {
   }
 
   return fragments.size > 0 ? [...fragments].join(" | ") : null;
+}
+
+function hasValue(name: string): boolean {
+  return Boolean(process.env[name]?.trim());
+}
+
+function hasCompleteMadgradesConfig(): boolean {
+  return [
+    "TURSO_MADGRADES_DATABASE_URL",
+    "TURSO_MADGRADES_AUTH_TOKEN",
+    "MADGRADES_MADGRADES_REPLICA_PATH",
+  ].every(hasValue);
 }
 
 function buildCourseTitleLookup(
@@ -323,8 +344,8 @@ function dedupeSchedulePackages(
   return [...groupedPackages.values()];
 }
 
-export function searchCourses(params: CourseSearchParams = {}): CourseListItem[] {
-  const db = getDb();
+export async function searchCourses(params: CourseSearchParams = {}): Promise<CourseListItem[]> {
+  const db = getCourseDb();
   const query = params.query?.trim() ?? "";
   const subject = params.subject?.trim() ?? "";
   const limit = clampLimit(params.limit);
@@ -332,13 +353,13 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
   const searchContext = buildCourseSearchContext(query);
   let rows: Row[];
 
-  if (searchContext.matchQuery && hasCourseSearchTable(db)) {
+  if (searchContext.matchQuery && (await hasCourseSearchTable(db))) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
 
-    rows = db
-      .prepare(
-        `
+    rows = await allRows(
+      db,
+      `
           WITH raw_search_matches AS (
             SELECT
               term_code,
@@ -428,8 +449,7 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
             course_designation ASC
           LIMIT ?
         `,
-      )
-      .all(
+      [
         searchContext.matchQuery,
         searchContext.normalizedQuery,
         searchContext.compactQuery,
@@ -439,7 +459,8 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
         normalizedQueryLike,
         ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
         limit,
-      ) as Row[];
+      ],
+    );
   } else if (searchContext.matchQuery) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
@@ -469,9 +490,9 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
       return [tokenLike, tokenLike, tokenLike, tokenLike];
     });
 
-    rows = db
-      .prepare(
-        `
+    rows = await allRows(
+      db,
+      `
           WITH matched_courses AS (
             SELECT
               co.term_code,
@@ -547,8 +568,7 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
             course_designation ASC
           LIMIT ?
         `,
-      )
-      .all(
+      [
         searchContext.normalizedQuery,
         normalizedQueryLike,
         compactQueryLike,
@@ -557,15 +577,16 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
         ...tokenMatchParams,
         ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
         limit,
-      ) as Row[];
+      ],
+    );
   } else {
     if (query && !subject) {
       return [];
     }
 
-    rows = db
-      .prepare(
-        `
+    rows = await allRows(
+      db,
+      `
           WITH ranked_courses AS (
             SELECT
               course_designation,
@@ -604,15 +625,15 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
           ORDER BY COALESCE(has_any_open_seats, 0) DESC, COALESCE(section_count, 0) DESC, course_designation ASC
           LIMIT ?
         `,
-      )
-      .all(...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []), limit) as Row[];
+      [...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []), limit],
+    );
   }
 
   return rows.map(mapCourseListItem);
 }
 
-export function getCourseDetail(designation: string): CourseDetail | null {
-  const db = getDb();
+export async function getCourseDetail(designation: string): Promise<CourseDetail | null> {
+  const db = await getCourseSqliteDb();
   let normalizedDesignation: string;
 
   try {
@@ -773,7 +794,7 @@ export function getCourseDetail(designation: string): CourseDetail | null {
     )
     .all(canonical.termCode, canonical.courseId) as Row[];
 
-  const instructorGrades = getInstructorHistory(db, canonical.termCode, canonical.courseId);
+  const instructorGrades = await getInstructorHistory(db, canonical.termCode, canonical.courseId);
   const prerequisites = prerequisiteRows.map(mapPrerequisiteRule);
   const courseTitleLookup = buildCourseTitleLookup(
     db,
@@ -885,7 +906,167 @@ export function getCourseDetail(designation: string): CourseDetail | null {
   };
 }
 
-function getInstructorHistory(
+async function getInstructorHistory(
+  db: Database.Database,
+  termCode: string,
+  courseId: string,
+): Promise<InstructorHistoryItem[]> {
+  if (!hasCompleteMadgradesConfig()) {
+    return getInstructorHistoryFromCompatibilityDb(db, termCode, courseId);
+  }
+
+  const currentSectionInstructorRows = db
+    .prepare(
+      `
+        SELECT
+          so.section_number,
+          so.section_type,
+          si.instructor_key,
+          TRIM(COALESCE(i.first_name || ' ', '') || COALESCE(i.last_name, '')) AS instructor_display_name
+        FROM section_overview_v so
+        JOIN section_instructors si
+          ON si.package_id = so.source_package_id
+         AND si.section_class_number = so.section_class_number
+        JOIN instructors i
+          ON i.instructor_key = si.instructor_key
+        WHERE so.term_code = ? AND so.course_id = ?
+        ORDER BY so.section_type ASC, so.section_number ASC, instructor_display_name ASC, si.instructor_key ASC
+      `,
+    )
+    .all(termCode, courseId) as Row[];
+
+  if (currentSectionInstructorRows.length === 0) {
+    return [];
+  }
+
+  const instructorKeys = [...new Set(currentSectionInstructorRows.map((row) => asString(row.instructor_key)))];
+
+  if (instructorKeys.length === 0) {
+    return [];
+  }
+
+  const emptyRows = mapCurrentInstructorRows(currentSectionInstructorRows);
+  const madgradesDb = getMadgradesDb();
+
+  try {
+    const courseMatchRow = await firstRow(
+      madgradesDb,
+      `
+        SELECT madgrades_course_id
+        FROM madgrades_course_matches
+        WHERE term_code = ? AND course_id = ?
+        LIMIT 1
+      `,
+      [termCode, courseId],
+    );
+    const madgradesCourseId = asNullableNumber(courseMatchRow?.madgrades_course_id);
+
+    const gradeByInstructorKey = new Map<string, Row>();
+
+    if (madgradesCourseId !== null) {
+      const placeholders = instructorKeys.map(() => "?").join(", ");
+      const gradeRows = await allRows(
+        madgradesDb,
+        `
+          WITH course_history AS (
+            SELECT
+              mco.madgrades_course_id,
+              mco.madgrades_instructor_id,
+              COUNT(*) AS prior_offering_count,
+              COALESCE(SUM(mco.student_count), 0) AS student_count,
+              CASE
+                WHEN COALESCE(SUM(mco.student_count), 0) = 0 THEN NULL
+                ELSE SUM(mco.avg_gpa * mco.student_count) / SUM(mco.student_count)
+              END AS same_course_gpa
+            FROM madgrades_course_offerings mco
+            WHERE mco.madgrades_course_id = ?
+            GROUP BY mco.madgrades_course_id, mco.madgrades_instructor_id
+          ),
+          latest_course_grades AS (
+            SELECT
+              mcg.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY mcg.madgrades_course_id, mcg.term_code
+                ORDER BY mcg.madgrades_refresh_run_id DESC, mcg.madgrades_course_grade_id DESC
+              ) AS refresh_rank
+            FROM madgrades_course_grades mcg
+            WHERE mcg.madgrades_course_id = ?
+          ),
+          course_gpa AS (
+            SELECT
+              lcg.madgrades_course_id,
+              CASE
+                WHEN COALESCE(SUM(lcg.student_count), 0) = 0 THEN NULL
+                ELSE SUM(lcg.avg_gpa * lcg.student_count) / SUM(lcg.student_count)
+              END AS historical_gpa
+            FROM latest_course_grades lcg
+            WHERE lcg.refresh_rank = 1
+            GROUP BY lcg.madgrades_course_id
+          )
+          SELECT
+            mim.instructor_key,
+            mim.match_status AS instructor_match_status,
+            ch.prior_offering_count AS same_course_prior_offering_count,
+            ch.student_count AS same_course_student_count,
+            ch.same_course_gpa,
+            cg.historical_gpa AS course_historical_gpa
+          FROM madgrades_instructor_matches mim
+          LEFT JOIN course_history ch
+            ON ch.madgrades_instructor_id = mim.madgrades_instructor_id
+          LEFT JOIN course_gpa cg
+            ON cg.madgrades_course_id = ?
+          WHERE mim.instructor_key IN (${placeholders})
+        `,
+        [madgradesCourseId, madgradesCourseId, madgradesCourseId, ...instructorKeys],
+      );
+
+      for (const row of gradeRows) {
+        gradeByInstructorKey.set(asString(row.instructor_key), row);
+      }
+    }
+
+    return currentSectionInstructorRows
+      .map((row) => {
+        const gradeRow = gradeByInstructorKey.get(asString(row.instructor_key));
+
+        return {
+          sectionNumber: asString(row.section_number),
+          sectionType: asString(row.section_type),
+          instructorDisplayName: asNullableString(row.instructor_display_name),
+          sameCoursePriorOfferingCount: asNullableNumber(gradeRow?.same_course_prior_offering_count),
+          sameCourseStudentCount: asNullableNumber(gradeRow?.same_course_student_count),
+          sameCourseGpa: asNullableNumber(gradeRow?.same_course_gpa),
+          courseHistoricalGpa: asNullableNumber(gradeRow?.course_historical_gpa),
+          instructorMatchStatus: asNullableString(gradeRow?.instructor_match_status),
+        };
+      })
+      .sort((left, right) => {
+        const priorOfferingDiff =
+          (right.sameCoursePriorOfferingCount ?? -1) - (left.sameCoursePriorOfferingCount ?? -1);
+
+        if (priorOfferingDiff !== 0) {
+          return priorOfferingDiff;
+        }
+
+        const studentCountDiff = (right.sameCourseStudentCount ?? -1) - (left.sameCourseStudentCount ?? -1);
+
+        if (studentCountDiff !== 0) {
+          return studentCountDiff;
+        }
+
+        const sectionTypeDiff = left.sectionType.localeCompare(right.sectionType);
+        if (sectionTypeDiff !== 0) {
+          return sectionTypeDiff;
+        }
+
+        return left.sectionNumber.localeCompare(right.sectionNumber);
+      });
+  } catch {
+    return emptyRows;
+  }
+}
+
+function getInstructorHistoryFromCompatibilityDb(
   db: Database.Database,
   termCode: string,
   courseId: string,
@@ -925,6 +1106,38 @@ function getInstructorHistory(
   }));
 }
 
+function mapCurrentInstructorRows(rows: Row[]): InstructorHistoryItem[] {
+  return rows
+    .map((row) => ({
+      sectionNumber: asString(row.section_number),
+      sectionType: asString(row.section_type),
+      instructorDisplayName: asNullableString(row.instructor_display_name),
+      sameCoursePriorOfferingCount: null,
+      sameCourseStudentCount: null,
+      sameCourseGpa: null,
+      courseHistoricalGpa: null,
+      instructorMatchStatus: null,
+    }))
+    .sort((left, right) => {
+      const sectionTypeDiff = left.sectionType.localeCompare(right.sectionType);
+      if (sectionTypeDiff !== 0) {
+        return sectionTypeDiff;
+      }
+
+      return left.sectionNumber.localeCompare(right.sectionNumber);
+    });
+}
+
+function supportsInstructorHistoryView(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'current_term_section_instructor_grade_overview_v'",
+    )
+    .get() as { name?: string } | undefined;
+
+  return row?.name === "current_term_section_instructor_grade_overview_v";
+}
+
 function mapPrerequisiteRule(row: Row): PrerequisiteRule {
   return {
     ruleId: asString(row.rule_id),
@@ -938,29 +1151,15 @@ function mapPrerequisiteRule(row: Row): PrerequisiteRule {
   };
 }
 
-function supportsInstructorHistoryView(db: Database.Database): boolean {
-  if (hasInstructorHistoryView !== null) {
-    return hasInstructorHistoryView;
-  }
-
-  const row = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'current_term_section_instructor_grade_overview_v'",
-    )
-    .get() as { name?: string } | undefined;
-
-  hasInstructorHistoryView = row?.name === "current_term_section_instructor_grade_overview_v";
-  return hasInstructorHistoryView;
-}
-
-function hasCourseSearchTable(db: Database.Database): boolean {
+async function hasCourseSearchTable(db: Client): Promise<boolean> {
   if (hasCourseSearchFtsTable !== null) {
     return hasCourseSearchFtsTable;
   }
 
-  const row = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'")
-    .get() as Row | undefined;
+  const row = await firstRow(
+    db,
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'",
+  );
 
   hasCourseSearchFtsTable = row?.name === "course_search_fts";
   return hasCourseSearchFtsTable;
@@ -1092,22 +1291,22 @@ function makeCompactCourseDesignation(value: string): string {
   return [tokens.slice(0, numericTokenIndex).join(""), ...tokens.slice(numericTokenIndex)].join(" ");
 }
 
-function asString(value: SqlitePrimitive): string {
+function asString(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "");
 }
 
-function asNullableString(value: SqlitePrimitive): string | null {
+function asNullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function asNullableNumber(value: SqlitePrimitive): number | null {
+function asNullableNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function asNullableStringOrNumber(value: SqlitePrimitive): string | number | null {
+function asNullableStringOrNumber(value: unknown): string | number | null {
   return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
-function asNullableBoolean(value: SqlitePrimitive): boolean | null {
+function asNullableBoolean(value: unknown): boolean | null {
   return typeof value === "number" ? value !== 0 : null;
 }

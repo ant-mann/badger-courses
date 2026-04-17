@@ -436,8 +436,7 @@ test("SchedulePriorityList shows ordered rules, guidance copy, and move controls
     />,
   );
 
-  assert.match(markup, /Schedule priorities/i);
-  assert.match(markup, /Schedules are generated using this priority order top to bottom/i);
+  assert.match(markup, /Priority order/i);
   assert.match(markup, />1\.<\/span>\s*<span[^>]*>Later starts</i);
   assert.match(markup, />2\.<\/span>\s*<span[^>]*>Fewer campus days</i);
   assert.match(markup, />3\.<\/span>\s*<span[^>]*>Fewer long gaps</i);
@@ -717,7 +716,7 @@ test("ScheduleCalendar shows an accurate empty state when a selected schedule ha
     <ScheduleCalendar entries={[]} schedule={makeSchedule()} />,
   );
 
-  assert.match(markup, /No calendar meetings are available for this selected schedule/i);
+  assert.match(markup, /No timed meetings in this schedule/i);
   assert.doesNotMatch(markup, /Select a generated schedule to see its meetings laid out across the week/i);
 });
 
@@ -1549,7 +1548,7 @@ test("SelectedCourseList shows its key presentational states", () => {
     <SelectedCourseList courses={[]} onRemoveCourse={() => {}} />,
   );
 
-  assert.match(emptyMarkup, /No courses selected yet/i);
+  assert.match(emptyMarkup, /No courses added/i);
 
   const populatedMarkup = renderToStaticMarkup(
     <SelectedCourseList

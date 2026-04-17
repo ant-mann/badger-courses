@@ -30,7 +30,7 @@ function formatGpa(value: number | null): string {
 
 export default async function CoursePage({ params }: CoursePageProps) {
   const { designation } = await params;
-  const detail = getCourseDetail(designation);
+  const detail = await getCourseDetail(designation);
 
   if (!detail) {
     notFound();

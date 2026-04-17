@@ -101,11 +101,46 @@ export function makeMadgradesCourseRow(course = {}, index = 0) {
       course.courseDesignation
       ?? course.course_designation
       ?? course.abbreviation
-      ?? [course.subjectCode ?? course.subject ?? null, course.catalogNumber ?? course.number ?? null]
+        ?? [course.subjectCode ?? course.subject ?? null, course.catalogNumber ?? course.number ?? null]
         .filter(Boolean)
         .join(' ')
         .trim(),
+    name: course.name ?? null,
+    names: Array.isArray(course.names) ? [...course.names] : undefined,
+    subjectAliases: Array.isArray(course.subjectAliases) ? [...course.subjectAliases] : undefined,
   };
+}
+
+function getUniqueCourseSubjectAliasRows(courses = []) {
+  return courses.flatMap((course, index) => {
+    const madgradesCourseId = Number(course.madgradesCourseId ?? course.madgrades_course_id ?? index + 1);
+    const aliases = new Set([
+      course.subjectCode,
+      course.subject_code,
+      course.subject,
+      ...(Array.isArray(course.subjectAliases) ? course.subjectAliases : []),
+    ].filter((value) => String(value ?? '').trim() !== ''));
+
+    return [...aliases].map((subjectAlias) => ({
+      madgrades_course_id: madgradesCourseId,
+      subject_alias: String(subjectAlias),
+    }));
+  });
+}
+
+function getUniqueCourseNameRows(courses = []) {
+  return courses.flatMap((course, index) => {
+    const madgradesCourseId = Number(course.madgradesCourseId ?? course.madgrades_course_id ?? index + 1);
+    const names = new Set([
+      course.name,
+      ...(Array.isArray(course.names) ? course.names : []),
+    ].filter((value) => String(value ?? '').trim() !== ''));
+
+    return [...names].map((courseName) => ({
+      madgrades_course_id: madgradesCourseId,
+      course_name: String(courseName),
+    }));
+  });
 }
 
 export function makeMadgradesInstructorRow(instructor = {}, index = 0) {
@@ -216,8 +251,30 @@ function hasLocalInstructor(db, instructorKey) {
   `).pluck().get(instructorKey));
 }
 
+function getTableNames(db, names) {
+  return new Set(
+    db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN (${names.map(() => '?').join(', ')})
+    `).pluck().all(...names),
+  );
+}
+
+function getColumnNames(db, tableName) {
+  return new Set(
+    db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name),
+  );
+}
+
 export function replaceMadgradesTables(db, snapshot, importedAt) {
   const importedAtIso = normalizeImportedAt(importedAt);
+  const courseTableColumns = getColumnNames(db, 'madgrades_courses');
+  const tableNames = getTableNames(db, ['madgrades_course_subject_aliases', 'madgrades_course_names']);
+  const supportsCourseNameColumn = courseTableColumns.has('name');
+  const supportsCourseSubjectAliases = tableNames.has('madgrades_course_subject_aliases');
+  const supportsCourseNames = tableNames.has('madgrades_course_names');
   const refreshRunRow = {
     madgrades_refresh_run_id: 1,
     snapshot_run_at: snapshot?.manifest?.generatedAt ?? importedAtIso,
@@ -225,7 +282,10 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
     source_term_code: snapshot?.manifest?.sourceTermCode ?? null,
     notes: snapshot?.manifest?.source ?? null,
   };
-  const courseRows = (snapshot?.courses ?? []).map(makeMadgradesCourseRow);
+  const snapshotCourses = snapshot?.courses ?? [];
+  const courseRows = snapshotCourses.map(makeMadgradesCourseRow);
+  const courseSubjectAliasRows = getUniqueCourseSubjectAliasRows(snapshotCourses);
+  const courseNameRows = getUniqueCourseNameRows(snapshotCourses);
   const instructorRows = (snapshot?.instructors ?? []).map(makeMadgradesInstructorRow);
   const courseDistributionCountByGradeId = new Map(
     (snapshot?.courseGradeDistributions ?? []).map((distribution) => [
@@ -322,6 +382,14 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
     'DELETE FROM madgrades_refresh_runs',
   ];
 
+  if (supportsCourseNames) {
+    deleteStatements.splice(7, 0, 'DELETE FROM madgrades_course_names');
+  }
+
+  if (supportsCourseSubjectAliases) {
+    deleteStatements.splice(7, 0, 'DELETE FROM madgrades_course_subject_aliases');
+  }
+
   const insertRefreshRun = db.prepare(`
     INSERT INTO madgrades_refresh_runs (
       madgrades_refresh_run_id,
@@ -337,19 +405,57 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
       @notes
     )
   `);
-  const insertCourse = db.prepare(`
-    INSERT INTO madgrades_courses (
-      madgrades_course_id,
-      subject_code,
-      catalog_number,
-      course_designation
-    ) VALUES (
-      @madgrades_course_id,
-      @subject_code,
-      @catalog_number,
-      @course_designation
-    )
-  `);
+  const insertCourse = supportsCourseNameColumn
+    ? db.prepare(`
+        INSERT INTO madgrades_courses (
+          madgrades_course_id,
+          subject_code,
+          catalog_number,
+          course_designation,
+          name
+        ) VALUES (
+          @madgrades_course_id,
+          @subject_code,
+          @catalog_number,
+          @course_designation,
+          @name
+        )
+      `)
+    : db.prepare(`
+        INSERT INTO madgrades_courses (
+          madgrades_course_id,
+          subject_code,
+          catalog_number,
+          course_designation
+        ) VALUES (
+          @madgrades_course_id,
+          @subject_code,
+          @catalog_number,
+          @course_designation
+        )
+      `);
+  const insertCourseSubjectAlias = supportsCourseSubjectAliases
+    ? db.prepare(`
+        INSERT INTO madgrades_course_subject_aliases (
+          madgrades_course_id,
+          subject_alias
+        ) VALUES (
+          @madgrades_course_id,
+          @subject_alias
+        )
+      `)
+    : null;
+  const insertCourseName = supportsCourseNames
+    ? db.prepare(`
+        INSERT INTO madgrades_course_names (
+          madgrades_course_id,
+          course_name
+        ) VALUES (
+          @madgrades_course_id,
+          @course_name
+        )
+      `)
+    : null;
   const insertInstructor = db.prepare(`
     INSERT INTO madgrades_instructors (
       madgrades_instructor_id,
@@ -475,6 +581,12 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
     insertRefreshRun.run(refreshRunRow);
 
     for (const row of courseRows) insertCourse.run(row);
+    if (insertCourseSubjectAlias) {
+      for (const row of courseSubjectAliasRows) insertCourseSubjectAlias.run(row);
+    }
+    if (insertCourseName) {
+      for (const row of courseNameRows) insertCourseName.run(row);
+    }
     for (const row of instructorRows) insertInstructor.run(row);
     for (const row of courseGradeRows) insertCourseGrade.run(row);
     for (const row of instructorGradeRows) insertInstructorGrade.run(row);
@@ -488,6 +600,8 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
   return {
     refreshRuns: 1,
     courses: courseRows.length,
+    courseSubjectAliases: supportsCourseSubjectAliases ? courseSubjectAliasRows.length : 0,
+    courseNames: supportsCourseNames ? courseNameRows.length : 0,
     instructors: instructorRows.length,
     courseGrades: courseGradeRows.length,
     instructorGrades: instructorGradeRows.length,
