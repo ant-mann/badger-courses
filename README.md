@@ -27,7 +27,8 @@ uw-madison-courses/
 ├── data/
 │   ├── fall-2026-courses.json                  # Raw course records (extracted)
 │   ├── fall-2026-enrollment-packages.json      # Per-course package snapshots (optional)
-│   ├── fall-2026.sqlite                        # Built SQLite database
+│   ├── fall-2026.sqlite                        # Built course/enrollment SQLite database
+│   ├── fall-2026-madgrades.sqlite              # Standalone Madgrades history + match database
 │   └── madgrades/                              # Cached Madgrades API snapshots
 │       └── <snapshot-id>/                      # One folder per snapshot run
 ├── docs/
@@ -96,19 +97,21 @@ pnpm run extract:fall-2026 -- --headless
 pnpm run extract:fall-2026 -- --headless --include-packages
 ```
 
-### 2. Build the course database
+### 2. Build the local databases
 
-Imports the extracted JSON into `data/fall-2026.sqlite`.
+Build the course database first, then build or refresh the standalone Madgrades database when you need historical grade data.
 
 ```bash
 pnpm run build:course-db
+pnpm run build:madgrades-db
+pnpm run rebuild:madgrades-matches
 ```
 
-This creates all tables, canonical de-duplication views, and pre-computes schedule-planning fields (timezone-aware start/end minutes, days bitmasks, meeting summaries, etc.).
+`pnpm run build:course-db` writes `data/fall-2026.sqlite` with the enrollment/course tables used by the schedule builder and search tools. `pnpm run build:madgrades-db` writes `data/fall-2026-madgrades.sqlite` from the latest cached or freshly refreshed Madgrades snapshot. After rebuilding the course DB, `pnpm run rebuild:madgrades-matches` refreshes only the local-to-Madgrades match tables without re-importing historical grade rows.
 
 ### 3. Import Madgrades historical grade data *(optional)*
 
-Enriches the database with historical GPA data from [Madgrades](https://madgrades.com/). Requires a free Madgrades API token.
+Refreshes the standalone Madgrades database from [Madgrades](https://madgrades.com/). Requires a free Madgrades API token.
 
 ```bash
 # Re-import from the latest saved snapshot (no API call needed after the first run)
@@ -118,7 +121,16 @@ pnpm run import:madgrades
 MADGRADES_API_TOKEN=<your-token> pnpm run import:madgrades -- --refresh-api
 ```
 
-Snapshots are cached under `data/madgrades/` and can be re-imported at any time after rebuilding `data/fall-2026.sqlite`. Once imported, historical GPA data is available via `course_grade_overview_v`, `instructor_course_history_overview_v`, and `current_term_section_instructor_grade_overview_v`.
+Snapshots are cached under `data/madgrades/` and can be re-imported into `data/fall-2026-madgrades.sqlite` at any time after rebuilding `data/fall-2026.sqlite`. The deployed web app reads course/enrollment data from the course DB and grade history from the Madgrades DB, then merges them in application code.
+
+To split and publish the Turso-backed databases used by the deployed web app:
+
+```bash
+pnpm run build:madgrades-db
+pnpm run rebuild:madgrades-matches
+pnpm run publish:course-db
+pnpm run publish:madgrades-db
+```
 
 ### 4. Generate schedule options
 
@@ -166,12 +178,12 @@ Schedules are ranked by (in priority order): fewest campus days → latest start
 
 ## Using an AI with the Local Data
 
-After running steps 1–2 (and optionally 3) above you have everything an AI assistant needs to answer questions about UW–Madison courses.
+After running steps 1-2 (and optionally 3) above you have everything an AI assistant needs to answer questions about UW-Madison courses.
 
 **Recommended approach**
 
 1. Open the project directory in your AI-enabled editor or chat client (e.g. Cursor, Claude Desktop, VS Code + Copilot).
-2. Point the AI at `data/fall-2026.sqlite` as the database source and `docs/querying-course-db.md` as the query reference.
+2. Point the AI at `data/fall-2026.sqlite` for course/enrollment queries and optionally `data/fall-2026-madgrades.sqlite` for historical GPA queries, along with `docs/querying-course-db.md` as the query reference.
 3. Ask questions in plain English — the AI can write and run SQL against the local database, explore availability, compare sections, and suggest schedules.
 
 **Example prompts**
@@ -185,9 +197,12 @@ See [`docs/querying-course-db.md`](docs/querying-course-db.md) for the recommend
 
 ## Database Schema
 
-The SQLite database (`data/fall-2026.sqlite`) contains the following key tables and views:
+The project now builds two SQLite databases:
 
-### Base Tables
+- `data/fall-2026.sqlite` for course, enrollment, prerequisite, and schedule-planning data
+- `data/fall-2026-madgrades.sqlite` for standalone Madgrades history and match tables
+
+### Course DB Tables (`data/fall-2026.sqlite`)
 
 | Table | Description |
 |-------|-------------|
@@ -206,7 +221,7 @@ The SQLite database (`data/fall-2026.sqlite`) contains the following key tables 
 | `prerequisite_nodes` / `prerequisite_edges` | Parsed prerequisite AST |
 | `prerequisite_course_summaries` | AI-friendly course-group summaries |
 
-### Madgrades Tables *(populated after `pnpm run import:madgrades`)*
+### Madgrades DB Tables (`data/fall-2026-madgrades.sqlite`)
 
 | Table | Description |
 |-------|-------------|
@@ -219,7 +234,7 @@ The SQLite database (`data/fall-2026.sqlite`) contains the following key tables 
 | `madgrades_course_matches` / `madgrades_instructor_matches` | Match links between local and Madgrades records |
 | `madgrades_refresh_runs` | Madgrades snapshot metadata |
 
-### Views
+### Course DB Views (`data/fall-2026.sqlite`)
 
 | View | Description |
 |------|-------------|
@@ -232,9 +247,6 @@ The SQLite database (`data/fall-2026.sqlite`) contains the following key tables 
 | `schedule_candidates_v` | Alias of `schedulable_packages`; primary input to the schedule generator |
 | `prerequisite_rule_overview_v` | Raw prerequisite parse inspection |
 | `prerequisite_course_summary_overview_v` | AI-friendly prerequisite course groups |
-| `course_grade_overview_v` | Historical GPA baseline per course *(requires Madgrades import)* |
-| `instructor_course_history_overview_v` | Instructor history for a specific local course *(requires Madgrades import)* |
-| `current_term_section_instructor_grade_overview_v` | Current sections joined with instructor grade history *(requires Madgrades import)* |
 
 See [`docs/querying-course-db.md`](docs/querying-course-db.md) for example SQL queries.
 
@@ -244,10 +256,22 @@ See [`docs/querying-course-db.md`](docs/querying-course-db.md) for example SQL q
 pnpm test
 ```
 
+## Deployment
+
+Fly deploys `web/Dockerfile` from the repo root. The runtime no longer packages a production SQLite file into `web/data` or passes `MADGRADES_DB_SOURCE_PATH` at build time.
+
+Set these Fly runtime env vars in `web/fly.toml`:
+
+- `TURSO_COURSE_DATABASE_URL`
+- `TURSO_MADGRADES_DATABASE_URL`
+- `MADGRADES_COURSE_REPLICA_PATH` (default Fly example: `/tmp/course-replica.db`)
+- `MADGRADES_MADGRADES_REPLICA_PATH` (default Fly example: `/tmp/madgrades-replica.db`)
+
+Set `TURSO_COURSE_AUTH_TOKEN` and `TURSO_MADGRADES_AUTH_TOKEN` as Fly secrets. The app syncs local embedded-replica cache files at the configured replica paths instead of reading a bundled production SQLite database.
+
 ## Key Dependencies
 
 | Package | Purpose |
 |---------|---------|
 | [`playwright`](https://playwright.dev/) | Headless browser for authenticated API scraping |
 | [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) | Synchronous SQLite driver for Node.js |
-

@@ -11,8 +11,10 @@ import {
 } from "./env";
 
 let cachedDb: Database.Database | null = null;
+let cachedCourseSqliteDb: Database.Database | null = null;
 let cachedCourseDb: Client | null = null;
 let cachedMadgradesDb: Client | null = null;
+let courseReplicaEnsured = false;
 
 function hasValue(name: string): boolean {
   return Boolean(process.env[name]?.trim());
@@ -50,6 +52,21 @@ function createReplicaClient(config: LibsqlDatabaseConfig): Client {
   });
 }
 
+async function ensureCourseReplicaFile(): Promise<void> {
+  if (courseReplicaEnsured || !hasCompleteCourseReplicaConfig()) {
+    return;
+  }
+
+  const client = createReplicaClient(getCourseDatabaseConfig());
+
+  try {
+    await client.sync();
+    courseReplicaEnsured = true;
+  } finally {
+    client.close();
+  }
+}
+
 export function getDb(): Database.Database {
   if (!cachedDb) {
     cachedDb = new Database(getDatabasePath(), {
@@ -59,6 +76,27 @@ export function getDb(): Database.Database {
   }
 
   return cachedDb;
+}
+
+export async function getCourseSqliteDb(): Promise<Database.Database> {
+  if (!cachedCourseSqliteDb) {
+    if (hasCompleteCourseReplicaConfig()) {
+      const config = getCourseDatabaseConfig();
+
+      if (!config.url.startsWith("file:")) {
+        await ensureCourseReplicaFile();
+      }
+
+      cachedCourseSqliteDb = new Database(config.replicaPath, {
+        readonly: true,
+        fileMustExist: true,
+      });
+    } else {
+      cachedCourseSqliteDb = getDb();
+    }
+  }
+
+  return cachedCourseSqliteDb;
 }
 
 export function getCourseDb(): Client {
@@ -93,9 +131,14 @@ export function getMadgradesDb(): Client {
 
 export function __resetDbsForTests(): void {
   cachedDb?.close();
+  if (cachedCourseSqliteDb && cachedCourseSqliteDb !== cachedDb) {
+    cachedCourseSqliteDb.close();
+  }
   cachedCourseDb?.close();
   cachedMadgradesDb?.close();
   cachedDb = null;
+  cachedCourseSqliteDb = null;
   cachedCourseDb = null;
   cachedMadgradesDb = null;
+  courseReplicaEnsured = false;
 }

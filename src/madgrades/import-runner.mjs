@@ -27,7 +27,7 @@ function toIsoString(value) {
   return value instanceof Date ? value.toISOString() : new Date(value ?? Date.now()).toISOString();
 }
 
-function loadLocalCourses(db) {
+export function loadLocalCourses(db) {
   const groupedCourses = db.prepare(`
     SELECT
       c.term_code,
@@ -70,7 +70,7 @@ function loadLocalCourses(db) {
   return Array.from(groupedCourses.values());
 }
 
-function loadLocalInstructors(db) {
+export function loadLocalInstructors(db) {
   return db.prepare(`
     SELECT
       instructor_key,
@@ -128,6 +128,55 @@ export function buildMadgradesMatchReport({
       matchStatus: match.matchStatus,
       matchedAt: match.matchStatus === 'matched' ? matchedAtIso : null,
     })),
+  };
+}
+
+export function replaceMadgradesMatchTables(db, matchReport) {
+  const insertCourseMatch = db.prepare(`
+    INSERT INTO madgrades_course_matches (
+      term_code,
+      course_id,
+      madgrades_course_id,
+      match_status,
+      matched_at
+    ) VALUES (
+      @term_code,
+      @course_id,
+      @madgrades_course_id,
+      @match_status,
+      @matched_at
+    )
+  `);
+  const insertInstructorMatch = db.prepare(`
+    INSERT INTO madgrades_instructor_matches (
+      instructor_key,
+      madgrades_instructor_id,
+      match_status,
+      matched_at
+    ) VALUES (
+      @instructor_key,
+      @madgrades_instructor_id,
+      @match_status,
+      @matched_at
+    )
+  `);
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM madgrades_course_matches').run();
+    db.prepare('DELETE FROM madgrades_instructor_matches').run();
+
+    for (const row of matchReport.courseMatches) {
+      insertCourseMatch.run(row);
+    }
+
+    for (const row of matchReport.instructorMatches) {
+      insertInstructorMatch.run(row);
+    }
+  })();
+
+  return {
+    courseMatches: matchReport.courseMatches.length,
+    instructorMatches: matchReport.instructorMatches.length,
   };
 }
 
@@ -296,6 +345,14 @@ function normalizeCourseSnapshot(detailPayload, courseGradesPayload, courseIdMap
   const grades = [];
   const gradeDistributions = [];
   const offerings = [];
+  const subjectAliases = Array.isArray(course?.subjects)
+    ? [...new Set(course.subjects.flatMap((subject) => [subject?.abbreviation, subject?.code].filter(Boolean)))]
+    : [course?.subject].filter(Boolean);
+  const courseNames = Array.isArray(course?.names)
+    ? [...new Set(course.names.filter(Boolean))]
+    : course?.name
+      ? [course.name]
+      : [];
   const liveGradeOfferings = Array.isArray(courseGradesPayload?.courseOfferings)
     ? courseGradesPayload.courseOfferings
     : null;
@@ -378,6 +435,9 @@ function normalizeCourseSnapshot(detailPayload, courseGradesPayload, courseIdMap
       madgradesCourseId,
       subjectCode: course.subject ?? primarySubject?.code,
       catalogNumber: course.number,
+      name: course.name ?? null,
+      names: courseNames,
+      subjectAliases,
       courseDesignation:
         course.abbreviation
         ?? [primarySubject?.abbreviation ?? course.subject ?? null, course.number ?? null]

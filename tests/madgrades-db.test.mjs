@@ -5,6 +5,13 @@ import { readFileSync } from 'node:fs';
 import { buildCourseDbFixture, makeCourse } from './helpers/madgrades-db-fixture.mjs';
 import { writeMadgradesSnapshot } from '../src/madgrades/snapshot-helpers.mjs';
 
+function createJsonResponse(payload) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 function buildInvalidMadgradesSnapshot() {
   return {
     manifest: {
@@ -1059,18 +1066,58 @@ test('rebuildMadgradesMatches updates match tables without touching grade histor
     });
 
     const db = new (await import('better-sqlite3')).default(madgradesDbPath);
-    const beforeGradeCount = db.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get();
-    const beforeInstructorGradeCount = db.prepare('SELECT COUNT(*) FROM madgrades_instructor_grades').pluck().get();
+    const protectedTables = [
+      ['madgrades_course_grades', 'course grades'],
+      ['madgrades_course_grade_distributions', 'course grade distributions'],
+      ['madgrades_course_offerings', 'course offerings'],
+      ['madgrades_instructor_grades', 'instructor grades'],
+      ['madgrades_instructor_grade_distributions', 'instructor grade distributions'],
+    ];
+
+    for (const [tableName, label] of protectedTables) {
+      for (const action of ['INSERT', 'UPDATE', 'DELETE']) {
+        db.exec(`
+          CREATE TRIGGER prevent_${tableName}_${action.toLowerCase()}
+          BEFORE ${action} ON ${tableName}
+          BEGIN
+            SELECT RAISE(FAIL, '${label} must not be rewritten');
+          END;
+        `);
+      }
+    }
     db.exec('DELETE FROM madgrades_course_matches; DELETE FROM madgrades_instructor_matches;');
     db.close();
 
     await rebuildMadgradesMatches({ courseDbPath: fixture.dbPath, madgradesDbPath });
 
     const verifiedDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
-    assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get(), beforeGradeCount);
-    assert.equal(
-      verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_instructor_grades').pluck().get(),
-      beforeInstructorGradeCount,
+    assert.deepEqual(
+      verifiedDb.prepare(`
+        SELECT madgrades_course_grade_id, term_code, student_count, avg_gpa
+        FROM madgrades_course_grades
+      `).all(),
+      [
+        {
+          madgrades_course_grade_id: 1,
+          term_code: '1264',
+          student_count: 40,
+          avg_gpa: 3.6,
+        },
+      ],
+    );
+    assert.deepEqual(
+      verifiedDb.prepare(`
+        SELECT madgrades_instructor_grade_id, term_code, student_count, avg_gpa
+        FROM madgrades_instructor_grades
+      `).all(),
+      [
+        {
+          madgrades_instructor_grade_id: 1,
+          term_code: '1264',
+          student_count: 40,
+          avg_gpa: 3.6,
+        },
+      ],
     );
     assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(), 1);
     assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_instructor_matches').pluck().get(), 1);
@@ -1114,6 +1161,207 @@ test('rebuildMadgradesMatches preserves subject-alias course matches from persis
       },
     );
     verifiedDb.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('buildMadgradesDb with refreshApi persists matching metadata needed for later rebuilds', async () => {
+  const fixture = buildMadgradesSubjectAliasFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+    const { rebuildMadgradesMatches } = await import('../src/madgrades/rebuild-match-tables.mjs');
+    const madgradesDbPath = fixture.madgradesDbPath;
+
+    const fetchImpl = async (url) => {
+      if (url === 'https://example.test/api/courses?per_page=200&page=1') {
+        return createJsonResponse({
+          results: [
+            {
+              uuid: 'course-532',
+              number: '532',
+              name: 'Environmental Biophysics',
+              subjects: [
+                { code: 'AGRONOMY', abbreviation: 'AGRONOMY' },
+                { code: 'ATM OCN', abbreviation: 'ATM OCN' },
+                { code: 'SOIL SCI', abbreviation: 'SOIL SCI' },
+              ],
+            },
+          ],
+          currentPage: 1,
+          totalPages: 1,
+        });
+      }
+
+      if (url === 'https://example.test/api/instructors?per_page=200&page=1') {
+        return createJsonResponse({
+          results: [
+            {
+              id: 99,
+              name: 'Ada Lovelace',
+              url: 'https://example.test/api/instructors/99',
+            },
+          ],
+          currentPage: 1,
+          totalPages: 1,
+        });
+      }
+
+      if (url === 'https://example.test/api/courses/course-532/grades') {
+        return createJsonResponse({
+          courseUuid: 'course-532',
+          cumulative: {
+            total: 35,
+            aCount: 20,
+            abCount: 15,
+          },
+          courseOfferings: [
+            {
+              termCode: '1264',
+              cumulative: {
+                total: 35,
+                aCount: 20,
+                abCount: 15,
+              },
+              sections: [
+                {
+                  sectionNumber: 1,
+                  sectionType: 'LEC',
+                  instructors: [
+                    {
+                      id: 99,
+                      name: 'Ada Lovelace',
+                    },
+                  ],
+                  total: 35,
+                  aCount: 20,
+                  abCount: 15,
+                },
+              ],
+            },
+          ],
+        });
+      }
+
+      if (url === 'https://example.test/api/instructors/99/grades') {
+        return createJsonResponse({
+          instructorId: 99,
+          cumulative: {
+            total: 35,
+            aCount: 20,
+            abCount: 15,
+          },
+          courseOfferings: [
+            {
+              termCode: '1264',
+              courseUuid: 'course-532',
+              courseOfferingUuid: 'offering-532-1264',
+              cumulative: {
+                total: 35,
+                aCount: 20,
+                abCount: 15,
+              },
+              sections: [
+                {
+                  sectionNumber: 1,
+                  instructors: [
+                    {
+                      id: 99,
+                      name: 'Ada Lovelace',
+                    },
+                  ],
+                  total: 35,
+                  aCount: 20,
+                  abCount: 15,
+                },
+              ],
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    };
+
+    await buildMadgradesDb({
+      courseDbPath: fixture.dbPath,
+      outputDbPath: madgradesDbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: true,
+      token: 'test-token',
+      fetchImpl,
+      baseUrl: 'https://example.test/api',
+      now: new Date('2026-04-12T03:04:05.000Z'),
+    });
+
+    const builtDb = new (await import('better-sqlite3')).default(madgradesDbPath);
+    assert.deepEqual(
+      builtDb.prepare(`
+        SELECT subject_alias
+        FROM madgrades_course_subject_aliases
+        WHERE madgrades_course_id = 1
+        ORDER BY subject_alias
+      `).pluck().all(),
+      ['AGRONOMY', 'ATM OCN', 'SOIL SCI'],
+    );
+    assert.deepEqual(
+      builtDb.prepare(`
+        SELECT course_name
+        FROM madgrades_course_names
+        WHERE madgrades_course_id = 1
+      `).pluck().all(),
+      ['Environmental Biophysics'],
+    );
+    builtDb.exec('DELETE FROM madgrades_course_matches; DELETE FROM madgrades_instructor_matches;');
+    builtDb.close();
+
+    await rebuildMadgradesMatches({ courseDbPath: fixture.dbPath, madgradesDbPath });
+
+    const rebuiltDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
+    assert.deepEqual(
+      rebuiltDb.prepare(`
+        SELECT madgrades_course_id, match_status
+        FROM madgrades_course_matches
+        WHERE term_code = ? AND course_id = ?
+      `).get('1272', '017821'),
+      {
+        madgrades_course_id: 1,
+        match_status: 'matched',
+      },
+    );
+    rebuiltDb.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('rebuildMadgradesMatches rejects standalone databases missing persisted matching metadata', async () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+    const { rebuildMadgradesMatches } = await import('../src/madgrades/rebuild-match-tables.mjs');
+    const madgradesDbPath = fixture.madgradesDbPath;
+
+    await buildMadgradesDb({
+      courseDbPath: fixture.dbPath,
+      outputDbPath: madgradesDbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: false,
+    });
+
+    const db = new (await import('better-sqlite3')).default(madgradesDbPath);
+    db.exec(`
+      DROP TABLE madgrades_course_subject_aliases;
+      DROP TABLE madgrades_course_names;
+    `);
+    db.close();
+
+    await assert.rejects(
+      rebuildMadgradesMatches({ courseDbPath: fixture.dbPath, madgradesDbPath }),
+      /missing persisted course matching metadata/i,
+    );
   } finally {
     fixture.cleanup();
   }

@@ -401,6 +401,37 @@ test("course detail route returns instructor grades for an existing course", asy
   ]);
 });
 
+test("schedule route uses the course database without requiring the compatibility db path", async () => {
+  process.env.MADGRADES_DB_PATH = "/tmp/does-not-exist.sqlite";
+  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+  process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+  __resetDbsForTests();
+
+  try {
+    const response = await buildSchedules(
+      new Request("https://example.test/api/schedules", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          courses: ["STAT 340", "COMP SCI 577"],
+          limit: 1,
+        }),
+      }),
+    );
+
+    assert.equal(response.status, 200);
+  } finally {
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    __resetDbsForTests();
+  }
+});
+
 test("schedule route rejects blank course strings with 400 json", async () => {
   const response = await buildSchedules(
     new Request("https://example.test/api/schedules", {

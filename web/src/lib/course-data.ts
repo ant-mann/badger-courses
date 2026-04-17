@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import type { Client } from "@libsql/client";
 
 import { normalizeCourseDesignation } from "./course-designation";
-import { getCourseDb, getDb, getMadgradesDb } from "./db";
+import { getCourseDb, getCourseSqliteDb, getMadgradesDb } from "./db";
 
 type QueryArg = string | number | null;
 type Row = Record<string, unknown>;
@@ -641,7 +641,7 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
 }
 
 export async function getCourseDetail(designation: string): Promise<CourseDetail | null> {
-  const db = getDb();
+  const db = await getCourseSqliteDb();
   let normalizedDesignation: string;
 
   try {

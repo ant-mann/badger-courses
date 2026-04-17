@@ -5,13 +5,13 @@ primary_region = "ord"
   # Deploy from the repo root so the Dockerfile can copy shared workspace files.
   dockerfile = "web/Dockerfile"
 
-  [build.args]
-    MADGRADES_DB_SOURCE_PATH = "../data/fall-2026.sqlite"
-
 [env]
   NODE_ENV = "production"
   PORT = "3000"
-  MADGRADES_DB_PATH = "/app/web/data/fall-2026.sqlite"
+  TURSO_COURSE_DATABASE_URL = ""
+  TURSO_MADGRADES_DATABASE_URL = ""
+  MADGRADES_COURSE_REPLICA_PATH = "/tmp/course-replica.db"
+  MADGRADES_MADGRADES_REPLICA_PATH = "/tmp/madgrades-replica.db"
 
 [http_service]
   internal_port = 3000
