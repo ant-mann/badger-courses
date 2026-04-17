@@ -11,6 +11,7 @@
     "build:course-db": "node src/db/build-course-db.mjs",
     "build:madgrades-db": "node src/madgrades/build-madgrades-db.mjs",
     "import:madgrades": "node scripts/import-madgrades.mjs",
+    "rebuild:madgrades-matches": "node scripts/rebuild-madgrades-matches.mjs",
     "schedule:options": "node scripts/schedule-options.mjs"
   },
   "dependencies": {

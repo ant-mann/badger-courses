@@ -878,6 +878,38 @@ test('runMadgradesImport loads standalone madgrades schema when courseDbPath is 
   }
 });
 
+test('rebuildMadgradesMatches updates match tables without touching grade history rows', async () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+    const { rebuildMadgradesMatches } = await import('../src/madgrades/rebuild-match-tables.mjs');
+    const madgradesDbPath = fixture.madgradesDbPath;
+
+    await buildMadgradesDb({
+      courseDbPath: fixture.dbPath,
+      outputDbPath: madgradesDbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: false,
+    });
+
+    const db = new (await import('better-sqlite3')).default(madgradesDbPath);
+    const beforeGradeCount = db.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get();
+    db.exec('DELETE FROM madgrades_course_matches; DELETE FROM madgrades_instructor_matches;');
+    db.close();
+
+    await rebuildMadgradesMatches({ courseDbPath: fixture.dbPath, madgradesDbPath });
+
+    const verifiedDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
+    assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get(), beforeGradeCount);
+    assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(), 1);
+    assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_instructor_matches').pluck().get(), 1);
+    verifiedDb.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('buildMadgradesDb preserves the existing output when a rebuild fails', async () => {
   const fixture = buildMadgradesOverviewFixture();
 

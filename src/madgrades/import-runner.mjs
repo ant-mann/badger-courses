@@ -83,6 +83,54 @@ function loadLocalInstructors(db) {
   }));
 }
 
+export function buildMadgradesMatchResults({ db, madgradesCourses, madgradesInstructors }) {
+  const localCourses = loadLocalCourses(db);
+  const localInstructors = loadLocalInstructors(db);
+  const normalizedMadgradesCourses = madgradesCourses.map(normalizeMadgradesCourseForMatching);
+  const courseMatches = localCourses.map((course) => matchLocalCourse(course, normalizedMadgradesCourses));
+  const instructorMatches = localInstructors.map((instructor) => matchLocalInstructor(instructor, madgradesInstructors));
+
+  return {
+    localCourses,
+    localInstructors,
+    normalizedMadgradesCourses,
+    courseMatches,
+    instructorMatches,
+  };
+}
+
+export function buildMadgradesMatchReport({
+  courseMatches,
+  instructorMatches,
+  matchedAt = new Date(),
+  resolveMadgradesCourseId = (match) => match.madgradesCourseUuid,
+  resolveMadgradesInstructorId = (match) => match.madgradesInstructorId,
+}) {
+  const matchedAtIso = toIsoString(matchedAt);
+
+  return {
+    courseMatches: courseMatches.map((match) => makeMadgradesCourseMatchRow({
+      termCode: match.termCode,
+      courseId: match.courseId,
+      madgradesCourseId:
+        match.matchStatus === 'matched'
+          ? resolveMadgradesCourseId(match)
+          : null,
+      matchStatus: match.matchStatus,
+      matchedAt: match.matchStatus === 'matched' ? matchedAtIso : null,
+    })),
+    instructorMatches: instructorMatches.map((match) => makeMadgradesInstructorMatchRow({
+      instructorKey: match.instructorKey,
+      madgradesInstructorId:
+        match.matchStatus === 'matched'
+          ? resolveMadgradesInstructorId(match)
+          : null,
+      matchStatus: match.matchStatus,
+      matchedAt: match.matchStatus === 'matched' ? matchedAtIso : null,
+    })),
+  };
+}
+
 function loadCurrentSourceTermCode(db) {
   const hasRefreshRunsTable = Boolean(db.prepare(`
     SELECT 1
@@ -489,7 +537,6 @@ export async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl,
   const localInstructors = loadLocalInstructors(db);
   const sourceTermCode = loadCurrentSourceTermCode(db);
   const snapshotId = makeMadgradesSnapshotId(now);
-  const matchedAt = toIsoString(now);
   onProgress(`Loaded ${localCourses.length} local courses and ${localInstructors.length} local instructors.`);
 
   onProgress('Fetching Madgrades course index...');
@@ -499,13 +546,20 @@ export async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl,
   ]);
   onProgress(`Fetched Madgrades indexes: ${madgradesCourses.length} courses, ${madgradesInstructors.length} instructors.`);
   onProgress('Normalizing Madgrades course index for matching...');
-  const normalizedMadgradesCourses = madgradesCourses.map(normalizeMadgradesCourseForMatching);
-
   onProgress('Matching local records against Madgrades indexes...');
-  const courseMatches = localCourses.map((course) => matchLocalCourse(course, normalizedMadgradesCourses));
-  const instructorMatches = localInstructors.map((instructor) => matchLocalInstructor(instructor, madgradesInstructors));
-  const matchedCourseResults = courseMatches.filter((match) => match.matchStatus === 'matched');
-  const matchedInstructorResults = instructorMatches.filter((match) => match.matchStatus === 'matched');
+  const matchResults = buildMadgradesMatchResults({
+    db,
+    madgradesCourses,
+    madgradesInstructors,
+  });
+  const matchedAt = toIsoString(now);
+  const {
+    courseMatches: resolvedCourseMatches,
+    instructorMatches: resolvedInstructorMatches,
+    normalizedMadgradesCourses: resolvedNormalizedMadgradesCourses,
+  } = matchResults;
+  const matchedCourseResults = resolvedCourseMatches.filter((match) => match.matchStatus === 'matched');
+  const matchedInstructorResults = resolvedInstructorMatches.filter((match) => match.matchStatus === 'matched');
   const uniqueMatchedCourseResults = [...matchedCourseResults.reduce((byUuid, match) => {
     if (!byUuid.has(match.madgradesCourseUuid)) {
       byUuid.set(match.madgradesCourseUuid, match);
@@ -532,7 +586,7 @@ export async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl,
 
   onProgress(`Fetching course grades for ${uniqueMatchedCourseResults.length} matched courses...`);
   const matchedCourseIndexRows = new Map(
-    normalizedMadgradesCourses.map((course) => [course.uuid, course]),
+    resolvedNormalizedMadgradesCourses.map((course) => [course.uuid, course]),
   );
   const reportCourseProgress = makeProgressReporter({
     onProgress,
@@ -707,24 +761,12 @@ export async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl,
     instructors: snapshotInstructors,
     instructorGrades: snapshotInstructorGrades,
     instructorGradeDistributions: snapshotInstructorGradeDistributions,
-    matchReport: {
-      courseMatches: courseMatches.map((match) => makeMadgradesCourseMatchRow({
-        termCode: match.termCode,
-        courseId: match.courseId,
-        madgradesCourseId:
-          match.matchStatus === 'matched'
-            ? courseIdMap.get(match.madgradesCourseUuid)
-            : null,
-        matchStatus: match.matchStatus,
-        matchedAt: match.matchStatus === 'matched' ? matchedAt : null,
-      })),
-      instructorMatches: instructorMatches.map((match) => makeMadgradesInstructorMatchRow({
-        instructorKey: match.instructorKey,
-        madgradesInstructorId: match.matchStatus === 'matched' ? match.madgradesInstructorId : null,
-        matchStatus: match.matchStatus,
-        matchedAt: match.matchStatus === 'matched' ? matchedAt : null,
-      })),
-    },
+    matchReport: buildMadgradesMatchReport({
+      courseMatches: resolvedCourseMatches,
+      instructorMatches: resolvedInstructorMatches,
+      matchedAt,
+      resolveMadgradesCourseId: (match) => courseIdMap.get(match.madgradesCourseUuid),
+    }),
   };
 
   onProgress('Writing Madgrades snapshot...');
