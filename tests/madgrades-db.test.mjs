@@ -198,6 +198,171 @@ function buildMadgradesOverviewFixture() {
   });
 }
 
+function buildMadgradesSubjectAliasFixture() {
+  return buildCourseDbFixture({
+    courses: [
+      makeCourse({
+        termCode: '1272',
+        courseId: '017821',
+        subjectCode: 'ATM OCN',
+        catalogNumber: '532',
+        courseDesignation: 'ATM OCN 532',
+        title: 'Environmental Biophysics',
+      }),
+    ],
+    packageSnapshot: {
+      termCode: '1272',
+      results: [
+        {
+          course: {
+            termCode: '1272',
+            subjectCode: 'ATM OCN',
+            courseId: '017821',
+          },
+          packages: [
+            {
+              id: 'atm-ocn-532-main',
+              termCode: '1272',
+              subjectCode: 'ATM OCN',
+              courseId: '017821',
+              enrollmentClassNumber: 53201,
+              lastUpdated: 2000,
+              onlineOnly: false,
+              isAsynchronous: false,
+              packageEnrollmentStatus: {
+                status: 'OPEN',
+                availableSeats: 5,
+                waitlistTotal: 0,
+              },
+              enrollmentStatus: {
+                openSeats: 5,
+                waitlistCurrentSize: 0,
+                capacity: 30,
+                currentlyEnrolled: 25,
+              },
+              sections: [
+                {
+                  classUniqueId: { termCode: '1272', classNumber: 53201 },
+                  sectionNumber: '001',
+                  type: 'LEC',
+                  instructionMode: 'IN PERSON',
+                  sessionCode: '1',
+                  published: true,
+                  enrollmentStatus: {
+                    openSeats: 5,
+                    waitlistCurrentSize: 0,
+                    capacity: 30,
+                    currentlyEnrolled: 25,
+                  },
+                  instructors: [
+                    {
+                      name: { first: 'Ada', last: 'Lovelace' },
+                      email: 'ada@example.edu',
+                    },
+                  ],
+                  classMeetings: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    madgradesSnapshot: {
+      manifest: {
+        generatedAt: '2024-01-16T00:00:00Z',
+        source: 'fixture',
+        sourceTermCode: '1272',
+        matchedCourseCount: 1,
+        matchedInstructorCount: 1,
+      },
+      courses: [
+        {
+          madgrades_course_id: 1,
+          subject_code: 'AGRONOMY',
+          catalog_number: '532',
+          course_designation: 'AGRONOMY 532',
+          name: 'Environmental Biophysics',
+          names: ['Environmental Biophysics'],
+          subjectAliases: ['AGRONOMY', 'ATM OCN', 'SOIL SCI'],
+        },
+      ],
+      courseGrades: [
+        {
+          madgrades_course_grade_id: 1,
+          madgrades_course_id: 1,
+          term_code: '1264',
+          student_count: 35,
+          avg_gpa: 3.4,
+        },
+      ],
+      courseOfferings: [
+        {
+          madgrades_course_offering_id: 1,
+          madgrades_course_id: 1,
+          madgrades_instructor_id: 1,
+          term_code: '1264',
+          section_type: 'LEC',
+          student_count: 35,
+          avg_gpa: 3.4,
+        },
+      ],
+      courseGradeDistributions: [
+        {
+          madgradesCourseGradeId: 1,
+          grades: {
+            A: 20,
+            AB: 15,
+          },
+        },
+      ],
+      instructors: [
+        {
+          madgrades_instructor_id: 1,
+          display_name: 'Ada Lovelace',
+        },
+      ],
+      instructorGrades: [
+        {
+          madgrades_instructor_grade_id: 1,
+          madgrades_instructor_id: 1,
+          term_code: '1264',
+          student_count: 35,
+          avg_gpa: 3.4,
+        },
+      ],
+      instructorGradeDistributions: [
+        {
+          madgradesInstructorGradeId: 1,
+          grades: {
+            A: 20,
+            AB: 15,
+          },
+        },
+      ],
+      matchReport: {
+        courseMatches: [
+          {
+            term_code: '1272',
+            course_id: '017821',
+            madgrades_course_id: 1,
+            match_status: 'matched',
+            matched_at: '2024-01-16T00:00:00Z',
+          },
+        ],
+        instructorMatches: [
+          {
+            instructor_key: 'ada@example.edu',
+            madgrades_instructor_id: 1,
+            match_status: 'matched',
+            matched_at: '2024-01-16T00:00:00Z',
+          },
+        ],
+      },
+    },
+  });
+}
+
 function seedMadgradesMatchRowsWithoutHistory(db) {
   const instructorKey = db.prepare(`
     SELECT instructor_key
@@ -895,6 +1060,7 @@ test('rebuildMadgradesMatches updates match tables without touching grade histor
 
     const db = new (await import('better-sqlite3')).default(madgradesDbPath);
     const beforeGradeCount = db.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get();
+    const beforeInstructorGradeCount = db.prepare('SELECT COUNT(*) FROM madgrades_instructor_grades').pluck().get();
     db.exec('DELETE FROM madgrades_course_matches; DELETE FROM madgrades_instructor_matches;');
     db.close();
 
@@ -902,8 +1068,51 @@ test('rebuildMadgradesMatches updates match tables without touching grade histor
 
     const verifiedDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
     assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get(), beforeGradeCount);
+    assert.equal(
+      verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_instructor_grades').pluck().get(),
+      beforeInstructorGradeCount,
+    );
     assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(), 1);
     assert.equal(verifiedDb.prepare('SELECT COUNT(*) FROM madgrades_instructor_matches').pluck().get(), 1);
+    verifiedDb.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('rebuildMadgradesMatches preserves subject-alias course matches from persisted metadata', async () => {
+  const fixture = buildMadgradesSubjectAliasFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+    const { rebuildMadgradesMatches } = await import('../src/madgrades/rebuild-match-tables.mjs');
+    const madgradesDbPath = fixture.madgradesDbPath;
+
+    await buildMadgradesDb({
+      courseDbPath: fixture.dbPath,
+      outputDbPath: madgradesDbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: false,
+    });
+
+    const db = new (await import('better-sqlite3')).default(madgradesDbPath);
+    db.exec('DELETE FROM madgrades_course_matches; DELETE FROM madgrades_instructor_matches;');
+    db.close();
+
+    await rebuildMadgradesMatches({ courseDbPath: fixture.dbPath, madgradesDbPath });
+
+    const verifiedDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
+    assert.deepEqual(
+      verifiedDb.prepare(`
+        SELECT madgrades_course_id, match_status
+        FROM madgrades_course_matches
+        WHERE term_code = ? AND course_id = ?
+      `).get('1272', '017821'),
+      {
+        madgrades_course_id: 1,
+        match_status: 'matched',
+      },
+    );
     verifiedDb.close();
   } finally {
     fixture.cleanup();

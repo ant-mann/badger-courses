@@ -105,7 +105,40 @@ export function makeMadgradesCourseRow(course = {}, index = 0) {
         .filter(Boolean)
         .join(' ')
         .trim(),
+    name: course.name ?? null,
   };
+}
+
+function getUniqueCourseSubjectAliasRows(courses = []) {
+  return courses.flatMap((course, index) => {
+    const madgradesCourseId = Number(course.madgradesCourseId ?? course.madgrades_course_id ?? index + 1);
+    const aliases = new Set([
+      course.subjectCode,
+      course.subject_code,
+      course.subject,
+      ...(Array.isArray(course.subjectAliases) ? course.subjectAliases : []),
+    ].filter((value) => String(value ?? '').trim() !== ''));
+
+    return [...aliases].map((subjectAlias) => ({
+      madgrades_course_id: madgradesCourseId,
+      subject_alias: String(subjectAlias),
+    }));
+  });
+}
+
+function getUniqueCourseNameRows(courses = []) {
+  return courses.flatMap((course, index) => {
+    const madgradesCourseId = Number(course.madgradesCourseId ?? course.madgrades_course_id ?? index + 1);
+    const names = new Set([
+      course.name,
+      ...(Array.isArray(course.names) ? course.names : []),
+    ].filter((value) => String(value ?? '').trim() !== ''));
+
+    return [...names].map((courseName) => ({
+      madgrades_course_id: madgradesCourseId,
+      course_name: String(courseName),
+    }));
+  });
 }
 
 export function makeMadgradesInstructorRow(instructor = {}, index = 0) {
@@ -225,7 +258,10 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
     source_term_code: snapshot?.manifest?.sourceTermCode ?? null,
     notes: snapshot?.manifest?.source ?? null,
   };
-  const courseRows = (snapshot?.courses ?? []).map(makeMadgradesCourseRow);
+  const snapshotCourses = snapshot?.courses ?? [];
+  const courseRows = snapshotCourses.map(makeMadgradesCourseRow);
+  const courseSubjectAliasRows = getUniqueCourseSubjectAliasRows(snapshotCourses);
+  const courseNameRows = getUniqueCourseNameRows(snapshotCourses);
   const instructorRows = (snapshot?.instructors ?? []).map(makeMadgradesInstructorRow);
   const courseDistributionCountByGradeId = new Map(
     (snapshot?.courseGradeDistributions ?? []).map((distribution) => [
@@ -317,6 +353,8 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
     'DELETE FROM madgrades_instructor_grades',
     'DELETE FROM madgrades_course_matches',
     'DELETE FROM madgrades_instructor_matches',
+    'DELETE FROM madgrades_course_names',
+    'DELETE FROM madgrades_course_subject_aliases',
     'DELETE FROM madgrades_courses',
     'DELETE FROM madgrades_instructors',
     'DELETE FROM madgrades_refresh_runs',
@@ -342,12 +380,32 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
       madgrades_course_id,
       subject_code,
       catalog_number,
-      course_designation
+      course_designation,
+      name
     ) VALUES (
       @madgrades_course_id,
       @subject_code,
       @catalog_number,
-      @course_designation
+      @course_designation,
+      @name
+    )
+  `);
+  const insertCourseSubjectAlias = db.prepare(`
+    INSERT INTO madgrades_course_subject_aliases (
+      madgrades_course_id,
+      subject_alias
+    ) VALUES (
+      @madgrades_course_id,
+      @subject_alias
+    )
+  `);
+  const insertCourseName = db.prepare(`
+    INSERT INTO madgrades_course_names (
+      madgrades_course_id,
+      course_name
+    ) VALUES (
+      @madgrades_course_id,
+      @course_name
     )
   `);
   const insertInstructor = db.prepare(`
@@ -475,6 +533,8 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
     insertRefreshRun.run(refreshRunRow);
 
     for (const row of courseRows) insertCourse.run(row);
+    for (const row of courseSubjectAliasRows) insertCourseSubjectAlias.run(row);
+    for (const row of courseNameRows) insertCourseName.run(row);
     for (const row of instructorRows) insertInstructor.run(row);
     for (const row of courseGradeRows) insertCourseGrade.run(row);
     for (const row of instructorGradeRows) insertInstructorGrade.run(row);
@@ -488,6 +548,8 @@ export function replaceMadgradesTables(db, snapshot, importedAt) {
   return {
     refreshRuns: 1,
     courses: courseRows.length,
+    courseSubjectAliases: courseSubjectAliasRows.length,
+    courseNames: courseNameRows.length,
     instructors: instructorRows.length,
     courseGrades: courseGradeRows.length,
     instructorGrades: instructorGradeRows.length,

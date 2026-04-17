@@ -3,6 +3,8 @@ PRAGMA foreign_keys = ON;
 
 DROP TABLE IF EXISTS madgrades_instructor_matches;
 DROP TABLE IF EXISTS madgrades_course_matches;
+DROP TABLE IF EXISTS madgrades_course_names;
+DROP TABLE IF EXISTS madgrades_course_subject_aliases;
 DROP TABLE IF EXISTS madgrades_instructor_grade_distributions;
 DROP TABLE IF EXISTS madgrades_instructor_grades;
 DROP TABLE IF EXISTS madgrades_course_grade_distributions;
@@ -25,7 +27,26 @@ CREATE TABLE madgrades_courses (
   subject_code TEXT NOT NULL,
   catalog_number TEXT NOT NULL,
   course_designation TEXT NOT NULL,
+  name TEXT,
   UNIQUE (subject_code, catalog_number)
+);
+
+CREATE TABLE madgrades_course_subject_aliases (
+  madgrades_course_id INTEGER NOT NULL,
+  subject_alias TEXT NOT NULL,
+  PRIMARY KEY (madgrades_course_id, subject_alias),
+  FOREIGN KEY (madgrades_course_id)
+    REFERENCES madgrades_courses (madgrades_course_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE madgrades_course_names (
+  madgrades_course_id INTEGER NOT NULL,
+  course_name TEXT NOT NULL,
+  PRIMARY KEY (madgrades_course_id, course_name),
+  FOREIGN KEY (madgrades_course_id)
+    REFERENCES madgrades_courses (madgrades_course_id)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE madgrades_instructors (
@@ -135,6 +156,10 @@ CREATE TABLE madgrades_instructor_matches (
 );
 
 CREATE INDEX idx_madgrades_courses_designation ON madgrades_courses(course_designation);
+CREATE INDEX idx_madgrades_course_subject_aliases_course
+  ON madgrades_course_subject_aliases(madgrades_course_id, subject_alias);
+CREATE INDEX idx_madgrades_course_names_course
+  ON madgrades_course_names(madgrades_course_id, course_name);
 CREATE INDEX idx_madgrades_course_grades_course_term ON madgrades_course_grades(madgrades_course_id, term_code);
 CREATE INDEX idx_madgrades_course_offerings_course_instructor_term
   ON madgrades_course_offerings(madgrades_course_id, madgrades_instructor_id, term_code);

@@ -3,19 +3,44 @@ import Database from 'better-sqlite3';
 import { buildMadgradesMatchReport, buildMadgradesMatchResults } from './import-runner.mjs';
 
 function loadPersistedMadgradesCourses(db) {
-  return db.prepare(`
+  const courseRows = db.prepare(`
     SELECT
       madgrades_course_id,
       subject_code,
       catalog_number,
-      course_designation
+      course_designation,
+      name
     FROM madgrades_courses
     ORDER BY madgrades_course_id
-  `).all().map((row) => ({
+  `).all();
+  const subjectAliasesByCourseId = db.prepare(`
+    SELECT madgrades_course_id, subject_alias
+    FROM madgrades_course_subject_aliases
+    ORDER BY madgrades_course_id, subject_alias
+  `).all().reduce((aliases, row) => {
+    const existing = aliases.get(row.madgrades_course_id) ?? [];
+    existing.push(row.subject_alias);
+    aliases.set(row.madgrades_course_id, existing);
+    return aliases;
+  }, new Map());
+  const namesByCourseId = db.prepare(`
+    SELECT madgrades_course_id, course_name
+    FROM madgrades_course_names
+    ORDER BY madgrades_course_id, course_name
+  `).all().reduce((names, row) => {
+    const existing = names.get(row.madgrades_course_id) ?? [];
+    existing.push(row.course_name);
+    names.set(row.madgrades_course_id, existing);
+    return names;
+  }, new Map());
+
+  return courseRows.map((row) => ({
     uuid: row.madgrades_course_id,
     subject: row.subject_code,
+    subjectAliases: subjectAliasesByCourseId.get(row.madgrades_course_id) ?? [row.subject_code],
     number: row.catalog_number,
-    name: row.course_designation,
+    name: row.name ?? row.course_designation,
+    names: namesByCourseId.get(row.madgrades_course_id) ?? (row.name ? [row.name] : [row.course_designation]),
   }));
 }
 

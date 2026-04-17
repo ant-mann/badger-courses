@@ -228,7 +228,9 @@ function seedLocalIdentityTables(db, identityRows) {
 
 function normalizeMadgradesCourseForMatching(course) {
   const primarySubject = Array.isArray(course?.subjects) ? course.subjects[0] : null;
-  const normalizedSubjectAliases = Array.isArray(course?.subjects)
+  const normalizedSubjectAliases = Array.isArray(course?.subjectAliases) && course.subjectAliases.length > 0
+    ? [...new Set(course.subjectAliases.filter(Boolean))]
+    : Array.isArray(course?.subjects)
     ? [...new Set(course.subjects.flatMap((subject) => [subject?.abbreviation, subject?.code].filter(Boolean)))]
     : null;
 
