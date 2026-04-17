@@ -1,13 +1,11 @@
 import path from 'node:path';
 import process from 'node:process';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import Database from 'better-sqlite3';
 
-import { replaceMadgradesTables } from './import-helpers.mjs';
-import { buildSnapshotFromApi } from './import-runner.mjs';
-import { readLatestMadgradesSnapshot } from './snapshot-helpers.mjs';
+import { runMadgradesImport } from './import-runner.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,55 +26,29 @@ function readFlagValue(args, flagName) {
   return value;
 }
 
-function loadLocalIdentityRows(courseDbPath) {
-  const courseDb = new Database(courseDbPath, { readonly: true });
-
-  try {
-    return {
-      courses: courseDb.prepare(`
-        SELECT term_code, course_id
-        FROM courses
-      `).all(),
-      instructors: courseDb.prepare(`
-        SELECT instructor_key
-        FROM instructors
-      `).all(),
-    };
-  } finally {
-    courseDb.close();
-  }
+async function removeSqliteArtifacts(basePath) {
+  await rm(basePath, { force: true });
+  await rm(`${basePath}-wal`, { force: true });
+  await rm(`${basePath}-shm`, { force: true });
 }
 
-function seedLocalIdentityTables(db, identityRows) {
-  db.exec(`
-    CREATE TEMP TABLE courses (
-      term_code TEXT NOT NULL,
-      course_id TEXT NOT NULL,
-      PRIMARY KEY (term_code, course_id)
-    );
-    CREATE TEMP TABLE instructors (
-      instructor_key TEXT PRIMARY KEY
-    );
-  `);
+async function moveSqliteArtifacts(sourcePath, destinationPath) {
+  let movedMainFile = false;
 
-  const insertCourse = db.prepare(`
-    INSERT INTO courses (term_code, course_id)
-    VALUES (?, ?)
-  `);
-  const insertInstructor = db.prepare(`
-    INSERT INTO instructors (instructor_key)
-    VALUES (?)
-  `);
-
-  db.transaction(() => {
-    for (const row of identityRows.courses) {
-      insertCourse.run(row.term_code, row.course_id);
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      await rename(`${sourcePath}${suffix}`, `${destinationPath}${suffix}`);
+      if (suffix === '') {
+        movedMainFile = true;
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        throw error;
+      }
     }
+  }
 
-    for (const row of identityRows.instructors) {
-      insertInstructor.run(row.instructor_key);
-    }
-  })();
+  return movedMainFile;
 }
 
 export async function buildMadgradesDb({
@@ -91,52 +63,55 @@ export async function buildMadgradesDb({
   onProgress = () => {},
 } = {}) {
   const schemaSql = await readFile(schemaPath, 'utf8');
-  const identityRows = loadLocalIdentityRows(courseDbPath);
-
-  let snapshot;
-  let snapshotId;
-
-  if (refreshApi) {
-    const courseDb = new Database(courseDbPath, { readonly: true });
-
-    try {
-      onProgress('Refreshing snapshot from Madgrades API...');
-      const built = await buildSnapshotFromApi({ db: courseDb, snapshotRoot, token, fetchImpl, baseUrl, now, onProgress });
-      snapshot = built.snapshot;
-      snapshotId = built.snapshotId;
-    } finally {
-      courseDb.close();
-    }
-  } else {
-    onProgress('Loading latest Madgrades snapshot...');
-    const latestSnapshot = await readLatestMadgradesSnapshot({ snapshotRoot });
-    snapshot = latestSnapshot;
-    snapshotId = latestSnapshot.snapshotId;
-    onProgress(`Loaded snapshot ${snapshotId}.`);
-  }
+  const tempOutputDbPath = `${outputDbPath}.tmp-${process.pid}-${Date.now()}`;
+  const backupOutputDbPath = `${outputDbPath}.bak-${process.pid}-${Date.now()}`;
 
   await mkdir(path.dirname(outputDbPath), { recursive: true });
-  await rm(outputDbPath, { force: true });
-  await rm(`${outputDbPath}-wal`, { force: true });
-  await rm(`${outputDbPath}-shm`, { force: true });
+  await removeSqliteArtifacts(tempOutputDbPath);
+  await removeSqliteArtifacts(backupOutputDbPath);
 
-  const db = new Database(outputDbPath);
+  const db = new Database(tempOutputDbPath);
 
   try {
     db.exec(schemaSql);
-    seedLocalIdentityTables(db, identityRows);
+  } finally {
+    db.close();
+  }
 
-    onProgress('Importing snapshot into standalone SQLite...');
-    const counts = replaceMadgradesTables(db, snapshot, now);
-    onProgress('Standalone Madgrades build complete.');
+  try {
+    const result = await runMadgradesImport({
+      dbPath: tempOutputDbPath,
+      courseDbPath,
+      snapshotRoot,
+      refreshApi,
+      token,
+      fetchImpl,
+      baseUrl,
+      now,
+      onProgress,
+    });
+
+    const hadExistingOutput = await moveSqliteArtifacts(outputDbPath, backupOutputDbPath);
+
+    try {
+      await moveSqliteArtifacts(tempOutputDbPath, outputDbPath);
+    } catch (error) {
+      if (hadExistingOutput) {
+        await moveSqliteArtifacts(backupOutputDbPath, outputDbPath);
+      }
+
+      throw error;
+    }
+
+    await removeSqliteArtifacts(backupOutputDbPath);
 
     return {
       outputDbPath,
-      snapshotId,
-      ...counts,
+      ...result,
     };
-  } finally {
-    db.close();
+  } catch (error) {
+    await removeSqliteArtifacts(tempOutputDbPath);
+    throw error;
   }
 }
 

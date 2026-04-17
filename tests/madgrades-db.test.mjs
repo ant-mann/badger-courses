@@ -3,6 +3,38 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { buildCourseDbFixture, makeCourse } from './helpers/madgrades-db-fixture.mjs';
+import { writeMadgradesSnapshot } from '../src/madgrades/snapshot-helpers.mjs';
+
+function buildInvalidMadgradesSnapshot() {
+  return {
+    manifest: {
+      generatedAt: '2024-01-16T00:00:00Z',
+      source: 'fixture',
+      sourceTermCode: '1272',
+      matchedCourseCount: 1,
+      matchedInstructorCount: 0,
+    },
+    courses: [],
+    courseGrades: [],
+    courseOfferings: [],
+    courseGradeDistributions: [],
+    instructors: [],
+    instructorGrades: [],
+    instructorGradeDistributions: [],
+    matchReport: {
+      courseMatches: [
+        {
+          term_code: '1272',
+          course_id: '005770',
+          madgrades_course_id: 1,
+          match_status: 'matched',
+          matched_at: '2024-01-16T00:00:00Z',
+        },
+      ],
+      instructorMatches: [],
+    },
+  };
+}
 
 function buildMadgradesOverviewFixture() {
   return buildCourseDbFixture({
@@ -798,6 +830,98 @@ test('buildMadgradesDb creates a standalone database with grade history and matc
     );
 
     standaloneDb.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('runMadgradesImport loads standalone madgrades schema when courseDbPath is provided', async () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    const [{ runMadgradesImport }, Database] = await Promise.all([
+      import('../src/madgrades/import-runner.mjs'),
+      import('better-sqlite3'),
+    ]);
+    const standaloneDbPath = fixture.dbPath.replace(/\.sqlite$/, '-standalone.sqlite');
+    const standaloneDb = new Database.default(standaloneDbPath);
+
+    try {
+      standaloneDb.exec(readFileSync(new URL('../src/madgrades/schema.sql', import.meta.url), 'utf8'));
+    } finally {
+      standaloneDb.close();
+    }
+
+    await runMadgradesImport({
+      dbPath: standaloneDbPath,
+      courseDbPath: fixture.dbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: false,
+    });
+
+    const importedDb = new Database.default(standaloneDbPath, { readonly: true });
+
+    try {
+      assert.equal(
+        importedDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(),
+        1,
+      );
+      assert.equal(
+        importedDb.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get(),
+        1,
+      );
+    } finally {
+      importedDb.close();
+    }
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('buildMadgradesDb preserves the existing output when a rebuild fails', async () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+    const madgradesDbPath = fixture.dbPath.replace(/\.sqlite$/, '-madgrades.sqlite');
+
+    await buildMadgradesDb({
+      courseDbPath: fixture.dbPath,
+      outputDbPath: madgradesDbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: false,
+    });
+
+    await writeMadgradesSnapshot({
+      snapshotRoot: fixture.fixtureRoot,
+      snapshotId: '20260411T231405Z',
+      snapshot: buildInvalidMadgradesSnapshot(),
+    });
+
+    await assert.rejects(
+      buildMadgradesDb({
+        courseDbPath: fixture.dbPath,
+        outputDbPath: madgradesDbPath,
+        snapshotRoot: fixture.fixtureRoot,
+        refreshApi: false,
+      }),
+      /FOREIGN KEY constraint failed/,
+    );
+
+    const standaloneDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
+
+    try {
+      assert.equal(
+        standaloneDb.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get(),
+        1,
+      );
+      assert.equal(
+        standaloneDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(),
+        1,
+      );
+    } finally {
+      standaloneDb.close();
+    }
   } finally {
     fixture.cleanup();
   }

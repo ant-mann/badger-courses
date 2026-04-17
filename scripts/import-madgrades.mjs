@@ -2,7 +2,6 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { buildMadgradesDb } from '../src/madgrades/build-madgrades-db.mjs';
 import { runMadgradesImport } from '../src/madgrades/import-runner.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,23 +27,14 @@ const explicitDbPath = readFlagValue(args, '--db');
 const dbPath = explicitDbPath ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite');
 const snapshotRoot = readFlagValue(args, '--snapshot-root') ?? path.join(repoRoot, 'data', 'madgrades');
 
-const sharedOptions = {
+const result = await runMadgradesImport({
+  dbPath,
+  courseDbPath: explicitDbPath == null ? path.join(repoRoot, 'data', 'fall-2026.sqlite') : undefined,
   snapshotRoot,
   refreshApi,
   onProgress(message) {
     process.stderr.write(`${message}\n`);
   },
-};
-
-const result = explicitDbPath == null
-  ? await buildMadgradesDb({
-      courseDbPath: path.join(repoRoot, 'data', 'fall-2026.sqlite'),
-      outputDbPath: dbPath,
-      ...sharedOptions,
-    })
-  : await runMadgradesImport({
-      dbPath,
-      ...sharedOptions,
-    });
+});
 
 process.stdout.write(`${JSON.stringify(result)}\n`);

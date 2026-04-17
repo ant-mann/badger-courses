@@ -285,7 +285,7 @@ test('import-madgrades CLI builds the standalone default database when --db is o
 
     const result = JSON.parse(output.trim());
     assert.equal(result.snapshotId, '20260411T231405Z');
-    assert.equal(result.outputDbPath, defaultMadgradesDbPath);
+    assert.equal(result.courseMatches, 1);
 
     const standaloneDb = new (await import('better-sqlite3')).default(defaultMadgradesDbPath, { readonly: true });
 

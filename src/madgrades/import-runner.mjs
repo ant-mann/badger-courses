@@ -1,4 +1,7 @@
 import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { fetchMadgradesJson, fetchMadgradesPagedResults } from './api-client.mjs';
 import {
@@ -15,6 +18,10 @@ import {
   readLatestMadgradesSnapshot,
   writeMadgradesSnapshot,
 } from './snapshot-helpers.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const madgradesSchemaPath = path.join(__dirname, 'schema.sql');
 
 function toIsoString(value) {
   return value instanceof Date ? value.toISOString() : new Date(value ?? Date.now()).toISOString();
@@ -77,10 +84,98 @@ function loadLocalInstructors(db) {
 }
 
 function loadCurrentSourceTermCode(db) {
+  const hasRefreshRunsTable = Boolean(db.prepare(`
+    SELECT 1
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'refresh_runs'
+  `).pluck().get());
+
+  if (!hasRefreshRunsTable) {
+    return null;
+  }
+
   return db.prepare(`
     SELECT MAX(source_term_code) AS source_term_code
     FROM refresh_runs
   `).get()?.source_term_code ?? null;
+}
+
+function hasPersistentLocalIdentityTables(db) {
+  const hasCoursesTable = Boolean(db.prepare(`
+    SELECT 1
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'courses'
+  `).pluck().get());
+  const hasInstructorsTable = Boolean(db.prepare(`
+    SELECT 1
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'instructors'
+  `).pluck().get());
+
+  return hasCoursesTable && hasInstructorsTable;
+}
+
+function hasMadgradesTables(db) {
+  return Boolean(db.prepare(`
+    SELECT 1
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'madgrades_refresh_runs'
+  `).pluck().get());
+}
+
+function initializeStandaloneMadgradesSchema(db) {
+  db.exec(readFileSync(madgradesSchemaPath, 'utf8'));
+}
+
+function loadLocalIdentityRows(courseDbPath) {
+  const courseDb = new Database(courseDbPath, { readonly: true });
+
+  try {
+    return {
+      courses: courseDb.prepare(`
+        SELECT term_code, course_id
+        FROM courses
+      `).all(),
+      instructors: courseDb.prepare(`
+        SELECT instructor_key
+        FROM instructors
+      `).all(),
+    };
+  } finally {
+    courseDb.close();
+  }
+}
+
+function seedLocalIdentityTables(db, identityRows) {
+  db.exec(`
+    CREATE TEMP TABLE courses (
+      term_code TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      PRIMARY KEY (term_code, course_id)
+    );
+    CREATE TEMP TABLE instructors (
+      instructor_key TEXT PRIMARY KEY
+    );
+  `);
+
+  const insertCourse = db.prepare(`
+    INSERT INTO courses (term_code, course_id)
+    VALUES (?, ?)
+  `);
+  const insertInstructor = db.prepare(`
+    INSERT INTO instructors (instructor_key)
+    VALUES (?)
+  `);
+
+  db.transaction(() => {
+    for (const row of identityRows.courses) {
+      insertCourse.run(row.term_code, row.course_id);
+    }
+
+    for (const row of identityRows.instructors) {
+      insertInstructor.run(row.instructor_key);
+    }
+  })();
 }
 
 function normalizeMadgradesCourseForMatching(course) {
@@ -641,6 +736,7 @@ export async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl,
 
 export async function runMadgradesImport({
   dbPath,
+  courseDbPath,
   snapshotRoot,
   refreshApi = false,
   token = process.env.MADGRADES_API_TOKEN,
@@ -650,14 +746,32 @@ export async function runMadgradesImport({
   onProgress = () => {},
 } = {}) {
   const db = new Database(dbPath);
+  const hasLocalIdentityTables = hasPersistentLocalIdentityTables(db);
+  const hasStandaloneMadgradesSchema = hasMadgradesTables(db);
+  let sourceCourseDb = null;
 
   try {
+    if (!hasLocalIdentityTables) {
+      if (!courseDbPath) {
+        throw new Error('courseDbPath is required when the target database has no local courses/instructors tables');
+      }
+
+      if (!hasStandaloneMadgradesSchema) {
+        initializeStandaloneMadgradesSchema(db);
+      }
+
+      seedLocalIdentityTables(db, loadLocalIdentityRows(courseDbPath));
+    }
+
     let snapshot;
     let snapshotId;
 
     if (refreshApi) {
       onProgress('Refreshing snapshot from Madgrades API...');
-      const built = await buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl, baseUrl, now, onProgress });
+      const snapshotDb = hasLocalIdentityTables
+        ? db
+        : (sourceCourseDb ??= new Database(courseDbPath, { readonly: true }));
+      const built = await buildSnapshotFromApi({ db: snapshotDb, snapshotRoot, token, fetchImpl, baseUrl, now, onProgress });
       snapshot = built.snapshot;
       snapshotId = built.snapshotId;
     } else {
@@ -677,6 +791,7 @@ export async function runMadgradesImport({
       ...counts,
     };
   } finally {
+    sourceCourseDb?.close();
     db.close();
   }
 }
