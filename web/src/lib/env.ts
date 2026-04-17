@@ -28,6 +28,10 @@ export function getCourseDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConf
   };
 }
 
+export function getDatabasePath(cwd = process.cwd()): string {
+  return getCourseDatabaseConfig(cwd).replicaPath;
+}
+
 export function getMadgradesDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConfig {
   return {
     url: requireEnv('TURSO_MADGRADES_DATABASE_URL'),

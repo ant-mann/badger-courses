@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 
 import {
+  getDatabasePath,
   getCourseDatabaseConfig,
   getMadgradesDatabaseConfig,
 } from "./env";
@@ -36,6 +37,17 @@ test("getCourseDatabaseConfig resolves the course replica path from cwd", () => 
     authToken: "course-token",
     replicaPath: path.join("/repo/web", "tmp", "course-replica.db"),
   });
+});
+
+test("getDatabasePath resolves to the course replica path", () => {
+  process.env.TURSO_COURSE_DATABASE_URL = "libsql://course-db.example.turso.io";
+  process.env.TURSO_COURSE_AUTH_TOKEN = "course-token";
+  process.env.MADGRADES_COURSE_REPLICA_PATH = "./tmp/course-replica.db";
+
+  assert.equal(
+    getDatabasePath("/repo/web"),
+    path.join("/repo/web", "tmp", "course-replica.db"),
+  );
 });
 
 test("getMadgradesDatabaseConfig resolves the Madgrades replica path from cwd", () => {
