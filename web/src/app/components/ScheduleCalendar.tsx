@@ -15,6 +15,8 @@ type PositionedCalendarEntry = {
   entry: ScheduleCalendarEntry;
   laneIndex: number;
   laneCount: number;
+  leftPercent: number;
+  widthPercent: number;
 };
 
 const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
@@ -32,6 +34,7 @@ const HOUR_HEIGHT_REM = 4;
 const BASELINE_START_MINUTES = 9 * 60;
 const BASELINE_END_MINUTES = 17 * 60;
 const COURSE_SLOT_COUNT = 8;
+const LANE_GAP_PERCENT = 1.5;
 
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
   if (!schedule) {
@@ -180,7 +183,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                     );
                   })}
 
-                  {positionedEntries.map(({ entry, laneIndex, laneCount }) => {
+                  {positionedEntries.map(({ entry, laneCount, leftPercent, widthPercent }) => {
                     const top = getOffsetPercent(entry.startMinutes, timeWindow.startMinutes, timeWindow.endMinutes);
                     const height = Math.max(
                       getOffsetPercent(entry.endMinutes, timeWindow.startMinutes, timeWindow.endMinutes) - top,
@@ -191,7 +194,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                     const medium = height >= 11 && height < 18;
                     const laneStyle =
                       laneCount > 1
-                        ? buildLaneStyle(laneIndex, laneCount)
+                        ? buildLaneStyle(leftPercent, widthPercent)
                         : { left: "0%", width: "100%" };
 
                     return (
@@ -255,14 +258,27 @@ function buildPositionedEntries(entries: ScheduleCalendarEntry[]): PositionedCal
     }
 
     const laneCount = activeEntries.length + 1;
+    const shrinkingOverlap = activeEntries.some((activeEntry) => activeEntry.laneCount > laneCount);
+
+    for (const activeEntry of activeEntries) {
+      if (laneCount > activeEntry.laneCount) {
+        activeEntry.laneCount = laneCount;
+        const geometry = buildLaneGeometry(activeEntry.laneIndex, laneCount);
+        activeEntry.leftPercent = geometry.leftPercent;
+        activeEntry.widthPercent = geometry.widthPercent;
+      }
+    }
+
+    const geometry = shrinkingOverlap
+      ? placeCompactedLane(activeEntries, laneCount)
+      : buildLaneGeometry(laneIndex, laneCount);
+
     const positionedEntry: PositionedCalendarEntry = {
       entry,
       laneIndex,
       laneCount,
-    };
-
-    for (const activeEntry of activeEntries) {
-      activeEntry.laneCount = Math.max(activeEntry.laneCount, laneCount);
+      leftPercent: geometry.leftPercent,
+      widthPercent: geometry.widthPercent,
     }
 
     activeEntries.push(positionedEntry);
@@ -272,12 +288,66 @@ function buildPositionedEntries(entries: ScheduleCalendarEntry[]): PositionedCal
   return positionedEntries;
 }
 
-function buildLaneStyle(laneIndex: number, laneCount: number): { left: string; width: string } {
-  const laneGap = laneCount > 1 ? 1.5 : 0;
-  const totalGap = laneGap * (laneCount - 1);
+function buildLaneStyle(leftPercent: number, widthPercent: number): { left: string; width: string } {
   return {
-    left: `calc(((100% - ${totalGap}%) / ${laneCount}) * ${laneIndex} + ${laneGap * laneIndex}%)`,
-    width: `calc((100% - ${totalGap}%) / ${laneCount})`,
+    left: `${leftPercent}%`,
+    width: `${widthPercent}%`,
+  };
+}
+
+function buildLaneGeometry(laneIndex: number, laneCount: number): { leftPercent: number; widthPercent: number } {
+  if (laneCount <= 1) {
+    return { leftPercent: 0, widthPercent: 100 };
+  }
+
+  const totalGap = LANE_GAP_PERCENT * (laneCount - 1);
+  const widthPercent = (100 - totalGap) / laneCount;
+
+  return {
+    leftPercent: (widthPercent + LANE_GAP_PERCENT) * laneIndex,
+    widthPercent,
+  };
+}
+
+function placeCompactedLane(
+  activeEntries: PositionedCalendarEntry[],
+  laneCount: number,
+): { leftPercent: number; widthPercent: number } {
+  const { widthPercent } = buildLaneGeometry(0, laneCount);
+
+  if (activeEntries.length === 0) {
+    return { leftPercent: 0, widthPercent };
+  }
+
+  const sortedActiveEntries = [...activeEntries].sort((left, right) => left.leftPercent - right.leftPercent);
+  const candidates: number[] = [];
+  const firstEntry = sortedActiveEntries[0];
+  const beforeFirstLeft = firstEntry.leftPercent - LANE_GAP_PERCENT - widthPercent;
+
+  if (beforeFirstLeft >= 0) {
+    candidates.push(beforeFirstLeft);
+  }
+
+  for (let index = 0; index < sortedActiveEntries.length - 1; index += 1) {
+    const currentEntry = sortedActiveEntries[index];
+    const nextEntry = sortedActiveEntries[index + 1];
+    const candidateLeft = currentEntry.leftPercent + currentEntry.widthPercent + LANE_GAP_PERCENT;
+
+    if (candidateLeft + widthPercent + LANE_GAP_PERCENT <= nextEntry.leftPercent) {
+      candidates.push(candidateLeft);
+    }
+  }
+
+  const lastEntry = sortedActiveEntries[sortedActiveEntries.length - 1];
+  const afterLastLeft = lastEntry.leftPercent + lastEntry.widthPercent + LANE_GAP_PERCENT;
+
+  if (afterLastLeft + widthPercent <= 100) {
+    candidates.push(afterLastLeft);
+  }
+
+  return {
+    leftPercent: candidates[0] ?? buildLaneGeometry(0, laneCount).leftPercent,
+    widthPercent,
   };
 }
 

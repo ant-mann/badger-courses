@@ -834,6 +834,12 @@ function parseWidthPercent(styleValue: string | undefined): number | null {
     return 100;
   }
 
+  const percentMatch = styleValue.match(/^([0-9.]+)%$/);
+
+  if (percentMatch) {
+    return Number(percentMatch[1]);
+  }
+
   const calcMatch = styleValue.match(/^calc\(\(100% - ([0-9.]+)%\) \/ ([0-9]+)\)$/);
 
   if (!calcMatch) {
@@ -841,6 +847,28 @@ function parseWidthPercent(styleValue: string | undefined): number | null {
   }
 
   return (100 - Number(calcMatch[1])) / Number(calcMatch[2]);
+}
+
+function parseLeftPercent(styleValue: string | undefined): number | null {
+  if (!styleValue) {
+    return null;
+  }
+
+  const percentMatch = styleValue.match(/^([0-9.]+)%$/);
+
+  if (percentMatch) {
+    return Number(percentMatch[1]);
+  }
+
+  const calcMatch = styleValue.match(
+    /^calc\(\(\(100% - ([0-9.]+)%\) \/ ([0-9]+)\) \* ([0-9]+) \+ ([0-9.]+)%\)$/,
+  );
+
+  if (!calcMatch) {
+    return null;
+  }
+
+  return ((100 - Number(calcMatch[1])) / Number(calcMatch[2])) * Number(calcMatch[3]) + Number(calcMatch[4]);
 }
 
 test("ScheduleCalendar assigns separate desktop lanes to overlapping meetings", () => {
@@ -1011,6 +1039,90 @@ test("ScheduleCalendar expands chained overlaps once earlier conflicts end", () 
   assert.notEqual(statWidth, null, "expected a parsable width for the continuing overlap article");
   assert.notEqual(econWidth, null, "expected a parsable width for the later chained-overlap article");
   assert.ok(econWidth! > statWidth!, "later chained overlap should widen after the earlier 3-way conflict ends");
+});
+
+test("ScheduleCalendar compacts chained overlaps without leaving a dead middle lane", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-a", "pkg-b", "pkg-c", "pkg-d"],
+        packages: [
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-a",
+            course_designation: "A 101",
+            title: "Course A",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-b",
+            course_designation: "B 101",
+            title: "Course B",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-c",
+            course_designation: "C 101",
+            title: "Course C",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-d",
+            course_designation: "D 101",
+            title: "Course D",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-a",
+          courseDesignation: "A 101",
+          title: "Course A",
+          startMinutes: 540,
+          endMinutes: 570,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-b",
+          courseDesignation: "B 101",
+          title: "Course B",
+          startMinutes: 540,
+          endMinutes: 570,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-c",
+          courseDesignation: "C 101",
+          title: "Course C",
+          startMinutes: 540,
+          endMinutes: 720,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-d",
+          courseDesignation: "D 101",
+          title: "Course D",
+          startMinutes: 600,
+          endMinutes: 660,
+        }),
+      ]}
+    />,
+  );
+
+  const longArticle = getArticleByCourse(markup, "C 101");
+  const laterArticle = getArticleByCourse(markup, "D 101");
+  const longWidth = parseWidthPercent(longArticle.style.get("width"));
+  const laterWidth = parseWidthPercent(laterArticle.style.get("width"));
+  const longLeft = parseLeftPercent(longArticle.style.get("left"));
+  const laterLeft = parseLeftPercent(laterArticle.style.get("left"));
+
+  assert.notEqual(longWidth, null, "expected a parsable width for the continuing meeting");
+  assert.notEqual(laterWidth, null, "expected a parsable width for the later meeting");
+  assert.notEqual(longLeft, null, "expected a parsable left offset for the continuing meeting");
+  assert.notEqual(laterLeft, null, "expected a parsable left offset for the later meeting");
+  assert.ok(laterWidth! > longWidth!, "the later meeting should widen after the earlier three-way overlap ends");
+  assert.notEqual(longLeft, laterLeft, "remaining overlap pair should occupy different lanes");
+  assert.ok(
+    Math.abs(longLeft! - laterLeft!) <= Math.max(longWidth!, laterWidth!) + 1.5,
+    "the remaining overlap pair should stay adjacent instead of leaving a dead middle lane",
+  );
 });
 
 test("ScheduleCalendar gives eight selected courses distinct color slots", () => {
