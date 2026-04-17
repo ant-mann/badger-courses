@@ -14,6 +14,23 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 }
 
+function writeMadgradesSnapshot(snapshotRoot, snapshot, snapshotId = '20260411T231405Z') {
+  const snapshotDir = path.join(snapshotRoot, snapshotId);
+
+  fs.mkdirSync(snapshotDir, { recursive: true });
+  writeJson(path.join(snapshotDir, 'manifest.json'), snapshot.manifest);
+  writeJson(path.join(snapshotDir, 'courses.json'), snapshot.courses);
+  writeJson(path.join(snapshotDir, 'course-grades.json'), snapshot.courseGrades);
+  writeJson(path.join(snapshotDir, 'course-offerings.json'), snapshot.courseOfferings);
+  writeJson(path.join(snapshotDir, 'course-grade-distributions.json'), snapshot.courseGradeDistributions);
+  writeJson(path.join(snapshotDir, 'instructors.json'), snapshot.instructors);
+  writeJson(path.join(snapshotDir, 'instructor-grades.json'), snapshot.instructorGrades);
+  writeJson(path.join(snapshotDir, 'instructor-grade-distributions.json'), snapshot.instructorGradeDistributions);
+  writeJson(path.join(snapshotDir, 'match-report.json'), snapshot.matchReport);
+
+  return snapshotDir;
+}
+
 export function makeCourse({
   termCode,
   courseId,
@@ -42,7 +59,7 @@ export function makeCourse({
   };
 }
 
-export function buildCourseDbFixture({ courses, packageSnapshot }) {
+export function buildCourseDbFixture({ courses, packageSnapshot, madgradesSnapshot = null }) {
   const fixtureRoot = fs.mkdtempSync(path.join(repoRoot, '.tmp-madgrades-db-'));
   const fixtureDbDir = path.join(fixtureRoot, 'src', 'db');
   const fixtureDataDir = path.join(fixtureRoot, 'data');
@@ -71,8 +88,13 @@ export function buildCourseDbFixture({ courses, packageSnapshot }) {
   const dbPath = path.join(fixtureDataDir, 'fall-2026.sqlite');
   const db = new Database(dbPath);
 
+  if (madgradesSnapshot) {
+    writeMadgradesSnapshot(fixtureRoot, madgradesSnapshot);
+  }
+
   return {
     fixtureRoot,
+    fixtureDataDir,
     db,
     dbPath,
     cleanup() {

@@ -74,6 +74,95 @@ function buildMadgradesOverviewFixture() {
         },
       ],
     },
+    madgradesSnapshot: {
+      manifest: {
+        generatedAt: '2024-01-16T00:00:00Z',
+        source: 'fixture',
+        sourceTermCode: '1272',
+        matchedCourseCount: 1,
+        matchedInstructorCount: 1,
+      },
+      courses: [
+        {
+          madgrades_course_id: 1,
+          subject_code: '302',
+          catalog_number: '577',
+          course_designation: 'COMP SCI 577',
+        },
+      ],
+      courseGrades: [
+        {
+          madgrades_course_grade_id: 1,
+          madgrades_course_id: 1,
+          term_code: '1264',
+          student_count: 40,
+          avg_gpa: 3.6,
+        },
+      ],
+      courseOfferings: [
+        {
+          madgrades_course_offering_id: 1,
+          madgrades_course_id: 1,
+          madgrades_instructor_id: 1,
+          term_code: '1264',
+          section_type: 'LEC',
+          student_count: 40,
+          avg_gpa: 3.6,
+        },
+      ],
+      courseGradeDistributions: [
+        {
+          madgradesCourseGradeId: 1,
+          grades: {
+            A: 20,
+            AB: 20,
+          },
+        },
+      ],
+      instructors: [
+        {
+          madgrades_instructor_id: 1,
+          display_name: 'Ada Lovelace',
+        },
+      ],
+      instructorGrades: [
+        {
+          madgrades_instructor_grade_id: 1,
+          madgrades_instructor_id: 1,
+          term_code: '1264',
+          student_count: 40,
+          avg_gpa: 3.6,
+        },
+      ],
+      instructorGradeDistributions: [
+        {
+          madgradesInstructorGradeId: 1,
+          grades: {
+            A: 20,
+            AB: 20,
+          },
+        },
+      ],
+      matchReport: {
+        courseMatches: [
+          {
+            term_code: '1272',
+            course_id: '005770',
+            madgrades_course_id: 1,
+            match_status: 'matched',
+            matched_at: '2024-01-16T00:00:00Z',
+          },
+        ],
+        instructorMatches: [
+          {
+            instructor_key: 'ada@example.edu',
+            madgrades_instructor_id: 1,
+            match_status: 'matched',
+            matched_at: '2024-01-16T00:00:00Z',
+          },
+        ],
+      },
+    },
   });
 }
 
@@ -678,6 +767,37 @@ test('current term madgrades overview dedupes duplicate historical terms across 
         course_historical_gpa: 3.834920634920634,
       },
     ]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('buildMadgradesDb creates a standalone database with grade history and matches', async () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+    const madgradesDbPath = fixture.dbPath.replace(/\.sqlite$/, '-madgrades.sqlite');
+
+    await buildMadgradesDb({
+      courseDbPath: fixture.dbPath,
+      outputDbPath: madgradesDbPath,
+      snapshotRoot: fixture.fixtureRoot,
+      refreshApi: false,
+    });
+
+    const standaloneDb = new (await import('better-sqlite3')).default(madgradesDbPath, { readonly: true });
+
+    assert.equal(
+      standaloneDb.prepare('SELECT COUNT(*) FROM madgrades_course_grades').pluck().get(),
+      1,
+    );
+    assert.equal(
+      standaloneDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(),
+      1,
+    );
+
+    standaloneDb.close();
   } finally {
     fixture.cleanup();
   }

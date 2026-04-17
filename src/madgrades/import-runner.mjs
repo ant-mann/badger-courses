@@ -388,7 +388,7 @@ function makeProgressReporter({ onProgress, label, total }) {
   };
 }
 
-async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl, baseUrl, now, onProgress = () => {} }) {
+export async function buildSnapshotFromApi({ db, snapshotRoot, token, fetchImpl, baseUrl, now, onProgress = () => {} }) {
   onProgress('Loading local DB identities...');
   const localCourses = loadLocalCourses(db);
   const localInstructors = loadLocalInstructors(db);
