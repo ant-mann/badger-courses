@@ -6,7 +6,7 @@ import process from 'node:process';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile, stat } from 'node:fs/promises';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -289,18 +289,17 @@ test('publishSqliteToTurso refreshes the existing database through turso shell',
       'course-db',
       "SELECT type, name FROM sqlite_master WHERE type IN ('view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'libsql_%' ORDER BY CASE type WHEN 'view' THEN 0 ELSE 1 END, name;",
     ]);
-    assert.deepEqual(calls[2], {
-      command: process.env.SQLITE3_BIN ?? 'sqlite3',
-      args: [dbPath, '.dump'],
-      input: undefined,
-    });
+    assert.equal(calls[2].command, 'bash');
+    assert.equal(calls[2].args[0], '-lc');
+    assert.match(calls[2].args[1], /sqlite3 ".*fixture\.sqlite" ".dump" > ".*dump\.sql"$/);
     assert.deepEqual(calls[3], {
       command: 'turso',
       args: ['db', 'shell', 'course-db'],
       input: 'DROP TABLE IF EXISTS "stale_table";\n',
     });
-    assert.match(calls[4].input ?? '', /create table sample/i);
+    assert.equal(calls[4].command, 'turso');
     assert.deepEqual(calls[4].args, ['db', 'shell', 'course-db']);
+    assert.match(calls[4].input ?? '', /create table sample/i);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -354,17 +353,16 @@ test('publish-course-db CLI refreshes the default course artifact through turso 
     "CREATE TABLE local_course_data(id INTEGER PRIMARY KEY, value TEXT); INSERT INTO local_course_data(value) VALUES('course');",
   );
 
-  assert.deepEqual(commands.map((command) => command.args), [
-    ['db', 'list'],
-    [
-      'db',
-      'shell',
-      'course-db',
-      "SELECT type, name FROM sqlite_master WHERE type IN ('view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'libsql_%' ORDER BY CASE type WHEN 'view' THEN 0 ELSE 1 END, name;",
-    ],
-    [commands[2].args[0], '.dump'],
-    ['db', 'shell', 'course-db'],
+  assert.deepEqual(commands[0].args, ['db', 'list']);
+  assert.deepEqual(commands[1].args, [
+    'db',
+    'shell',
+    'course-db',
+    "SELECT type, name FROM sqlite_master WHERE type IN ('view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'libsql_%' ORDER BY CASE type WHEN 'view' THEN 0 ELSE 1 END, name;",
   ]);
+  assert.equal(commands[2].args[0], '-lc');
+  assert.match(commands[2].args[1], /sqlite3 ".*fall-2026\.sqlite" ".dump" > ".*dump\.sql"$/);
+  assert.deepEqual(commands[3].args, ['db', 'shell', 'course-db']);
   assert.match(commands[3].input, /create table local_course_data/i);
 });
 
@@ -377,16 +375,53 @@ test('publish-madgrades-db CLI refreshes the default madgrades artifact through 
     "CREATE TABLE local_madgrades_data(id INTEGER PRIMARY KEY, value TEXT); INSERT INTO local_madgrades_data(value) VALUES('madgrades');",
   );
 
-  assert.deepEqual(commands.map((command) => command.args), [
-    ['db', 'list'],
-    [
-      'db',
-      'shell',
-      'madgrades-db',
-      "SELECT type, name FROM sqlite_master WHERE type IN ('view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'libsql_%' ORDER BY CASE type WHEN 'view' THEN 0 ELSE 1 END, name;",
-    ],
-    [commands[2].args[0], '.dump'],
-    ['db', 'shell', 'madgrades-db'],
+  assert.deepEqual(commands[0].args, ['db', 'list']);
+  assert.deepEqual(commands[1].args, [
+    'db',
+    'shell',
+    'madgrades-db',
+    "SELECT type, name FROM sqlite_master WHERE type IN ('view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'libsql_%' ORDER BY CASE type WHEN 'view' THEN 0 ELSE 1 END, name;",
   ]);
+  assert.equal(commands[2].args[0], '-lc');
+  assert.match(commands[2].args[1], /sqlite3 ".*fall-2026-madgrades\.sqlite" ".dump" > ".*dump\.sql"$/);
+  assert.deepEqual(commands[3].args, ['db', 'shell', 'madgrades-db']);
   assert.match(commands[3].input, /create table local_madgrades_data/i);
+});
+
+test('dumpSqliteDatabase writes a dump file without buffering stdout', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'turso-publish-dump-file-'));
+
+  try {
+    const dbPath = path.join(tempDir, 'fixture.sqlite');
+    await execFileAsync(process.env.SQLITE3_BIN ?? 'sqlite3', [dbPath, "CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT); INSERT INTO sample(value) VALUES('streamed');"]);
+
+    const calls = [];
+    const { dumpSqliteDatabase } = await import('../scripts/publish-course-db.mjs');
+
+    const dumpPath = await dumpSqliteDatabase(dbPath, {
+      runCommand: async (command, args, options) => {
+        calls.push({ command, args, input: options?.input });
+
+        if (command === 'bash') {
+          const dumpFileMatch = args[1].match(/> "([^"]+)"$/);
+          assert.ok(dumpFileMatch);
+          const dumpOutputPath = dumpFileMatch[1];
+          await writeFile(dumpOutputPath, 'CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT);\n');
+          return { stdout: '' };
+        }
+
+        throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+      },
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, 'bash');
+    assert.equal(calls[0].args[0], '-lc');
+    assert.match(calls[0].args[1], /sqlite3 ".*fixture\.sqlite" ".dump" > ".*dump\.sql"$/);
+
+    const dumpStats = await stat(dumpPath);
+    assert.ok(dumpStats.size > 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });

@@ -27,6 +27,7 @@ test('runner image includes the web workspace dependencies without bundling sqli
 
   assert.match(dockerfile, /CMD \["pnpm", "--filter", "uw-madison-courses-web", "run", "start"\]/);
   assert.match(dockerfile, /COPY --from=base \/app\/web\/node_modules \.\/web\/node_modules/);
+  assert.match(dockerfile, /apt-get update && apt-get install -y ca-certificates/);
   assert.doesNotMatch(dockerfile, /ARG MADGRADES_DB_SOURCE_PATH/);
   assert.doesNotMatch(dockerfile, /ENV MADGRADES_DB_SOURCE_PATH=/);
   assert.doesNotMatch(dockerfile, /download-db\.mjs/);

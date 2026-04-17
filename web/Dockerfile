@@ -21,6 +21,7 @@ RUN pnpm --filter uw-madison-courses-web exec next build
 FROM node:22-slim AS runner
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 ENV NODE_ENV=production
 ENV PORT=3000

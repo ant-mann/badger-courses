@@ -116,9 +116,17 @@ export async function dumpSqliteDatabase(dbPath, {
     checkpointWal(dbPath);
   }
 
-  const sqlite3Path = process.env.SQLITE3_BIN ?? 'sqlite3';
-  const { stdout } = await runCommandImpl(sqlite3Path, [dbPath, '.dump']);
-  return stdout;
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'turso-publish-dump-'));
+  const dumpPath = path.join(tempDir, 'dump.sql');
+
+  try {
+    const sqlite3Path = process.env.SQLITE3_BIN ?? 'sqlite3';
+    await runCommandImpl('bash', ['-lc', `${sqlite3Path} "${dbPath}" ".dump" > "${dumpPath}"`]);
+    return dumpPath;
+  } catch (error) {
+    await rm(tempDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function buildRemoteDropSql(databaseName, {
@@ -156,6 +164,17 @@ export async function runShellSql(databaseName, sql, {
   }
 }
 
+export async function runShellSqlFile(databaseName, sqlPath, {
+  runCommand: runCommandImpl = runCommand,
+} = {}) {
+  if (runCommandImpl !== runCommand || process.env.TURSO_PUBLISH_TEST_MODE === '1') {
+    const fileContents = await import('node:fs/promises').then(({ readFile }) => readFile(sqlPath, 'utf8'));
+    return runCommandImpl('turso', ['db', 'shell', databaseName], { input: fileContents });
+  }
+
+  return runCommandImpl('bash', ['-lc', `turso db shell ${databaseName} < "${sqlPath}"`]);
+}
+
 export async function publishSqliteToTurso({
   databaseUrl,
   dbPath,
@@ -168,19 +187,23 @@ export async function publishSqliteToTurso({
   const dropSql = await buildRemoteDropSql(databaseName, {
     runCommand: runCommandImpl,
   });
-  const dumpSql = await dumpSqliteDatabase(dbPath, {
+  const dumpPath = await dumpSqliteDatabase(dbPath, {
     runCommand: runCommandImpl,
   });
 
-  if (dropSql.trim()) {
-    await runShellSql(databaseName, dropSql, {
+  try {
+    if (dropSql.trim()) {
+      await runShellSql(databaseName, dropSql, {
+        runCommand: runCommandImpl,
+      });
+    }
+
+    await runShellSqlFile(databaseName, dumpPath, {
       runCommand: runCommandImpl,
     });
+  } finally {
+    await rm(path.dirname(dumpPath), { recursive: true, force: true });
   }
-
-  await runShellSql(databaseName, dumpSql, {
-    runCommand: runCommandImpl,
-  });
 }
 
 export async function publishCourseDb({
