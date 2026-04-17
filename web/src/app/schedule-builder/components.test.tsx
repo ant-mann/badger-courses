@@ -1035,10 +1035,19 @@ test("ScheduleCalendar expands chained overlaps once earlier conflicts end", () 
   const econArticle = getArticleByCourse(markup, "ECON 310");
   const statWidth = parseWidthPercent(statArticle.style.get("width"));
   const econWidth = parseWidthPercent(econArticle.style.get("width"));
+  const statLeft = parseLeftPercent(statArticle.style.get("left"));
+  const econLeft = parseLeftPercent(econArticle.style.get("left"));
 
   assert.notEqual(statWidth, null, "expected a parsable width for the continuing overlap article");
   assert.notEqual(econWidth, null, "expected a parsable width for the later chained-overlap article");
-  assert.ok(econWidth! > statWidth!, "later chained overlap should widen after the earlier 3-way conflict ends");
+  assert.notEqual(statLeft, null, "expected a parsable left offset for the continuing overlap article");
+  assert.notEqual(econLeft, null, "expected a parsable left offset for the later chained-overlap article");
+  assert.equal(statWidth, econWidth, "the remaining overlap pair should be reflowed to equal-width lanes");
+  assert.notEqual(statLeft, econLeft, "the remaining overlap pair should occupy different lanes");
+  assert.ok(
+    Math.abs(statLeft! - econLeft!) <= statWidth! + 1.5,
+    "the remaining overlap pair should stay contiguous after the earlier 3-way conflict ends",
+  );
 });
 
 test("ScheduleCalendar compacts chained overlaps without leaving a dead middle lane", () => {
@@ -1117,11 +1126,99 @@ test("ScheduleCalendar compacts chained overlaps without leaving a dead middle l
   assert.notEqual(laterWidth, null, "expected a parsable width for the later meeting");
   assert.notEqual(longLeft, null, "expected a parsable left offset for the continuing meeting");
   assert.notEqual(laterLeft, null, "expected a parsable left offset for the later meeting");
-  assert.ok(laterWidth! > longWidth!, "the later meeting should widen after the earlier three-way overlap ends");
+  assert.equal(longWidth, laterWidth, "the remaining overlap pair should be reflowed to equal-width lanes");
   assert.notEqual(longLeft, laterLeft, "remaining overlap pair should occupy different lanes");
   assert.ok(
     Math.abs(longLeft! - laterLeft!) <= Math.max(longWidth!, laterWidth!) + 1.5,
     "the remaining overlap pair should stay adjacent instead of leaving a dead middle lane",
+  );
+});
+
+test("ScheduleCalendar reflows remaining overlaps contiguously when the middle lane survives a three-way overlap", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar
+      schedule={makeSchedule({
+        package_ids: ["pkg-a", "pkg-b", "pkg-c", "pkg-d"],
+        packages: [
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-a",
+            course_designation: "A 101",
+            title: "Course A",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-b",
+            course_designation: "B 101",
+            title: "Course B",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-c",
+            course_designation: "C 101",
+            title: "Course C",
+          },
+          {
+            ...makeSchedule().packages[0],
+            source_package_id: "pkg-d",
+            course_designation: "D 101",
+            title: "Course D",
+          },
+        ],
+      })}
+      entries={[
+        makeEntry({
+          sourcePackageId: "pkg-a",
+          courseDesignation: "A 101",
+          title: "Course A",
+          startMinutes: 540,
+          endMinutes: 630,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-b",
+          courseDesignation: "B 101",
+          title: "Course B",
+          startMinutes: 555,
+          endMinutes: 720,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-c",
+          courseDesignation: "C 101",
+          title: "Course C",
+          startMinutes: 570,
+          endMinutes: 600,
+        }),
+        makeEntry({
+          sourcePackageId: "pkg-d",
+          courseDesignation: "D 101",
+          title: "Course D",
+          startMinutes: 630,
+          endMinutes: 660,
+        }),
+      ]}
+    />,
+  );
+
+  const continuingArticle = getArticleByCourse(markup, "B 101");
+  const laterArticle = getArticleByCourse(markup, "D 101");
+  const continuingWidth = parseWidthPercent(continuingArticle.style.get("width"));
+  const laterWidth = parseWidthPercent(laterArticle.style.get("width"));
+  const continuingLeft = parseLeftPercent(continuingArticle.style.get("left"));
+  const laterLeft = parseLeftPercent(laterArticle.style.get("left"));
+
+  assert.notEqual(continuingWidth, null, "expected a parsable width for the surviving long-running meeting");
+  assert.notEqual(laterWidth, null, "expected a parsable width for the later overlapping meeting");
+  assert.notEqual(continuingLeft, null, "expected a parsable left offset for the surviving long-running meeting");
+  assert.notEqual(laterLeft, null, "expected a parsable left offset for the later overlapping meeting");
+  assert.equal(continuingWidth, laterWidth, "the remaining two-meeting overlap should be reflowed to equal-width lanes");
+  assert.notEqual(continuingLeft, laterLeft, "the remaining two-meeting overlap should occupy separate lanes");
+  assert.ok(
+    Math.abs(continuingLeft! - laterLeft!) <= continuingWidth! + 1.5,
+    "the remaining two-meeting overlap should stay contiguous without a dead middle gap",
+  );
+  assert.ok(
+    Math.max(continuingLeft!, laterLeft!) + continuingWidth! <= 100,
+    "the remaining two-meeting overlap should fit within the day column without horizontal overflow",
   );
 });
 

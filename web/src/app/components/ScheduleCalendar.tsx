@@ -239,7 +239,6 @@ function buildPositionedEntries(entries: ScheduleCalendarEntry[]): PositionedCal
   const sortedEntries = [...entries].sort(compareEntriesByTime);
   const positionedEntries: PositionedCalendarEntry[] = [];
   const activeEntries: PositionedCalendarEntry[] = [];
-  const laneEndTimes: number[] = [];
 
   for (const entry of sortedEntries) {
     for (let index = activeEntries.length - 1; index >= 0; index -= 1) {
@@ -248,44 +247,48 @@ function buildPositionedEntries(entries: ScheduleCalendarEntry[]): PositionedCal
       }
     }
 
-    let laneIndex = laneEndTimes.findIndex((endMinutes) => endMinutes <= entry.startMinutes);
-
-    if (laneIndex === -1) {
-      laneIndex = laneEndTimes.length;
-      laneEndTimes.push(entry.endMinutes);
-    } else {
-      laneEndTimes[laneIndex] = entry.endMinutes;
-    }
-
-    const laneCount = activeEntries.length + 1;
-    const shrinkingOverlap = activeEntries.some((activeEntry) => activeEntry.laneCount > laneCount);
-
-    for (const activeEntry of activeEntries) {
-      if (laneCount > activeEntry.laneCount) {
-        activeEntry.laneCount = laneCount;
-        const geometry = buildLaneGeometry(activeEntry.laneIndex, laneCount);
-        activeEntry.leftPercent = geometry.leftPercent;
-        activeEntry.widthPercent = geometry.widthPercent;
-      }
-    }
-
-    const geometry = shrinkingOverlap
-      ? placeCompactedLane(activeEntries, laneCount)
-      : buildLaneGeometry(laneIndex, laneCount);
+    const laneIndex = findNextLaneIndex(activeEntries);
 
     const positionedEntry: PositionedCalendarEntry = {
       entry,
       laneIndex,
-      laneCount,
-      leftPercent: geometry.leftPercent,
-      widthPercent: geometry.widthPercent,
-    }
+      laneCount: 1,
+      leftPercent: 0,
+      widthPercent: 100,
+    };
 
     activeEntries.push(positionedEntry);
+    reflowActiveEntries(activeEntries);
     positionedEntries.push(positionedEntry);
   }
 
   return positionedEntries;
+}
+
+function findNextLaneIndex(activeEntries: PositionedCalendarEntry[]): number {
+  const occupiedLaneIndexes = new Set(activeEntries.map((entry) => entry.laneIndex));
+  let laneIndex = 0;
+
+  while (occupiedLaneIndexes.has(laneIndex)) {
+    laneIndex += 1;
+  }
+
+  return laneIndex;
+}
+
+function reflowActiveEntries(activeEntries: PositionedCalendarEntry[]): void {
+  const laneCount = activeEntries.length;
+  const orderedEntries = [...activeEntries].sort(
+    (left, right) => left.laneIndex - right.laneIndex || compareEntriesByTime(left.entry, right.entry),
+  );
+
+  for (const [laneIndex, activeEntry] of orderedEntries.entries()) {
+    const geometry = buildLaneGeometry(laneIndex, laneCount);
+    activeEntry.laneIndex = laneIndex;
+    activeEntry.laneCount = laneCount;
+    activeEntry.leftPercent = geometry.leftPercent;
+    activeEntry.widthPercent = geometry.widthPercent;
+  }
 }
 
 function buildLaneStyle(leftPercent: number, widthPercent: number): { left: string; width: string } {
@@ -305,48 +308,6 @@ function buildLaneGeometry(laneIndex: number, laneCount: number): { leftPercent:
 
   return {
     leftPercent: (widthPercent + LANE_GAP_PERCENT) * laneIndex,
-    widthPercent,
-  };
-}
-
-function placeCompactedLane(
-  activeEntries: PositionedCalendarEntry[],
-  laneCount: number,
-): { leftPercent: number; widthPercent: number } {
-  const { widthPercent } = buildLaneGeometry(0, laneCount);
-
-  if (activeEntries.length === 0) {
-    return { leftPercent: 0, widthPercent };
-  }
-
-  const sortedActiveEntries = [...activeEntries].sort((left, right) => left.leftPercent - right.leftPercent);
-  const candidates: number[] = [];
-  const firstEntry = sortedActiveEntries[0];
-  const beforeFirstLeft = firstEntry.leftPercent - LANE_GAP_PERCENT - widthPercent;
-
-  if (beforeFirstLeft >= 0) {
-    candidates.push(beforeFirstLeft);
-  }
-
-  for (let index = 0; index < sortedActiveEntries.length - 1; index += 1) {
-    const currentEntry = sortedActiveEntries[index];
-    const nextEntry = sortedActiveEntries[index + 1];
-    const candidateLeft = currentEntry.leftPercent + currentEntry.widthPercent + LANE_GAP_PERCENT;
-
-    if (candidateLeft + widthPercent + LANE_GAP_PERCENT <= nextEntry.leftPercent) {
-      candidates.push(candidateLeft);
-    }
-  }
-
-  const lastEntry = sortedActiveEntries[sortedActiveEntries.length - 1];
-  const afterLastLeft = lastEntry.leftPercent + lastEntry.widthPercent + LANE_GAP_PERCENT;
-
-  if (afterLastLeft + widthPercent <= 100) {
-    candidates.push(afterLastLeft);
-  }
-
-  return {
-    leftPercent: candidates[0] ?? buildLaneGeometry(0, laneCount).leftPercent,
     widthPercent,
   };
 }
