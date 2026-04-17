@@ -49,7 +49,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
     <main className="flex-1 bg-bg text-navy">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10 sm:px-10 sm:py-14">
         <Link
-          href="/"
+          href="/courses"
           className="inline-flex items-center gap-1.5 text-sm text-text-weak transition hover:text-navy"
         >
           <span aria-hidden="true">←</span>
@@ -58,9 +58,6 @@ export default async function CoursePage({ params }: CoursePageProps) {
         <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-6 shadow-soft">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
-                Course Detail
-              </p>
               <h1 className="text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">{detail.course.designation}</h1>
               <p className="max-w-3xl text-lg leading-8 text-text-weak">{detail.course.title}</p>
             </div>
@@ -178,7 +175,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">Instructor history</h2>
           {displayedInstructorGrades.length === 0 ? (
             <div className="rounded-3xl border border-border bg-muted p-5 text-sm text-text-weak">
-              Historical instructor data is unavailable in the current database snapshot.
+              No instructor history available.
             </div>
           ) : (
             <div className="overflow-hidden rounded-3xl border border-border">

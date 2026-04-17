@@ -51,11 +51,8 @@ export function ScheduleResults({
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
-          Schedule Results
+          Schedules
         </h2>
-        <p className="text-sm leading-6 text-text-weak">
-          Review ranked schedule cards and keep the selected option in view.
-        </p>
         {!loading && !errorMessage ? (
           <p className="text-sm font-medium text-calendar-meta" aria-live="polite">{resultsCountLabel}</p>
         ) : null}
@@ -106,9 +103,8 @@ export function ScheduleResults({
 
       {!loading && !errorMessage && schedules.length > 0 ? (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
+          <div className="border-b border-border pb-2">
             <h3 className="text-base font-semibold">Ranked schedules</h3>
-            <span className="text-sm text-calendar-meta">Tap a card to update the calendar</span>
           </div>
           {schedules.map((schedule, index) => {
             const isSelected = index === selectedScheduleIndex;

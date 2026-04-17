@@ -29,19 +29,16 @@ export function CoursePicker({
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">
           Add Courses
         </h2>
-        <p className="text-sm leading-7 text-text-weak">
-          Search by designation, title, or subject prefix, then add courses to the builder.
-        </p>
       </div>
 
       <label className="flex flex-col gap-3 text-sm font-medium text-text-weak" htmlFor="schedule-builder-course-picker">
-        Course search
+        <span className="sr-only">Course search</span>
         <input
           id="schedule-builder-course-picker"
           type="search"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="COMP SCI 577"
+          placeholder="COMP SCI 220, MATH 340, etc."
           className="min-h-12 rounded-2xl border border-border bg-transparent px-4 text-base font-normal outline-none transition focus:border-blue"
         />
       </label>
@@ -63,11 +60,9 @@ export function CoursePicker({
         <span>{selectedCourseDesignations.length} selected</span>
       </div>
 
-      {!loading && results.length === 0 ? (
+      {!loading && results.length === 0 && query.trim().length > 0 ? (
         <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
-          {query.trim().length === 0
-            ? "Search to see matching courses."
-            : "No matching courses found for this search."}
+          No matching courses found.
         </div>
       ) : results.length > 0 ? (
         <div className="flex flex-col gap-3">

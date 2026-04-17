@@ -17,13 +17,7 @@ export function SchedulePriorityList({
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
-          Schedule Priorities
-        </p>
-        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Choose ranking order</h2>
-        <p className="text-sm leading-7 text-text-weak">
-          Schedules are generated using this priority order top to bottom.
-        </p>
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Priority order</h2>
       </div>
 
       <div className="flex flex-col gap-3">

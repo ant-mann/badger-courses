@@ -23,7 +23,7 @@ export function SelectedCourseList({ courses, onRemoveCourse }: SelectedCourseLi
 
       {courses.length === 0 ? (
         <div className="rounded-xl border border-border bg-muted p-4 text-sm leading-7 text-text-weak">
-          No courses selected yet. Add a course to start building schedules.
+          No courses added.
         </div>
       ) : (
         <div className="flex flex-col gap-3">

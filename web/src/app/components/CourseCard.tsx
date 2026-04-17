@@ -32,7 +32,7 @@ export function CourseCard({ course }: CourseCardProps) {
   return (
     <Link
       href={`/courses/${encodeURIComponent(course.designation)}`}
-      className="group rounded-3xl border border-border bg-surface p-5 shadow-soft transition hover:shadow-card hover:border-blue/20"
+      className="group rounded-xl border border-border bg-surface p-5 shadow-soft transition hover:shadow-card hover:border-blue/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue focus-visible:outline-offset-2"
     >
       <article className="flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
