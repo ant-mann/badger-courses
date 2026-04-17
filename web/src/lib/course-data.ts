@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import type { Client } from "@libsql/client";
 
 import { normalizeCourseDesignation } from "./course-designation";
-import { getCourseDb, getDb } from "./db";
+import { getCourseDb, getDb, getMadgradesDb } from "./db";
 
 type QueryArg = string | number | null;
 type Row = Record<string, unknown>;
@@ -127,13 +127,11 @@ export type CourseSearchParams = {
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 
-let hasInstructorHistoryView: boolean | null = null;
 let hasCourseSearchFtsTable: boolean | null = null;
 
 export const normalizeDesignation = normalizeCourseDesignation;
 
 export function __resetCourseDataCachesForTests(): void {
-  hasInstructorHistoryView = null;
   hasCourseSearchFtsTable = null;
 }
 
@@ -222,6 +220,14 @@ function mergeRestrictionNotes(...notes: Array<string | null>): string | null {
   }
 
   return fragments.size > 0 ? [...fragments].join(" | ") : null;
+}
+
+function hasDedicatedMadgradesConfig(): boolean {
+  return [
+    "TURSO_MADGRADES_DATABASE_URL",
+    "TURSO_MADGRADES_AUTH_TOKEN",
+    "MADGRADES_MADGRADES_REPLICA_PATH",
+  ].every((name) => Boolean(process.env[name]?.trim()));
 }
 
 function buildCourseTitleLookup(
@@ -622,7 +628,7 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
   return rows.map(mapCourseListItem);
 }
 
-export function getCourseDetail(designation: string): CourseDetail | null {
+export async function getCourseDetail(designation: string): Promise<CourseDetail | null> {
   const db = getDb();
   let normalizedDesignation: string;
 
@@ -784,7 +790,7 @@ export function getCourseDetail(designation: string): CourseDetail | null {
     )
     .all(canonical.termCode, canonical.courseId) as Row[];
 
-  const instructorGrades = getInstructorHistory(db, canonical.termCode, canonical.courseId);
+  const instructorGrades = await getInstructorHistory(db, canonical.termCode, canonical.courseId);
   const prerequisites = prerequisiteRows.map(mapPrerequisiteRule);
   const courseTitleLookup = buildCourseTitleLookup(
     db,
@@ -896,15 +902,135 @@ export function getCourseDetail(designation: string): CourseDetail | null {
   };
 }
 
-function getInstructorHistory(
+async function getInstructorHistory(
+  db: Database.Database,
+  termCode: string,
+  courseId: string,
+): Promise<InstructorHistoryItem[]> {
+  if (!hasDedicatedMadgradesConfig()) {
+    return getInstructorHistoryFromCompatibilityDb(db, termCode, courseId);
+  }
+
+  const currentSectionInstructorRows = db
+    .prepare(
+      `
+        SELECT
+          so.section_number,
+          so.section_type,
+          si.instructor_key,
+          TRIM(COALESCE(i.first_name || ' ', '') || COALESCE(i.last_name, '')) AS instructor_display_name
+        FROM section_overview_v so
+        JOIN section_instructors si
+          ON si.package_id = so.source_package_id
+         AND si.section_class_number = so.section_class_number
+        JOIN instructors i
+          ON i.instructor_key = si.instructor_key
+        WHERE so.term_code = ? AND so.course_id = ?
+        ORDER BY so.section_type ASC, so.section_number ASC, instructor_display_name ASC, si.instructor_key ASC
+      `,
+    )
+    .all(termCode, courseId) as Row[];
+
+  if (currentSectionInstructorRows.length === 0) {
+    return [];
+  }
+
+  const instructorKeys = [...new Set(currentSectionInstructorRows.map((row) => asString(row.instructor_key)))];
+
+  if (instructorKeys.length === 0) {
+    return [];
+  }
+
+  try {
+    const madgradesDb = getMadgradesDb();
+    const courseMatchRow = await firstRow(
+      madgradesDb,
+      `
+        SELECT madgrades_course_id
+        FROM madgrades_course_matches
+        WHERE term_code = ? AND course_id = ?
+        LIMIT 1
+      `,
+      [termCode, courseId],
+    );
+    const madgradesCourseId = asNullableNumber(courseMatchRow?.madgrades_course_id);
+
+    const gradeByInstructorKey = new Map<string, Row>();
+
+    if (madgradesCourseId !== null) {
+      const placeholders = instructorKeys.map(() => "?").join(", ");
+      const gradeRows = await allRows(
+        madgradesDb,
+        `
+          SELECT
+            mim.instructor_key,
+            mim.match_status AS instructor_match_status,
+            ich.prior_offering_count AS same_course_prior_offering_count,
+            ich.student_count AS same_course_student_count,
+            ich.same_course_gpa,
+            cgo.historical_gpa AS course_historical_gpa
+          FROM madgrades_instructor_matches mim
+          LEFT JOIN instructor_course_history_overview_v ich
+            ON ich.madgrades_instructor_id = mim.madgrades_instructor_id
+           AND ich.madgrades_course_id = ?
+          LEFT JOIN course_grade_overview_v cgo
+            ON cgo.madgrades_course_id = ?
+          WHERE mim.instructor_key IN (${placeholders})
+        `,
+        [madgradesCourseId, madgradesCourseId, ...instructorKeys],
+      );
+
+      for (const row of gradeRows) {
+        gradeByInstructorKey.set(asString(row.instructor_key), row);
+      }
+    }
+
+    return currentSectionInstructorRows
+      .map((row) => {
+        const gradeRow = gradeByInstructorKey.get(asString(row.instructor_key));
+
+        return {
+          sectionNumber: asString(row.section_number),
+          sectionType: asString(row.section_type),
+          instructorDisplayName: asNullableString(row.instructor_display_name),
+          sameCoursePriorOfferingCount: asNullableNumber(gradeRow?.same_course_prior_offering_count),
+          sameCourseStudentCount: asNullableNumber(gradeRow?.same_course_student_count),
+          sameCourseGpa: asNullableNumber(gradeRow?.same_course_gpa),
+          courseHistoricalGpa: asNullableNumber(gradeRow?.course_historical_gpa),
+          instructorMatchStatus: asNullableString(gradeRow?.instructor_match_status),
+        };
+      })
+      .sort((left, right) => {
+        const priorOfferingDiff =
+          (right.sameCoursePriorOfferingCount ?? -1) - (left.sameCoursePriorOfferingCount ?? -1);
+
+        if (priorOfferingDiff !== 0) {
+          return priorOfferingDiff;
+        }
+
+        const studentCountDiff = (right.sameCourseStudentCount ?? -1) - (left.sameCourseStudentCount ?? -1);
+
+        if (studentCountDiff !== 0) {
+          return studentCountDiff;
+        }
+
+        const sectionTypeDiff = left.sectionType.localeCompare(right.sectionType);
+        if (sectionTypeDiff !== 0) {
+          return sectionTypeDiff;
+        }
+
+        return left.sectionNumber.localeCompare(right.sectionNumber);
+      });
+  } catch {
+    return [];
+  }
+}
+
+function getInstructorHistoryFromCompatibilityDb(
   db: Database.Database,
   termCode: string,
   courseId: string,
 ): InstructorHistoryItem[] {
-  if (!supportsInstructorHistoryView(db)) {
-    return [];
-  }
-
   const rows = db
     .prepare(
       `
@@ -947,21 +1073,6 @@ function mapPrerequisiteRule(row: Row): PrerequisiteRule {
     rawText: asNullableString(row.raw_text),
     unparsedText: asNullableString(row.unparsed_text),
   };
-}
-
-function supportsInstructorHistoryView(db: Database.Database): boolean {
-  if (hasInstructorHistoryView !== null) {
-    return hasInstructorHistoryView;
-  }
-
-  const row = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'current_term_section_instructor_grade_overview_v'",
-    )
-    .get() as { name?: string } | undefined;
-
-  hasInstructorHistoryView = row?.name === "current_term_section_instructor_grade_overview_v";
-  return hasInstructorHistoryView;
 }
 
 async function hasCourseSearchTable(db: Client): Promise<boolean> {

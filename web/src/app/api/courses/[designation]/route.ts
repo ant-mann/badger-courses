@@ -10,7 +10,7 @@ type RouteContext = {
 
 export async function GET(_: Request, { params }: RouteContext) {
   const { designation } = await params;
-  const detail = getCourseDetail(designation);
+  const detail = await getCourseDetail(designation);
 
   if (!detail) {
     return NextResponse.json({ error: 'Course not found.' }, { status: 404 });

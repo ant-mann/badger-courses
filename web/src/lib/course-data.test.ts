@@ -1148,8 +1148,8 @@ test("searchCourses fails fast when the compatibility sqlite path does not exist
   }
 });
 
-test("getCourseDetail returns sections meetings prerequisites grades and schedule packages", () => {
-  const detail = getCourseDetail(" comp sci 577 ");
+test("getCourseDetail returns sections meetings prerequisites grades and schedule packages", async () => {
+  const detail = await getCourseDetail(" comp sci 577 ");
 
   assert.ok(detail);
   assert.equal(detail.course.designation, "COMP SCI 577");
@@ -1183,8 +1183,140 @@ test("getCourseDetail returns sections meetings prerequisites grades and schedul
   assert.equal(detail.schedulePackages[0].sourcePackageId, "1272:302:005770:comp-sci-577-main");
 });
 
-test("getCourseDetail collapses cross-listed duplicate lecture rows on the course page", () => {
-  const detail = getCourseDetail("COMP SCI 102");
+test("getCourseDetail returns current instructors with null grade fields when madgrades rows are unavailable", async () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec(`
+      DELETE FROM madgrades_course_offerings;
+      DELETE FROM madgrades_instructor_grades;
+      DELETE FROM madgrades_course_grades;
+      DELETE FROM madgrades_instructor_matches;
+      DELETE FROM madgrades_course_matches;
+    `);
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+
+    const detail = await getCourseDetail("COMP SCI 577");
+
+    assert.ok(detail);
+    assert.deepEqual(detail.instructorGrades, [
+      {
+        sectionNumber: "001",
+        sectionType: "LEC",
+        instructorDisplayName: "Ada Lovelace",
+        sameCoursePriorOfferingCount: null,
+        sameCourseStudentCount: null,
+        sameCourseGpa: null,
+        courseHistoricalGpa: null,
+        instructorMatchStatus: null,
+      },
+    ]);
+  } finally {
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+  }
+});
+
+test("getCourseDetail keeps unmatched instructors with null madgrades fields", async () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec(`
+      DELETE FROM madgrades_course_offerings;
+      DELETE FROM madgrades_instructor_grades;
+      DELETE FROM madgrades_instructor_matches;
+    `);
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+
+    const detail = await getCourseDetail("COMP SCI 577");
+
+    assert.ok(detail);
+    assert.deepEqual(detail.instructorGrades, [
+      {
+        sectionNumber: "001",
+        sectionType: "LEC",
+        instructorDisplayName: "Ada Lovelace",
+        sameCoursePriorOfferingCount: null,
+        sameCourseStudentCount: null,
+        sameCourseGpa: null,
+        courseHistoricalGpa: null,
+        instructorMatchStatus: null,
+      },
+    ]);
+  } finally {
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+  }
+});
+
+test("getCourseDetail keeps the single-db instructor history path when dedicated madgrades env is absent", async () => {
+  delete process.env.TURSO_MADGRADES_DATABASE_URL;
+  delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
+  delete process.env.MADGRADES_MADGRADES_REPLICA_PATH;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  try {
+    const detail = await getCourseDetail("COMP SCI 577");
+
+    assert.ok(detail);
+    assert.deepEqual(detail.instructorGrades, [
+      {
+        sectionNumber: "001",
+        sectionType: "LEC",
+        instructorDisplayName: "Ada Lovelace",
+        sameCoursePriorOfferingCount: 1,
+        sameCourseStudentCount: 20,
+        sameCourseGpa: 3.7,
+        courseHistoricalGpa: 3.7,
+        instructorMatchStatus: "matched",
+      },
+    ]);
+  } finally {
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+  }
+});
+
+test("getCourseDetail collapses cross-listed duplicate lecture rows on the course page", async () => {
+  const detail = await getCourseDetail("COMP SCI 102");
 
   assert.ok(detail);
   assert.equal(detail.course.sectionCount, 1);
@@ -1199,8 +1331,8 @@ test("getCourseDetail collapses cross-listed duplicate lecture rows on the cours
   assert.equal(detail.schedulePackages[0].restrictionNote, "Reserved for Information School majors.");
 });
 
-test("getCourseDetail preserves topic-specific titles for live sections on umbrella topic courses", () => {
-  const detail = getCourseDetail("ASIAN AM 462");
+test("getCourseDetail preserves topic-specific titles for live sections on umbrella topic courses", async () => {
+  const detail = await getCourseDetail("ASIAN AM 462");
 
   assert.ok(detail);
   assert.equal(detail.course.title, "Topic in Asian American Literature");
