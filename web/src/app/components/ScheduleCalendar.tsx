@@ -305,8 +305,7 @@ function buildDesktopSegments(entries: ScheduleCalendarEntry[]): DesktopCalendar
 
   return [...entrySegments.values()]
     .flatMap((segmentsForEntry) => {
-      const contentIndex = segmentsForEntry.findIndex((segment) => getSegmentDuration(segment) >= 45)
-        ?? -1;
+      const contentIndex = segmentsForEntry.findIndex((segment) => getSegmentDuration(segment) >= 45);
 
       return segmentsForEntry.map((segment, index) => ({
         ...segment,
@@ -502,8 +501,9 @@ function renderTypeBadge(entry: ScheduleCalendarEntry, slot: number): React.Reac
 function buildEntryAriaLabel(entry: ScheduleCalendarEntry): string {
   const label = meetingTypeLabel(entry.sectionType);
   const meetingLabel = label ? ` ${label}${entry.sectionNumber ? ` ${entry.sectionNumber}` : ""}` : "";
+  const locationLabel = formatLocation(entry);
 
-  return `${entry.courseDesignation}${meetingLabel} - ${formatMinutes(entry.startMinutes)} to ${formatMinutes(entry.endMinutes)}, ${entry.buildingName ?? "location unavailable"}`;
+  return `${entry.courseDesignation}${meetingLabel} - ${formatMinutes(entry.startMinutes)} to ${formatMinutes(entry.endMinutes)}, ${locationLabel}`;
 }
 
 function formatLocation(entry: ScheduleCalendarEntry): string {

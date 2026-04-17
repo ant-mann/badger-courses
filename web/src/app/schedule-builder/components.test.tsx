@@ -1626,7 +1626,7 @@ test("ScheduleCalendar shows no type badge when sectionType is null", () => {
   assert.doesNotMatch(markup, /LEC|LAB|DIS/);
 });
 
-test("ScheduleCalendar uses blue badge classes for LEC", () => {
+test("ScheduleCalendar applies slot badge class for LEC", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LEC" })]} />,
   );
@@ -1634,7 +1634,7 @@ test("ScheduleCalendar uses blue badge classes for LEC", () => {
   assert.match(markup, /calendar-course-badge-1/);
 });
 
-test("ScheduleCalendar uses green badge classes for LAB", () => {
+test("ScheduleCalendar applies slot badge class for LAB", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "LAB" })]} />,
   );
@@ -1642,7 +1642,7 @@ test("ScheduleCalendar uses green badge classes for LAB", () => {
   assert.match(markup, /calendar-course-badge-1/);
 });
 
-test("ScheduleCalendar uses orange badge classes for DIS", () => {
+test("ScheduleCalendar applies slot badge class for DIS", () => {
   const markup = renderToStaticMarkup(
     <ScheduleCalendar schedule={makeSchedule()} entries={[makeEntry({ sectionType: "DIS" })]} />,
   );
