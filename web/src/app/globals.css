@@ -6,7 +6,7 @@
 :root {
   --navy:        #181d26;
   --blue:        #1b61c9;
-  --surface:     #ffffff;
+  --surface:     oklch(99% 0.004 250);
   --bg:          #ffffff;
   --border:      #e0e2e6;
   --muted:       rgba(0, 0, 0, 0.03);
@@ -115,7 +115,8 @@
   --color-calendar-axis: var(--calendar-axis);
   --shadow-card:      var(--card-shadow);
   --shadow-soft:      var(--soft-shadow);
-  --font-sans:        var(--font-inter);
+  --font-sans:        var(--font-geist);
+  --font-mono:        var(--font-geist-mono);
 }
 
 body {

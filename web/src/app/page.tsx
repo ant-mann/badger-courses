@@ -1,101 +1,27 @@
-import React from "react";
-import { Suspense } from "react";
-import Link from "next/link";
-import type { Metadata } from "next";
+import React, { Suspense } from "react";
+import { ScheduleBuilder } from "@/app/schedule-builder/ScheduleBuilder";
 
-import { CourseCard } from "@/app/components/CourseCard";
-import { SearchBar } from "@/app/components/SearchBar";
-import { searchCourses, type CourseListItem } from "@/lib/course-data";
-
-type HomePageProps = {
-  searchParams?: Promise<{
-    q?: string | string[];
-    subject?: string | string[];
-  }>;
-};
-
-function firstParam(value: string | string[] | undefined): string {
-  return (Array.isArray(value) ? value[0] : value) ?? "";
-}
-
-export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
-  const resolvedSearchParams = await searchParams;
-  const query = firstParam(resolvedSearchParams?.q).trim();
-  if (query) {
-    return { title: `${query} – Badger Courses` };
-  }
-  return { title: "Badger Courses" };
-}
-
-export default async function Home({ searchParams }: HomePageProps) {
-  const resolvedSearchParams = await searchParams;
-  const query = firstParam(resolvedSearchParams?.q).trim();
-  const subject = firstParam(resolvedSearchParams?.subject).trim();
-  const hasSearch = query.length > 0 || subject.length > 0;
-
-  let courses: CourseListItem[] = [];
-  let errorMessage: string | null = null;
-
-  try {
-    courses = hasSearch ? searchCourses({ query, subject }) : [];
-  } catch {
-    errorMessage = "Unable to load courses right now. Please try again.";
-  }
-
+export default function HomePage() {
   return (
     <main className="flex-1 bg-bg text-navy">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10 sm:px-10 sm:py-14">
+      <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 px-6 py-10 sm:px-10 sm:py-14">
         <section className="flex flex-col gap-4">
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-text-faint">
-            Badger Courses
+            Schedule Builder
           </p>
           <div className="flex flex-col gap-3">
-            <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
-              Search Fall 2026 courses with sections, prerequisites, and schedule packages.
+            <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
+              Build Fall 2026 schedules in the browser.
             </h1>
-            <p className="max-w-2xl text-base leading-7 text-text-weak">
-              Start with a designation, title, or subject prefix like <span className="font-medium">COMP SCI 577</span> or <span className="font-medium">MATH</span>.
+            <p className="max-w-3xl text-base leading-7 text-text-weak">
+              Add courses, lock or exclude section combinations, and compare ranked schedules with a weekly calendar.
             </p>
-          </div>
-          <div>
-            <Link
-              href="/schedule-builder"
-              className="inline-flex min-h-11 items-center rounded-full bg-blue px-5 text-sm font-medium text-white transition hover:bg-blue/90"
-            >
-              Build your schedule
-            </Link>
           </div>
         </section>
 
         <Suspense>
-          <SearchBar initialQuery={query} />
+          <ScheduleBuilder />
         </Suspense>
-
-        {!hasSearch ? (
-          <section className="rounded-3xl border border-border bg-muted p-6 text-sm leading-7 text-text-weak">
-            Enter a search to see matching courses.
-          </section>
-        ) : null}
-
-        {errorMessage ? (
-          <section className="rounded-3xl border border-red-500/20 bg-red-500/8 p-6 text-sm leading-7 text-red-900 dark:text-red-100">
-            {errorMessage}
-          </section>
-        ) : null}
-
-        {hasSearch && !errorMessage && courses.length === 0 ? (
-          <section className="rounded-3xl border border-border bg-muted p-6 text-sm leading-7 text-text-weak">
-            No courses matched <span className="font-medium">{query || subject}</span>.
-          </section>
-        ) : null}
-
-        {courses.length > 0 ? (
-          <section className="grid gap-4">
-            {courses.map((course) => (
-              <CourseCard key={course.designation} course={course} />
-            ))}
-          </section>
-        ) : null}
       </div>
     </main>
   );
