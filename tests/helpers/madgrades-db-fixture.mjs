@@ -86,6 +86,7 @@ export function buildCourseDbFixture({ courses, packageSnapshot, madgradesSnapsh
   });
 
   const dbPath = path.join(fixtureDataDir, 'fall-2026.sqlite');
+  const madgradesDbPath = path.join(fixtureDataDir, 'fall-2026-madgrades.sqlite');
   const db = new Database(dbPath);
 
   if (madgradesSnapshot) {
@@ -97,6 +98,7 @@ export function buildCourseDbFixture({ courses, packageSnapshot, madgradesSnapsh
     fixtureDataDir,
     db,
     dbPath,
+    madgradesDbPath,
     cleanup() {
       db.close();
       fs.rmSync(fixtureRoot, { recursive: true, force: true });

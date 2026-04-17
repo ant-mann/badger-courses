@@ -809,7 +809,7 @@ test('buildMadgradesDb creates a standalone database with grade history and matc
 
   try {
     const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
-    const madgradesDbPath = fixture.dbPath.replace(/\.sqlite$/, '-madgrades.sqlite');
+    const madgradesDbPath = fixture.madgradesDbPath;
 
     await buildMadgradesDb({
       courseDbPath: fixture.dbPath,
@@ -843,7 +843,7 @@ test('runMadgradesImport loads standalone madgrades schema when courseDbPath is 
       import('../src/madgrades/import-runner.mjs'),
       import('better-sqlite3'),
     ]);
-    const standaloneDbPath = fixture.dbPath.replace(/\.sqlite$/, '-standalone.sqlite');
+    const standaloneDbPath = fixture.madgradesDbPath;
     const standaloneDb = new Database.default(standaloneDbPath);
 
     try {
@@ -883,7 +883,7 @@ test('buildMadgradesDb preserves the existing output when a rebuild fails', asyn
 
   try {
     const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
-    const madgradesDbPath = fixture.dbPath.replace(/\.sqlite$/, '-madgrades.sqlite');
+    const madgradesDbPath = fixture.madgradesDbPath;
 
     await buildMadgradesDb({
       courseDbPath: fixture.dbPath,
