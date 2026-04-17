@@ -479,7 +479,7 @@ export function ScheduleBuilder() {
         })}
       </div>
 
-      <div className="sticky top-16 flex flex-col gap-4 self-start">
+      <div className="sticky top-16 flex flex-col gap-3 self-start">
         <ScheduleCalendar schedule={selectedSchedule} entries={calendarEntries} />
 
         <ScheduleResults
