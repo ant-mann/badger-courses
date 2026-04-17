@@ -1,5 +1,7 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -28,6 +30,16 @@ afterEach(() => {
   }
 });
 
+function withTempDir(fn: (dir: string) => void) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "madgrades-env-"));
+
+  try {
+    fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 test("getCourseDatabaseConfig resolves the course replica path from cwd", () => {
   process.env.TURSO_COURSE_DATABASE_URL = "libsql://course-db.example.turso.io";
   process.env.TURSO_COURSE_AUTH_TOKEN = "course-token";
@@ -55,6 +67,20 @@ test("getDatabasePath still honors MADGRADES_DB_PATH when it is set", () => {
   process.env.MADGRADES_DB_PATH = "./custom.sqlite";
 
   assert.equal(getDatabasePath("/repo/web"), path.join("/repo/web", "custom.sqlite"));
+});
+
+test("getDatabasePath falls back to the first existing local sqlite path", () => {
+  withTempDir((dir) => {
+    const packagedDbPath = path.join(dir, "web", "data", "fall-2026.sqlite");
+    const repoDbPath = path.join(dir, "data", "fall-2026.sqlite");
+
+    fs.mkdirSync(path.dirname(packagedDbPath), { recursive: true });
+    fs.mkdirSync(path.dirname(repoDbPath), { recursive: true });
+    fs.writeFileSync(packagedDbPath, "");
+    fs.writeFileSync(repoDbPath, "");
+
+    assert.equal(getDatabasePath(dir), packagedDbPath);
+  });
 });
 
 test("getMadgradesDatabaseConfig resolves the Madgrades replica path from cwd", () => {

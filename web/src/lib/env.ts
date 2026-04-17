@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 
 function resolveFromCwd(value: string, cwd = process.cwd()): string {
   return path.resolve(cwd, value);
@@ -20,6 +21,25 @@ function getOptionalEnv(name: string): string | null {
   return value || null;
 }
 
+const DEFAULT_DATABASE_PATHS = [
+  'web/data/fall-2026.sqlite',
+  'data/fall-2026.sqlite',
+  '../data/fall-2026.sqlite',
+  '../web/data/fall-2026.sqlite',
+];
+
+function resolveFirstExistingPath(paths: string[], cwd = process.cwd()): string | null {
+  for (const candidate of paths) {
+    const resolvedCandidate = resolveFromCwd(candidate, cwd);
+
+    if (fs.existsSync(resolvedCandidate)) {
+      return resolvedCandidate;
+    }
+  }
+
+  return null;
+}
+
 export type LibsqlDatabaseConfig = {
   url: string;
   authToken: string;
@@ -39,6 +59,12 @@ export function getDatabasePath(cwd = process.cwd()): string {
 
   if (dbPath) {
     return resolveFromCwd(dbPath, cwd);
+  }
+
+  const fallbackPath = resolveFirstExistingPath(DEFAULT_DATABASE_PATHS, cwd);
+
+  if (fallbackPath) {
+    return fallbackPath;
   }
 
   return getCourseDatabaseConfig(cwd).replicaPath;
