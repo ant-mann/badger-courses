@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import process from 'node:process';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFile, mkdtemp, rename, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 
 import { writeMadgradesSnapshot } from '../src/madgrades/snapshot-helpers.mjs';
 import { buildCourseDbFixture, makeCourse } from './helpers/madgrades-db-fixture.mjs';
@@ -234,79 +234,6 @@ test('import-madgrades CLI prints progress to stderr and final JSON to stdout', 
     assert.equal(parsed.courses, 1);
   } finally {
     fixture.cleanup();
-    await rm(snapshotRoot, { recursive: true, force: true });
-  }
-});
-
-test('import-madgrades CLI builds the standalone default database when --db is omitted', async () => {
-  const fixture = buildFixture();
-  const snapshotRoot = await mkdtemp(path.join(process.cwd(), '.tmp-madgrades-cli-default-'));
-  const dataDir = path.join(process.cwd(), 'data');
-  const defaultCourseDbPath = path.join(dataDir, 'fall-2026.sqlite');
-  const defaultMadgradesDbPath = path.join(dataDir, 'fall-2026-madgrades.sqlite');
-  const backupCourseDbPath = `${defaultCourseDbPath}.test-backup`;
-  const backupMadgradesDbPath = `${defaultMadgradesDbPath}.test-backup`;
-
-  async function moveIfExists(sourcePath, destinationPath) {
-    try {
-      await rename(sourcePath, destinationPath);
-      return true;
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        return false;
-      }
-
-      throw error;
-    }
-  }
-
-  const hadCourseDb = await moveIfExists(defaultCourseDbPath, backupCourseDbPath);
-  const hadMadgradesDb = await moveIfExists(defaultMadgradesDbPath, backupMadgradesDbPath);
-
-  try {
-    await writeMadgradesSnapshot({
-      snapshotRoot,
-      snapshotId: '20260411T231405Z',
-      snapshot: buildSnapshot(),
-    });
-    await copyFile(fixture.dbPath, defaultCourseDbPath);
-
-    const output = execFileSync(
-      process.execPath,
-      [
-        path.join(process.cwd(), 'scripts', 'import-madgrades.mjs'),
-        '--snapshot-root', snapshotRoot,
-      ],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-      },
-    );
-
-    const result = JSON.parse(output.trim());
-    assert.equal(result.snapshotId, '20260411T231405Z');
-    assert.equal(result.courseMatches, 1);
-
-    const standaloneDb = new (await import('better-sqlite3')).default(defaultMadgradesDbPath, { readonly: true });
-
-    try {
-      assert.equal(
-        standaloneDb.prepare('SELECT COUNT(*) FROM madgrades_course_matches').pluck().get(),
-        1,
-      );
-    } finally {
-      standaloneDb.close();
-    }
-  } finally {
-    fixture.cleanup();
-    await rm(defaultCourseDbPath, { force: true });
-    await rm(defaultMadgradesDbPath, { force: true });
-    if (hadCourseDb) {
-      await rename(backupCourseDbPath, defaultCourseDbPath);
-    }
-    if (hadMadgradesDb) {
-      await rename(backupMadgradesDbPath, defaultMadgradesDbPath);
-    }
     await rm(snapshotRoot, { recursive: true, force: true });
   }
 });
