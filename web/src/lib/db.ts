@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import Database from "better-sqlite3";
 import { createClient, type Client } from "@libsql/client";
 
@@ -11,6 +13,26 @@ import {
 let cachedDb: Database.Database | null = null;
 let cachedCourseDb: Client | null = null;
 let cachedMadgradesDb: Client | null = null;
+
+function hasValue(name: string): boolean {
+  return Boolean(process.env[name]?.trim());
+}
+
+function hasCompleteCourseReplicaConfig(): boolean {
+  return [
+    "TURSO_COURSE_DATABASE_URL",
+    "TURSO_COURSE_AUTH_TOKEN",
+    "MADGRADES_COURSE_REPLICA_PATH",
+  ].every(hasValue);
+}
+
+function hasAnyCourseReplicaConfig(): boolean {
+  return [
+    "TURSO_COURSE_DATABASE_URL",
+    "TURSO_COURSE_AUTH_TOKEN",
+    "MADGRADES_COURSE_REPLICA_PATH",
+  ].some(hasValue);
+}
 
 function createReplicaClient(config: LibsqlDatabaseConfig): Client {
   if (config.url.startsWith("file:")) {
@@ -41,11 +63,19 @@ export function getDb(): Database.Database {
 
 export function getCourseDb(): Client {
   if (!cachedCourseDb) {
-    try {
+    if (hasCompleteCourseReplicaConfig()) {
       cachedCourseDb = createReplicaClient(getCourseDatabaseConfig());
-    } catch {
+    } else if (hasAnyCourseReplicaConfig()) {
+      cachedCourseDb = createReplicaClient(getCourseDatabaseConfig());
+    } else {
+      const databasePath = getDatabasePath();
+
+      if (!fs.existsSync(databasePath)) {
+        throw new Error(`Database file does not exist: ${databasePath}`);
+      }
+
       cachedCourseDb = createClient({
-        url: `file:${getDatabasePath()}`,
+        url: `file:${databasePath}`,
       });
     }
   }

@@ -1108,6 +1108,46 @@ test("searchCourses still works with only the compatibility sqlite path", async 
   }
 });
 
+test("searchCourses does not hide incomplete Turso course config", async () => {
+  process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  process.env.TURSO_COURSE_DATABASE_URL = "libsql://course-db.example.turso.io";
+  delete process.env.TURSO_COURSE_AUTH_TOKEN;
+  process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  try {
+    await assert.rejects(searchCourses({ query: "algorithms", limit: 99 }), /TURSO_COURSE_AUTH_TOKEN/);
+  } finally {
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+  }
+});
+
+test("searchCourses fails fast when the compatibility sqlite path does not exist", async () => {
+  delete process.env.TURSO_COURSE_DATABASE_URL;
+  delete process.env.TURSO_COURSE_AUTH_TOKEN;
+  delete process.env.MADGRADES_COURSE_REPLICA_PATH;
+  process.env.MADGRADES_DB_PATH = `${fixture.dbPath}.missing`;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  try {
+    await assert.rejects(searchCourses({ query: "algorithms", limit: 99 }), /Database file does not exist/);
+  } finally {
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+  }
+});
+
 test("getCourseDetail returns sections meetings prerequisites grades and schedule packages", () => {
   const detail = getCourseDetail(" comp sci 577 ");
 
