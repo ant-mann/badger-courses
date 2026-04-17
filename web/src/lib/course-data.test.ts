@@ -1085,6 +1085,29 @@ test("searchCourses uses the course database without requiring the compatibility
   }
 });
 
+test("searchCourses still works with only the compatibility sqlite path", async () => {
+  delete process.env.TURSO_COURSE_DATABASE_URL;
+  delete process.env.TURSO_COURSE_AUTH_TOKEN;
+  delete process.env.MADGRADES_COURSE_REPLICA_PATH;
+  process.env.MADGRADES_DB_PATH = fixture.dbPath;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  try {
+    const results = await searchCourses({ query: "algorithms", limit: 99 });
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0]?.designation, "COMP SCI 577");
+  } finally {
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+  }
+});
+
 test("getCourseDetail returns sections meetings prerequisites grades and schedule packages", () => {
   const detail = getCourseDetail(" comp sci 577 ");
 

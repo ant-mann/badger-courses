@@ -41,7 +41,13 @@ export function getDb(): Database.Database {
 
 export function getCourseDb(): Client {
   if (!cachedCourseDb) {
-    cachedCourseDb = createReplicaClient(getCourseDatabaseConfig());
+    try {
+      cachedCourseDb = createReplicaClient(getCourseDatabaseConfig());
+    } catch {
+      cachedCourseDb = createClient({
+        url: `file:${getDatabasePath()}`,
+      });
+    }
   }
 
   return cachedCourseDb;
