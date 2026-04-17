@@ -976,22 +976,56 @@ async function getInstructorHistory(
       const gradeRows = await allRows(
         madgradesDb,
         `
+          WITH course_history AS (
+            SELECT
+              mco.madgrades_course_id,
+              mco.madgrades_instructor_id,
+              COUNT(*) AS prior_offering_count,
+              COALESCE(SUM(mco.student_count), 0) AS student_count,
+              CASE
+                WHEN COALESCE(SUM(mco.student_count), 0) = 0 THEN NULL
+                ELSE SUM(mco.avg_gpa * mco.student_count) / SUM(mco.student_count)
+              END AS same_course_gpa
+            FROM madgrades_course_offerings mco
+            WHERE mco.madgrades_course_id = ?
+            GROUP BY mco.madgrades_course_id, mco.madgrades_instructor_id
+          ),
+          latest_course_grades AS (
+            SELECT
+              mcg.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY mcg.madgrades_course_id, mcg.term_code
+                ORDER BY mcg.madgrades_refresh_run_id DESC, mcg.madgrades_course_grade_id DESC
+              ) AS refresh_rank
+            FROM madgrades_course_grades mcg
+            WHERE mcg.madgrades_course_id = ?
+          ),
+          course_gpa AS (
+            SELECT
+              lcg.madgrades_course_id,
+              CASE
+                WHEN COALESCE(SUM(lcg.student_count), 0) = 0 THEN NULL
+                ELSE SUM(lcg.avg_gpa * lcg.student_count) / SUM(lcg.student_count)
+              END AS historical_gpa
+            FROM latest_course_grades lcg
+            WHERE lcg.refresh_rank = 1
+            GROUP BY lcg.madgrades_course_id
+          )
           SELECT
             mim.instructor_key,
             mim.match_status AS instructor_match_status,
-            ich.prior_offering_count AS same_course_prior_offering_count,
-            ich.student_count AS same_course_student_count,
-            ich.same_course_gpa,
-            cgo.historical_gpa AS course_historical_gpa
+            ch.prior_offering_count AS same_course_prior_offering_count,
+            ch.student_count AS same_course_student_count,
+            ch.same_course_gpa,
+            cg.historical_gpa AS course_historical_gpa
           FROM madgrades_instructor_matches mim
-          LEFT JOIN instructor_course_history_overview_v ich
-            ON ich.madgrades_instructor_id = mim.madgrades_instructor_id
-           AND ich.madgrades_course_id = ?
-          LEFT JOIN course_grade_overview_v cgo
-            ON cgo.madgrades_course_id = ?
+          LEFT JOIN course_history ch
+            ON ch.madgrades_instructor_id = mim.madgrades_instructor_id
+          LEFT JOIN course_gpa cg
+            ON cg.madgrades_course_id = ?
           WHERE mim.instructor_key IN (${placeholders})
         `,
-        [madgradesCourseId, madgradesCourseId, ...instructorKeys],
+        [madgradesCourseId, madgradesCourseId, madgradesCourseId, ...instructorKeys],
       );
 
       for (const row of gradeRows) {

@@ -1306,6 +1306,54 @@ test("getCourseDetail keeps unmatched instructors with null madgrades fields", a
   }
 });
 
+test("getCourseDetail reads instructor history from standalone madgrades tables when overview views are absent", async () => {
+  const compatibilityFixture = buildCourseDataFixture();
+
+  try {
+    compatibilityFixture.db.exec(`
+      DROP VIEW course_grade_overview_v;
+      DROP VIEW instructor_course_history_overview_v;
+    `);
+    compatibilityFixture.db.close();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+
+    const detail = await getCourseDetail("COMP SCI 577");
+
+    assert.ok(detail);
+    assert.deepEqual(detail.instructorGrades, [
+      {
+        sectionNumber: "001",
+        sectionType: "LEC",
+        instructorDisplayName: "Ada Lovelace",
+        sameCoursePriorOfferingCount: 1,
+        sameCourseStudentCount: 20,
+        sameCourseGpa: 3.7,
+        courseHistoricalGpa: 3.7,
+        instructorMatchStatus: "matched",
+      },
+    ]);
+  } finally {
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+    compatibilityFixture.cleanup();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+  }
+});
+
 test("getCourseDetail keeps the single-db instructor history path when dedicated madgrades env is absent", async () => {
   delete process.env.TURSO_MADGRADES_DATABASE_URL;
   delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
