@@ -1,10 +1,11 @@
 import type Database from "better-sqlite3";
+import type { Client } from "@libsql/client";
 
 import { normalizeCourseDesignation } from "./course-designation";
-import { getDb } from "./db";
+import { getCourseDb, getDb } from "./db";
 
-type SqlitePrimitive = string | number | null;
-type Row = Record<string, SqlitePrimitive>;
+type QueryArg = string | number | null;
+type Row = Record<string, unknown>;
 
 type CourseSectionRow = CourseSection & {
   sessionCode: string | null;
@@ -170,6 +171,16 @@ export function parseCourseGroupsJson(value: string | null): string[][] {
   }
 }
 
+async function allRows(db: Client, sql: string, args: QueryArg[] = []): Promise<Row[]> {
+  const result = await db.execute({ sql, args });
+  return result.rows as Row[];
+}
+
+async function firstRow(db: Client, sql: string, args: QueryArg[] = []): Promise<Row | undefined> {
+  const rows = await allRows(db, sql, args);
+  return rows[0];
+}
+
 function parseSourcePackageSubjectCode(sourcePackageId: string): string | null {
   const parts = sourcePackageId.split(":", 4);
   return parts.length >= 2 ? parts[1] : null;
@@ -323,8 +334,8 @@ function dedupeSchedulePackages(
   return [...groupedPackages.values()];
 }
 
-export function searchCourses(params: CourseSearchParams = {}): CourseListItem[] {
-  const db = getDb();
+export async function searchCourses(params: CourseSearchParams = {}): Promise<CourseListItem[]> {
+  const db = getCourseDb();
   const query = params.query?.trim() ?? "";
   const subject = params.subject?.trim() ?? "";
   const limit = clampLimit(params.limit);
@@ -332,13 +343,13 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
   const searchContext = buildCourseSearchContext(query);
   let rows: Row[];
 
-  if (searchContext.matchQuery && hasCourseSearchTable(db)) {
+  if (searchContext.matchQuery && (await hasCourseSearchTable(db))) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
 
-    rows = db
-      .prepare(
-        `
+    rows = await allRows(
+      db,
+      `
           WITH raw_search_matches AS (
             SELECT
               term_code,
@@ -428,8 +439,7 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
             course_designation ASC
           LIMIT ?
         `,
-      )
-      .all(
+      [
         searchContext.matchQuery,
         searchContext.normalizedQuery,
         searchContext.compactQuery,
@@ -439,7 +449,8 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
         normalizedQueryLike,
         ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
         limit,
-      ) as Row[];
+      ],
+    );
   } else if (searchContext.matchQuery) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
@@ -469,9 +480,9 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
       return [tokenLike, tokenLike, tokenLike, tokenLike];
     });
 
-    rows = db
-      .prepare(
-        `
+    rows = await allRows(
+      db,
+      `
           WITH matched_courses AS (
             SELECT
               co.term_code,
@@ -547,8 +558,7 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
             course_designation ASC
           LIMIT ?
         `,
-      )
-      .all(
+      [
         searchContext.normalizedQuery,
         normalizedQueryLike,
         compactQueryLike,
@@ -557,15 +567,16 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
         ...tokenMatchParams,
         ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
         limit,
-      ) as Row[];
+      ],
+    );
   } else {
     if (query && !subject) {
       return [];
     }
 
-    rows = db
-      .prepare(
-        `
+    rows = await allRows(
+      db,
+      `
           WITH ranked_courses AS (
             SELECT
               course_designation,
@@ -604,8 +615,8 @@ export function searchCourses(params: CourseSearchParams = {}): CourseListItem[]
           ORDER BY COALESCE(has_any_open_seats, 0) DESC, COALESCE(section_count, 0) DESC, course_designation ASC
           LIMIT ?
         `,
-      )
-      .all(...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []), limit) as Row[];
+      [...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []), limit],
+    );
   }
 
   return rows.map(mapCourseListItem);
@@ -953,14 +964,15 @@ function supportsInstructorHistoryView(db: Database.Database): boolean {
   return hasInstructorHistoryView;
 }
 
-function hasCourseSearchTable(db: Database.Database): boolean {
+async function hasCourseSearchTable(db: Client): Promise<boolean> {
   if (hasCourseSearchFtsTable !== null) {
     return hasCourseSearchFtsTable;
   }
 
-  const row = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'")
-    .get() as Row | undefined;
+  const row = await firstRow(
+    db,
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'",
+  );
 
   hasCourseSearchFtsTable = row?.name === "course_search_fts";
   return hasCourseSearchFtsTable;
@@ -1092,22 +1104,22 @@ function makeCompactCourseDesignation(value: string): string {
   return [tokens.slice(0, numericTokenIndex).join(""), ...tokens.slice(numericTokenIndex)].join(" ");
 }
 
-function asString(value: SqlitePrimitive): string {
+function asString(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "");
 }
 
-function asNullableString(value: SqlitePrimitive): string | null {
+function asNullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function asNullableNumber(value: SqlitePrimitive): number | null {
+function asNullableNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function asNullableStringOrNumber(value: SqlitePrimitive): string | number | null {
+function asNullableStringOrNumber(value: unknown): string | number | null {
   return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
-function asNullableBoolean(value: SqlitePrimitive): boolean | null {
+function asNullableBoolean(value: unknown): boolean | null {
   return typeof value === "number" ? value !== 0 : null;
 }

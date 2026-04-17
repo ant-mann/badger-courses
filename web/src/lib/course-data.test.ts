@@ -750,8 +750,8 @@ test("parseCourseGroupsJson returns nested course groups only", () => {
   assert.deepEqual(parseCourseGroupsJson(null), []);
 });
 
-test("searchCourses queries the shared course overview data", () => {
-  const results = searchCourses({ query: "algorithms", subject: "comp sci", limit: 99 });
+test("searchCourses queries the shared course overview data", async () => {
+  const results = await searchCourses({ query: "algorithms", subject: "comp sci", limit: 99 });
 
   assert.equal(results.length, 1);
   assert.deepEqual(results[0], {
@@ -767,8 +767,8 @@ test("searchCourses queries the shared course overview data", () => {
   });
 });
 
-test("searchCourses collapses duplicate designations and keeps the live offering", () => {
-  const results = searchCourses({ query: "asian am 462", limit: 99 });
+test("searchCourses collapses duplicate designations and keeps the live offering", async () => {
+  const results = await searchCourses({ query: "asian am 462", limit: 99 });
 
   assert.equal(results.length, 1);
   assert.deepEqual(results[0], {
@@ -784,8 +784,8 @@ test("searchCourses collapses duplicate designations and keeps the live offering
   });
 });
 
-test("searchCourses matches cross-listed alias designations through the FTS index", () => {
-  const results = searchCourses({ query: "engl 462", limit: 99 });
+test("searchCourses matches cross-listed alias designations through the FTS index", async () => {
+  const results = await searchCourses({ query: "engl 462", limit: 99 });
 
   assert.equal(results.length, 1);
   assert.deepEqual(results[0], {
@@ -801,7 +801,7 @@ test("searchCourses matches cross-listed alias designations through the FTS inde
   });
 });
 
-test("searchCourses falls back when the FTS table is missing", () => {
+test("searchCourses falls back when the FTS table is missing", async () => {
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
@@ -817,7 +817,7 @@ test("searchCourses falls back when the FTS table is missing", () => {
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
-    const results = searchCourses({ query: "engl 462", limit: 99 });
+    const results = await searchCourses({ query: "engl 462", limit: 99 });
 
     assert.equal(results.length, 1);
     assert.deepEqual(results[0], {
@@ -845,7 +845,7 @@ test("searchCourses falls back when the FTS table is missing", () => {
   }
 });
 
-test("searchCourses fallback matches reordered alias tokens when the FTS table is missing", () => {
+test("searchCourses fallback matches reordered alias tokens when the FTS table is missing", async () => {
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
@@ -861,7 +861,7 @@ test("searchCourses fallback matches reordered alias tokens when the FTS table i
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
-    const results = searchCourses({ query: "462 engl", limit: 99 });
+    const results = await searchCourses({ query: "462 engl", limit: 99 });
 
     assert.equal(results.length, 1);
     assert.deepEqual(results[0], {
@@ -889,7 +889,7 @@ test("searchCourses fallback matches reordered alias tokens when the FTS table i
   }
 });
 
-test("searchCourses fallback matches tokens split across alias and title when the FTS table is missing", () => {
+test("searchCourses fallback matches tokens split across alias and title when the FTS table is missing", async () => {
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
@@ -905,7 +905,7 @@ test("searchCourses fallback matches tokens split across alias and title when th
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
-    const results = searchCourses({ query: "engl literature", limit: 99 });
+    const results = await searchCourses({ query: "engl literature", limit: 99 });
 
     assert.equal(results.length, 1);
     assert.deepEqual(results[0], {
@@ -933,7 +933,7 @@ test("searchCourses fallback matches tokens split across alias and title when th
   }
 });
 
-test("searchCourses fallback matches description-only queries when the FTS table is missing", () => {
+test("searchCourses fallback matches description-only queries when the FTS table is missing", async () => {
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
@@ -949,7 +949,7 @@ test("searchCourses fallback matches description-only queries when the FTS table
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
-    const results = searchCourses({ query: "petabyte", limit: 99 });
+    const results = await searchCourses({ query: "petabyte", limit: 99 });
 
     assert.equal(results.length, 1);
     assert.deepEqual(results[0], {
@@ -977,7 +977,7 @@ test("searchCourses fallback matches description-only queries when the FTS table
   }
 });
 
-test("searchCourses fallback does not return false positives from token precedence when the FTS table is missing", () => {
+test("searchCourses fallback does not return false positives from token precedence when the FTS table is missing", async () => {
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
@@ -993,7 +993,7 @@ test("searchCourses fallback does not return false positives from token preceden
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
-    assert.deepEqual(searchCourses({ query: "engl data", limit: 99 }), []);
+    assert.deepEqual(await searchCourses({ query: "engl data", limit: 99 }), []);
   } finally {
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -1008,7 +1008,7 @@ test("searchCourses fallback does not return false positives from token preceden
   }
 });
 
-test("searchCourses fallback applies subject filtering when the FTS table is missing", () => {
+test("searchCourses fallback applies subject filtering when the FTS table is missing", async () => {
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
@@ -1024,7 +1024,7 @@ test("searchCourses fallback applies subject filtering when the FTS table is mis
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
-    const results = searchCourses({ query: "literature", subject: "comp sci", limit: 99 });
+    const results = await searchCourses({ query: "literature", subject: "comp sci", limit: 99 });
 
     assert.deepEqual(results, []);
   } finally {
@@ -1041,8 +1041,8 @@ test("searchCourses fallback applies subject filtering when the FTS table is mis
   }
 });
 
-test("searchCourses matches compact subject queries for spaced-letter aliases", () => {
-  const results = searchCourses({ query: "lis 102", limit: 99 });
+test("searchCourses matches compact subject queries for spaced-letter aliases", async () => {
+  const results = await searchCourses({ query: "lis 102", limit: 99 });
 
   assert.equal(results.length, 1);
   assert.deepEqual(results[0], {
@@ -1058,8 +1058,31 @@ test("searchCourses matches compact subject queries for spaced-letter aliases", 
   });
 });
 
-test("searchCourses returns a controlled empty list for punctuation-only queries", () => {
-  assert.deepEqual(searchCourses({ query: "((( )))", limit: 99 }), []);
+test("searchCourses returns a controlled empty list for punctuation-only queries", async () => {
+  assert.deepEqual(await searchCourses({ query: "((( )))", limit: 99 }), []);
+});
+
+test("searchCourses uses the course database without requiring the compatibility db path", async () => {
+  process.env.MADGRADES_DB_PATH = "/tmp/does-not-exist.sqlite";
+  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+  process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  try {
+    const results = await searchCourses({ query: "algorithms", limit: 99 });
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0]?.designation, "COMP SCI 577");
+  } finally {
+    __resetDbsForTests();
+    __resetCourseDataCachesForTests();
+    process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+  }
 });
 
 test("getCourseDetail returns sections meetings prerequisites grades and schedule packages", () => {

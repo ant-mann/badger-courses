@@ -17,7 +17,7 @@ function parseLimit(value: string | null): number | undefined {
   return Math.min(parsed, MAX_LIMIT);
 }
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q')?.trim() ?? '';
   const subject = searchParams.get('subject')?.trim() ?? '';
@@ -30,7 +30,7 @@ export function GET(request: Request) {
   }
 
   return NextResponse.json({
-    courses: searchCourses({
+    courses: await searchCourses({
       query: q,
       subject,
       limit: parseLimit(searchParams.get('limit')),

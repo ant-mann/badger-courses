@@ -37,7 +37,7 @@ export default async function CoursesPage({ searchParams }: CoursesPageProps) {
   let errorMessage: string | null = null;
 
   try {
-    courses = hasSearch ? searchCourses({ query, subject }) : [];
+    courses = hasSearch ? await searchCourses({ query, subject }) : [];
   } catch {
     errorMessage = "Unable to load courses right now. Please try again.";
   }

@@ -2,6 +2,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildCourseDbFixture, makeCourse } from "../../../../../tests/helpers/madgrades-db-fixture.mjs";
+import { __resetDbsForTests } from "@/lib/db";
 
 import { GET as getCourseDetail } from "./[designation]/route";
 import { DEFAULT_PREFERENCE_ORDER } from "@/app/schedule-builder/preferences";
@@ -222,10 +223,16 @@ const fixture = buildCourseDbFixture({
 });
 
 process.env.MADGRADES_DB_PATH = fixture.dbPath;
-after(() => fixture.cleanup());
+process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+after(() => {
+  __resetDbsForTests();
+  fixture.cleanup();
+});
 
 test("course search route requires q or subject", async () => {
-  const response = searchCourses(new Request("https://example.test/api/courses/search"));
+  const response = await searchCourses(new Request("https://example.test/api/courses/search"));
 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
@@ -234,7 +241,7 @@ test("course search route requires q or subject", async () => {
 });
 
 test("course search route returns FTS-backed matches", async () => {
-  const response = searchCourses(new Request("https://example.test/api/courses/search?q=algorithms"));
+  const response = await searchCourses(new Request("https://example.test/api/courses/search?q=algorithms"));
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
@@ -255,7 +262,7 @@ test("course search route returns FTS-backed matches", async () => {
 });
 
 test("course search route returns a controlled empty list for punctuation-only queries", async () => {
-  const response = searchCourses(new Request("https://example.test/api/courses/search?q=%28%28%28"));
+  const response = await searchCourses(new Request("https://example.test/api/courses/search?q=%28%28%28"));
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
