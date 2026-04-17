@@ -1,23 +1,53 @@
-import Database from 'better-sqlite3';
+import { createClient, type Client } from "@libsql/client";
 
-import { getDatabasePath } from './env';
+import { getCourseDatabaseConfig, getMadgradesDatabaseConfig, type LibsqlDatabaseConfig } from "./env";
 
-let cachedDb: Database.Database | null = null;
+let cachedCourseDb: Client | null = null;
+let cachedMadgradesDb: Client | null = null;
 
-export function getDb(): Database.Database {
-  if (cachedDb) {
-    return cachedDb;
+function createReplicaClient(config: LibsqlDatabaseConfig): Client {
+  if (config.url.startsWith("file:")) {
+    return createClient({
+      url: `file:${config.replicaPath}`,
+    });
   }
 
-  cachedDb = new Database(getDatabasePath(), {
-    readonly: true,
-    fileMustExist: true,
+  return createClient({
+    url: `file:${config.replicaPath}`,
+    syncUrl: config.url,
+    authToken: config.authToken,
+    syncInterval: 60,
+    offline: true,
   });
+}
 
-  return cachedDb;
+export function getCourseDb(): Client {
+  if (!cachedCourseDb) {
+    cachedCourseDb = createReplicaClient(getCourseDatabaseConfig());
+  }
+
+  return cachedCourseDb;
+}
+
+export function getMadgradesDb(): Client {
+  if (!cachedMadgradesDb) {
+    cachedMadgradesDb = createReplicaClient(getMadgradesDatabaseConfig());
+  }
+
+  return cachedMadgradesDb;
+}
+
+export function getDb(): Client {
+  return getCourseDb();
+}
+
+export function __resetDbsForTests(): void {
+  cachedCourseDb?.close();
+  cachedMadgradesDb?.close();
+  cachedCourseDb = null;
+  cachedMadgradesDb = null;
 }
 
 export function __resetDbForTests(): void {
-  cachedDb?.close();
-  cachedDb = null;
+  __resetDbsForTests();
 }

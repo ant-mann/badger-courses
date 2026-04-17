@@ -2,7 +2,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildCourseDbFixture, makeCourse } from "../../../tests/helpers/madgrades-db-fixture.mjs";
-import { __resetDbForTests } from "./db";
+import { __resetDbsForTests } from "./db";
 import {
   __resetCourseDataCachesForTests,
   getCourseDetail,
@@ -712,8 +712,14 @@ const fixture = buildCourseDataFixture();
 seedCourseDetailRows(fixture.db);
 seedTopicVariantRows(fixture.db);
 process.env.MADGRADES_DB_PATH = fixture.dbPath;
+process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
 after(() => {
-  __resetDbForTests();
+  __resetDbsForTests();
   __resetCourseDataCachesForTests();
   fixture.cleanup();
 });
@@ -802,7 +808,9 @@ test("searchCourses falls back when the FTS table is missing", () => {
     compatibilityFixture.db.exec("DROP TABLE course_search_fts");
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
-    __resetDbForTests();
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
     const results = searchCourses({ query: "engl 462", limit: 99 });
@@ -820,10 +828,12 @@ test("searchCourses falls back when the FTS table is missing", () => {
       hasAnyFullSection: true,
     });
   } finally {
-    __resetDbForTests();
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
 
@@ -834,7 +844,9 @@ test("searchCourses fallback matches reordered alias tokens when the FTS table i
     compatibilityFixture.db.exec("DROP TABLE course_search_fts");
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
-    __resetDbForTests();
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
     const results = searchCourses({ query: "462 engl", limit: 99 });
@@ -852,10 +864,12 @@ test("searchCourses fallback matches reordered alias tokens when the FTS table i
       hasAnyFullSection: true,
     });
   } finally {
-    __resetDbForTests();
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
 
@@ -866,7 +880,9 @@ test("searchCourses fallback matches tokens split across alias and title when th
     compatibilityFixture.db.exec("DROP TABLE course_search_fts");
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
-    __resetDbForTests();
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
     const results = searchCourses({ query: "engl literature", limit: 99 });
@@ -884,10 +900,12 @@ test("searchCourses fallback matches tokens split across alias and title when th
       hasAnyFullSection: true,
     });
   } finally {
-    __resetDbForTests();
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
 
@@ -898,7 +916,9 @@ test("searchCourses fallback matches description-only queries when the FTS table
     compatibilityFixture.db.exec("DROP TABLE course_search_fts");
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
-    __resetDbForTests();
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
     const results = searchCourses({ query: "petabyte", limit: 99 });
@@ -916,10 +936,12 @@ test("searchCourses fallback matches description-only queries when the FTS table
       hasAnyFullSection: false,
     });
   } finally {
-    __resetDbForTests();
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
 
@@ -930,15 +952,19 @@ test("searchCourses fallback does not return false positives from token preceden
     compatibilityFixture.db.exec("DROP TABLE course_search_fts");
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
-    __resetDbForTests();
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
     assert.deepEqual(searchCourses({ query: "engl data", limit: 99 }), []);
   } finally {
-    __resetDbForTests();
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
 
@@ -949,17 +975,21 @@ test("searchCourses fallback applies subject filtering when the FTS table is mis
     compatibilityFixture.db.exec("DROP TABLE course_search_fts");
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
-    __resetDbForTests();
+    process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
 
     const results = searchCourses({ query: "literature", subject: "comp sci", limit: 99 });
 
     assert.deepEqual(results, []);
   } finally {
-    __resetDbForTests();
+    __resetDbsForTests();
     __resetCourseDataCachesForTests();
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
+    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
+    process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
 
