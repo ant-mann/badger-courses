@@ -2,6 +2,8 @@
 
 A toolset for extracting UW–Madison course and enrollment data and building a local SQLite database you can explore with an AI assistant or query directly.
 
+🌐 **Live web app → [uw-madison-courses.fly.dev](https://uw-madison-courses.fly.dev/)**
+
 ## Overview
 
 This project targets **Fall 2026** enrollment data from the [UW–Madison public enrollment site](https://public.enroll.wisc.edu). The intended workflow is:
@@ -16,9 +18,11 @@ The project also ships a programmatic **schedule generator** that finds conflict
 
 The toolset is entirely **local and offline-first**. You run the extractor once to pull down a snapshot of enrollment data, build the database on your machine, and then use whatever query tool or AI you prefer against the local files. There is no server, no hosted API, and no login required beyond the initial browser-based scrape.
 
-### Future plans
+### Live web app
 
-The long-term goal is a **web application** that lets any UW–Madison student make advanced queries against the enrollment database and interactively build custom schedules — without needing to install anything locally.
+The project is deployed at **[uw-madison-courses.fly.dev](https://uw-madison-courses.fly.dev/)** — no installation required. The web app lets any UW–Madison student make advanced queries against the enrollment database and interactively build custom schedules directly in the browser.
+
+The long-term goal is to keep expanding the web app's features: richer schedule-building tools, prerequisite visualization, historical grade overlays, and more.
 
 ## Project Structure
 
