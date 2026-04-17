@@ -2,6 +2,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { buildMadgradesDb } from '../src/madgrades/build-madgrades-db.mjs';
 import { runMadgradesImport } from '../src/madgrades/import-runner.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,16 +24,27 @@ function readFlagValue(args, flagName) {
 
 const args = process.argv.slice(2);
 const refreshApi = args.includes('--refresh-api');
-const dbPath = readFlagValue(args, '--db') ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite');
+const explicitDbPath = readFlagValue(args, '--db');
+const dbPath = explicitDbPath ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite');
 const snapshotRoot = readFlagValue(args, '--snapshot-root') ?? path.join(repoRoot, 'data', 'madgrades');
 
-const result = await runMadgradesImport({
-  dbPath,
+const sharedOptions = {
   snapshotRoot,
   refreshApi,
   onProgress(message) {
     process.stderr.write(`${message}\n`);
   },
-});
+};
+
+const result = explicitDbPath == null
+  ? await buildMadgradesDb({
+      courseDbPath: path.join(repoRoot, 'data', 'fall-2026.sqlite'),
+      outputDbPath: dbPath,
+      ...sharedOptions,
+    })
+  : await runMadgradesImport({
+      dbPath,
+      ...sharedOptions,
+    });
 
 process.stdout.write(`${JSON.stringify(result)}\n`);
