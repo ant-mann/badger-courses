@@ -62,6 +62,10 @@ export async function buildMadgradesDb({
   now = new Date(),
   onProgress = () => {},
 } = {}) {
+  if (path.resolve(courseDbPath) === path.resolve(outputDbPath)) {
+    throw new Error('outputDbPath must be different from courseDbPath');
+  }
+
   const schemaSql = await readFile(schemaPath, 'utf8');
   const tempOutputDbPath = `${outputDbPath}.tmp-${process.pid}-${Date.now()}`;
   const backupOutputDbPath = `${outputDbPath}.bak-${process.pid}-${Date.now()}`;

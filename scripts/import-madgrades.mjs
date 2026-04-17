@@ -29,7 +29,7 @@ const snapshotRoot = readFlagValue(args, '--snapshot-root') ?? path.join(repoRoo
 
 const result = await runMadgradesImport({
   dbPath,
-  courseDbPath: explicitDbPath == null ? path.join(repoRoot, 'data', 'fall-2026.sqlite') : undefined,
+  courseDbPath: path.join(repoRoot, 'data', 'fall-2026.sqlite'),
   snapshotRoot,
   refreshApi,
   onProgress(message) {

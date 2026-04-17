@@ -927,6 +927,26 @@ test('buildMadgradesDb preserves the existing output when a rebuild fails', asyn
   }
 });
 
+test('buildMadgradesDb rejects using the course DB path as the output path', async () => {
+  const fixture = buildMadgradesOverviewFixture();
+
+  try {
+    const { buildMadgradesDb } = await import('../src/madgrades/build-madgrades-db.mjs');
+
+    await assert.rejects(
+      buildMadgradesDb({
+        courseDbPath: fixture.dbPath,
+        outputDbPath: fixture.dbPath,
+        snapshotRoot: fixture.fixtureRoot,
+        refreshApi: false,
+      }),
+      /outputDbPath must be different from courseDbPath/,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('documented Madgrades enrichment queries execute against the implemented overview views', () => {
   const fixture = buildMadgradesOverviewFixture();
 
