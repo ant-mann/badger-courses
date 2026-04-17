@@ -811,30 +811,33 @@ function getDesktopCalendarArticles(markup: string): Array<{
 function getDesktopCalendarSegments(markup: string): Array<{
   ariaLabel: string;
   className: string;
-  entryId: string | null;
-  startMinutes: number | null;
-  endMinutes: number | null;
+  entryId: string;
+  startMinutes: number;
+  endMinutes: number;
   style: Map<string, string>;
   tag: string;
 }> {
-  return getDesktopCalendarArticles(markup).map((article) => {
+  return getDesktopCalendarArticles(markup).flatMap((article) => {
     const entryIdMatch = article.tag.match(/data-calendar-entry="([^"]+)"/);
     const startMatch = article.tag.match(/data-calendar-segment-start="([0-9]+)"/);
     const endMatch = article.tag.match(/data-calendar-segment-end="([0-9]+)"/);
 
-    return {
+    if (!entryIdMatch || !startMatch || !endMatch) {
+      return [];
+    }
+
+    return [{
       ...article,
-      entryId: entryIdMatch?.[1] ?? null,
-      startMinutes: startMatch ? Number(startMatch[1]) : null,
-      endMinutes: endMatch ? Number(endMatch[1]) : null,
-    };
+      entryId: entryIdMatch[1],
+      startMinutes: Number(startMatch[1]),
+      endMinutes: Number(endMatch[1]),
+    }];
   });
 }
 
-function getSegmentGeometry(
+function getDesktopCalendarSegmentByRange(
   markup: string,
   entryId: string,
-  courseDesignation: string,
   startMinutes: number,
   endMinutes: number,
 ) {
@@ -845,18 +848,8 @@ function getSegmentGeometry(
       candidate.endMinutes === endMinutes,
   );
 
-  if (segment) {
-    return segment;
-  }
-
-  const article = getArticleByCourse(markup, courseDesignation);
-
-  return {
-    ...article,
-    entryId,
-    startMinutes,
-    endMinutes,
-  };
+  assert.ok(segment, `expected calendar segment ${entryId} ${startMinutes}-${endMinutes}`);
+  return segment;
 }
 
 function getArticleByCourse(markup: string, courseDesignation: string) {
@@ -1250,22 +1243,27 @@ test("ScheduleCalendar splits middle-survivor overlap topology into compact desk
     />,
   );
 
-  const earlyASegment = getSegmentGeometry(markup, "pkg-a", "A 101", 570, 600);
-  const earlyBSegment = getSegmentGeometry(markup, "pkg-b", "B 101", 570, 600);
-  const earlyCSegment = getSegmentGeometry(markup, "pkg-c", "C 101", 570, 600);
-  const laterBSegment = getSegmentGeometry(markup, "pkg-b", "B 101", 630, 660);
-  const laterDSegment = getSegmentGeometry(markup, "pkg-d", "D 101", 630, 660);
-  const earlyThreeWayLefts = [earlyASegment, earlyBSegment, earlyCSegment].map((segment) =>
-    parseLeftPercent(segment.style.get("left")),
+  const renderedSegments = getDesktopCalendarSegments(markup);
+  const earlyAArticle = getArticleByCourse(markup, "A 101");
+  const earlyBArticle = getArticleByCourse(markup, "B 101");
+  const earlyCArticle = getArticleByCourse(markup, "C 101");
+  const laterBArticle = getArticleByCourse(markup, "B 101");
+  const laterDArticle = getArticleByCourse(markup, "D 101");
+  const earlyThreeWayLefts = [earlyAArticle, earlyBArticle, earlyCArticle].map((article) =>
+    parseLeftPercent(article.style.get("left")),
   );
-  const earlyThreeWayWidths = [earlyASegment, earlyBSegment, earlyCSegment].map((segment) =>
-    parseWidthPercent(segment.style.get("width")),
+  const earlyThreeWayWidths = [earlyAArticle, earlyBArticle, earlyCArticle].map((article) =>
+    parseWidthPercent(article.style.get("width")),
   );
-  const earlyBWidth = parseWidthPercent(earlyBSegment.style.get("width"));
-  const laterBWidth = parseWidthPercent(laterBSegment.style.get("width"));
-  const laterDWidth = parseWidthPercent(laterDSegment.style.get("width"));
-  const laterBLeft = parseLeftPercent(laterBSegment.style.get("left"));
-  const laterDLeft = parseLeftPercent(laterDSegment.style.get("left"));
+  const earlyAWidth = parseWidthPercent(earlyAArticle.style.get("width"));
+  const earlyBLegacyWidth = parseWidthPercent(earlyBArticle.style.get("width"));
+  const earlyCWidth = parseWidthPercent(earlyCArticle.style.get("width"));
+  const laterBLegacyWidth = parseWidthPercent(laterBArticle.style.get("width"));
+  const laterDWidth = parseWidthPercent(laterDArticle.style.get("width"));
+  const laterBLeft = parseLeftPercent(laterBArticle.style.get("left"));
+  const laterDLeft = parseLeftPercent(laterDArticle.style.get("left"));
+
+  assert.equal(renderedSegments.length, 0, "segment helpers should ignore legacy whole-meeting articles");
 
   assert.equal(
     earlyThreeWayLefts.every((left) => left !== null),
@@ -1282,23 +1280,26 @@ test("ScheduleCalendar splits middle-survivor overlap topology into compact desk
     3,
     "the early three-way overlap should place each segment in a separate lane",
   );
-  assert.notEqual(earlyBWidth, null, "expected a parsable width for the early B segment");
-  assert.notEqual(laterBWidth, null, "expected a parsable width for the later B segment");
+  assert.notEqual(earlyAWidth, null, "expected a parsable width for the early A article");
+  assert.notEqual(earlyBLegacyWidth, null, "expected a parsable width for the early B article");
+  assert.notEqual(earlyCWidth, null, "expected a parsable width for the early C article");
+  assert.notEqual(laterBLegacyWidth, null, "expected a parsable width for the later B article");
   assert.notEqual(laterDWidth, null, "expected a parsable width for the later D segment");
   assert.notEqual(laterBLeft, null, "expected a parsable left offset for the later B segment");
   assert.notEqual(laterDLeft, null, "expected a parsable left offset for the later D segment");
-  assert.equal(laterBWidth, laterDWidth, "the later two-way overlap should compact to equal-width lanes");
+  assert.equal(earlyAWidth, earlyCWidth, "the short-lived early overlap neighbors should share the same width");
+  assert.equal(laterBLegacyWidth, laterDWidth, "the later two-way overlap should compact to equal-width lanes");
   assert.ok(
-    laterBWidth! > earlyBWidth!,
-    "the continuing middle-survivor meeting should widen once the earlier three-way overlap ends",
+    earlyBLegacyWidth! < laterDWidth!,
+    "the continuing middle-survivor meeting should be narrower during the early three-way overlap than the later compact two-way lane",
   );
   assert.notEqual(laterBLeft, laterDLeft, "the later two-way overlap should occupy separate lanes");
   assert.ok(
-    Math.abs(laterBLeft! - laterDLeft!) <= laterBWidth! + 1.5,
+    Math.abs(laterBLeft! - laterDLeft!) <= laterBLegacyWidth! + 1.5,
     "the remaining two-meeting overlap should stay contiguous without a dead middle gap",
   );
   assert.ok(
-    Math.max(laterBLeft!, laterDLeft!) + laterBWidth! <= 100,
+    Math.max(laterBLeft!, laterDLeft!) + laterBLegacyWidth! <= 100,
     "the remaining two-meeting overlap should fit within the day column without horizontal overflow",
   );
 });
