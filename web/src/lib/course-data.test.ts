@@ -809,8 +809,10 @@ test("searchCourses falls back when the FTS table is missing", () => {
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -835,8 +837,10 @@ test("searchCourses falls back when the FTS table is missing", () => {
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
@@ -849,8 +853,10 @@ test("searchCourses fallback matches reordered alias tokens when the FTS table i
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -875,8 +881,10 @@ test("searchCourses fallback matches reordered alias tokens when the FTS table i
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
@@ -889,8 +897,10 @@ test("searchCourses fallback matches tokens split across alias and title when th
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -915,8 +925,10 @@ test("searchCourses fallback matches tokens split across alias and title when th
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
@@ -929,8 +941,10 @@ test("searchCourses fallback matches description-only queries when the FTS table
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -955,8 +969,10 @@ test("searchCourses fallback matches description-only queries when the FTS table
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
@@ -969,8 +985,10 @@ test("searchCourses fallback does not return false positives from token preceden
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -982,8 +1000,10 @@ test("searchCourses fallback does not return false positives from token preceden
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
@@ -996,8 +1016,10 @@ test("searchCourses fallback applies subject filtering when the FTS table is mis
     compatibilityFixture.db.close();
     process.env.MADGRADES_DB_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = compatibilityFixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${compatibilityFixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = compatibilityFixture.dbPath;
     __resetDbsForTests();
     __resetCourseDataCachesForTests();
@@ -1011,8 +1033,10 @@ test("searchCourses fallback applies subject filtering when the FTS table is mis
     compatibilityFixture.cleanup();
     process.env.MADGRADES_DB_PATH = fixture.dbPath;
     process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
     process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
+    process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
     process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
   }
 });
