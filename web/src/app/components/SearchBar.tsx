@@ -19,6 +19,15 @@ export function SearchBar({ initialQuery = "" }: SearchBarProps) {
     setQuery(searchParams.get("q") ?? "");
   }, [searchParams]);
 
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, []);
+
   function updateQuery(nextQuery: string) {
     setQuery(nextQuery);
 
@@ -27,6 +36,7 @@ export function SearchBar({ initialQuery = "" }: SearchBarProps) {
     }
 
     debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
       startTransition(() => {
         const nextSearchParams = new URLSearchParams(searchParams.toString());
         const trimmed = nextQuery.trim();

@@ -7,7 +7,7 @@ import { CourseCard } from "@/app/components/CourseCard";
 import { SearchBar } from "@/app/components/SearchBar";
 import { searchCourses, type CourseListItem } from "@/lib/course-data";
 
-type HomePageProps = {
+type CoursesPageProps = {
   searchParams?: Promise<{
     q?: string | string[];
     subject?: string | string[];
@@ -18,7 +18,7 @@ function firstParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
-export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
+export async function generateMetadata({ searchParams }: CoursesPageProps): Promise<Metadata> {
   const resolvedSearchParams = await searchParams;
   const query = firstParam(resolvedSearchParams?.q).trim();
   if (query) {
@@ -27,7 +27,7 @@ export async function generateMetadata({ searchParams }: HomePageProps): Promise
   return { title: "Course Explorer – Badger Courses" };
 }
 
-export default async function CoursesPage({ searchParams }: HomePageProps) {
+export default async function CoursesPage({ searchParams }: CoursesPageProps) {
   const resolvedSearchParams = await searchParams;
   const query = firstParam(resolvedSearchParams?.q).trim();
   const subject = firstParam(resolvedSearchParams?.subject).trim();

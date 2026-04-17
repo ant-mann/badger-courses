@@ -7,49 +7,30 @@ import Home from "@/app/page";
 
 type ScheduleBuilderPageModule = {
   default:
-    | (() => Promise<React.ReactElement> | React.ReactElement)
+    | ((props?: {
+        searchParams?: Promise<Record<string, string | string[] | undefined>>;
+      }) => Promise<React.ReactElement> | React.ReactElement)
     | {
-        default: () => Promise<React.ReactElement> | React.ReactElement;
+        default: (props?: {
+          searchParams?: Promise<Record<string, string | string[] | undefined>>;
+        }) => Promise<React.ReactElement> | React.ReactElement;
       };
 };
 
-async function renderScheduleBuilderPage(): Promise<string> {
+async function invokeScheduleBuilderPageRedirect(searchParams: Record<string, string | string[] | undefined>) {
   try {
     const pageModule = (await import("./page")) as ScheduleBuilderPageModule;
     const Page = typeof pageModule.default === "function" ? pageModule.default : pageModule.default.default;
-    const page = await Page();
-    const layout = (page.props as { children?: React.ReactElement }).children;
-
-    if (!layout) {
-      return "";
-    }
-
-    const [intro] = React.Children.toArray((layout.props as { children?: React.ReactNode }).children);
-    return intro ? renderToStaticMarkup(intro) : "";
-  } catch {
-    return "";
+    await Page({ searchParams: Promise.resolve(searchParams) });
+  } catch (error) {
+    return error;
   }
+
+  return null;
 }
 
-async function loadScheduleBuilderPage(): Promise<React.ReactElement | null> {
-  try {
-    const pageModule = (await import("./page")) as ScheduleBuilderPageModule;
-    const Page = typeof pageModule.default === "function" ? pageModule.default : pageModule.default.default;
-    return await Page();
-  } catch {
-    return null;
-  }
-}
-
-test("home page links to the schedule builder", async () => {
-  const markup = renderToStaticMarkup(await Home({ searchParams: Promise.resolve({}) }));
-
-  assert.match(markup, /href="\/schedule-builder"/i);
-  assert.match(markup, /Build your schedule/i);
-});
-
-test("schedule builder page renders the dedicated heading and intro copy", async () => {
-  const markup = await renderScheduleBuilderPage();
+test("home page renders schedule builder content at /", async () => {
+  const markup = renderToStaticMarkup(await Home());
 
   assert.match(markup, /Build Fall 2026 schedules in the browser/i);
   assert.match(
@@ -58,13 +39,26 @@ test("schedule builder page renders the dedicated heading and intro copy", async
   );
 });
 
-test("schedule builder page wraps the interactive builder in suspense", async () => {
-  const page = await loadScheduleBuilderPage();
-  const layout = page ? (page.props as { children?: React.ReactElement }).children : null;
-  const children = layout
-    ? React.Children.toArray((layout.props as { children?: React.ReactNode }).children)
-    : [];
-  const builderShell = children[1] as React.ReactElement | undefined;
+test("schedule builder route permanently redirects to /", async () => {
+  const redirectError = await invokeScheduleBuilderPageRedirect({});
+  const digest = (redirectError as { digest?: string } | null)?.digest ?? "";
 
-  assert.equal(builderShell?.type, React.Suspense);
+  assert.match(digest, /NEXT_REDIRECT/);
+  assert.match(digest, /;\/;308;/);
+});
+
+test("schedule builder route preserves query params in redirect", async () => {
+  const redirectError = await invokeScheduleBuilderPageRedirect({
+    course: ["COMP SCI 200", "MATH 340"],
+    lock: "12345",
+    exclude: "67890",
+  });
+  const digest = (redirectError as { digest?: string } | null)?.digest ?? "";
+
+  assert.match(digest, /NEXT_REDIRECT/);
+  assert.match(digest, /;\/\?/);
+  assert.match(digest, /course=COMP\+SCI\+200/);
+  assert.match(digest, /course=MATH\+340/);
+  assert.match(digest, /lock=12345/);
+  assert.match(digest, /exclude=67890/);
 });
