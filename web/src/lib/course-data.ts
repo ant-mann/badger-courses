@@ -919,7 +919,7 @@ async function getInstructorHistory(
   termCode: string,
   courseId: string,
 ): Promise<InstructorHistoryItem[]> {
-  if (!hasAnyMadgradesConfig()) {
+  if (!hasCompleteMadgradesConfig()) {
     return getInstructorHistoryFromCompatibilityDb(db, termCode, courseId);
   }
 

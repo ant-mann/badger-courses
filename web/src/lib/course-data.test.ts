@@ -1349,7 +1349,7 @@ test("getCourseDetail returns an empty instructor history when the single-db vie
   }
 });
 
-test("getCourseDetail rejects partial dedicated madgrades config instead of falling back", async () => {
+test("getCourseDetail keeps the single-db instructor history path when dedicated madgrades config is partial", async () => {
   process.env.TURSO_MADGRADES_DATABASE_URL = "libsql://madgrades-db.example.turso.io";
   delete process.env.TURSO_MADGRADES_AUTH_TOKEN;
   process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
@@ -1357,7 +1357,21 @@ test("getCourseDetail rejects partial dedicated madgrades config instead of fall
   __resetCourseDataCachesForTests();
 
   try {
-    await assert.rejects(getCourseDetail("COMP SCI 577"), /TURSO_MADGRADES_AUTH_TOKEN/);
+    const detail = await getCourseDetail("COMP SCI 577");
+
+    assert.ok(detail);
+    assert.deepEqual(detail.instructorGrades, [
+      {
+        sectionNumber: "001",
+        sectionType: "LEC",
+        instructorDisplayName: "Ada Lovelace",
+        sameCoursePriorOfferingCount: 1,
+        sameCourseStudentCount: 20,
+        sameCourseGpa: 3.7,
+        courseHistoricalGpa: 3.7,
+        instructorMatchStatus: "matched",
+      },
+    ]);
   } finally {
     process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
     process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
