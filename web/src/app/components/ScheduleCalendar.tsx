@@ -44,101 +44,94 @@ const WEEKDAY_LABELS: Record<VisibleWeekday, string> = {
 };
 
 const CALENDAR_WEEKDAYS: VisibleWeekday[] = ["M", "T", "W", "R", "F", "S", "U"];
-const HOUR_HEIGHT_REM = 4;
+const HOUR_HEIGHT_REM = 5;
 const BASELINE_START_MINUTES = 9 * 60;
 const BASELINE_END_MINUTES = 17 * 60;
 const COURSE_SLOT_COUNT = 8;
 const LANE_GAP_PERCENT = 1.5;
 
 export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
-  if (!schedule) {
-    return (
-      <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5 shadow-soft">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-semibold tracking-[-0.02em]">Weekly Calendar</h2>
-        </div>
-        <div className="rounded-lg border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
-          Select a generated schedule to see its meetings laid out across the week.
-        </div>
-      </section>
-    );
-  }
+  const isEmpty = !schedule || entries.length === 0;
+  const emptyMessage = !schedule
+    ? "Select a schedule result below to preview your week."
+    : "No timed meetings in this schedule.";
 
-  if (entries.length === 0) {
-    return (
-      <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5 shadow-soft">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-semibold tracking-[-0.02em]">Weekly Calendar</h2>
-        </div>
-        <div className="rounded-lg border border-border bg-muted p-5 text-sm leading-7 text-text-weak">
-          No calendar meetings are available for this selected schedule.
-        </div>
-      </section>
-    );
-  }
-
-  const visibleWeekdays = CALENDAR_WEEKDAYS.filter(
-    (weekday) => (weekday !== "S" && weekday !== "U") || entries.some((entry) => entry.weekday === weekday),
-  );
-  const timeWindow = deriveTimeWindow(entries);
+  const visibleWeekdays = isEmpty
+    ? (["M", "T", "W", "R", "F"] as VisibleWeekday[])
+    : CALENDAR_WEEKDAYS.filter(
+        (weekday) => (weekday !== "S" && weekday !== "U") || entries.some((entry) => entry.weekday === weekday),
+      );
+  const timeWindow = isEmpty
+    ? { startMinutes: BASELINE_START_MINUTES, endMinutes: BASELINE_END_MINUTES }
+    : deriveTimeWindow(entries);
   const timeLabels = buildTimeLabels(timeWindow.startMinutes, timeWindow.endMinutes);
   const calendarHeightRem = ((timeWindow.endMinutes - timeWindow.startMinutes) / 60) * HOUR_HEIGHT_REM;
   const courseSlots = new Map(
-    [...new Set(entries.map((entry) => entry.courseDesignation).filter(Boolean))].map((designation, index) => [designation, (index % COURSE_SLOT_COUNT) + 1] as const),
+    [...new Set(entries.map((entry) => entry.courseDesignation).filter(Boolean))].map(
+      (designation, index) => [designation, (index % COURSE_SLOT_COUNT) + 1] as const,
+    ),
   );
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5 shadow-soft">
       <div className="flex flex-col gap-1.5">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">Weekly Calendar</h2>
-        <p className="text-sm leading-6 text-calendar-meta">
-          {schedule.packages.length} section choice{schedule.packages.length === 1 ? "" : "s"} in the selected result.
-        </p>
+        {schedule ? (
+          <p className="text-sm leading-6 text-calendar-meta">
+            {schedule.packages.length} section choice{schedule.packages.length === 1 ? "" : "s"} in the selected result.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-3 lg:hidden">
-        {visibleWeekdays.map((weekday) => {
-          const dayEntries = entries
-            .filter((entry) => entry.weekday === weekday)
-            .sort(compareEntriesByTime);
+        {isEmpty ? (
+          <p className="rounded-lg border border-border bg-muted px-4 py-5 text-sm leading-6 text-text-weak">
+            {emptyMessage}
+          </p>
+        ) : (
+          visibleWeekdays.map((weekday) => {
+            const dayEntries = entries
+              .filter((entry) => entry.weekday === weekday)
+              .sort(compareEntriesByTime);
 
-          if (dayEntries.length === 0) {
-            return null;
-          }
+            if (dayEntries.length === 0) {
+              return null;
+            }
 
-          return (
-            <section key={weekday} className="flex flex-col gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-calendar-axis">
-                {WEEKDAY_LABELS[weekday]}
-              </p>
-              <div className="flex flex-col gap-2">
-                {dayEntries.map((entry) => {
-                  const slot = courseSlots.get(entry.courseDesignation) ?? 1;
-                  const heightClass = getMobileEventDensityClass(entry);
+            return (
+              <section key={weekday} className="flex flex-col gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-calendar-axis">
+                  {WEEKDAY_LABELS[weekday]}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {dayEntries.map((entry) => {
+                    const slot = courseSlots.get(entry.courseDesignation) ?? 1;
+                    const heightClass = getMobileEventDensityClass(entry);
 
-                  return (
-                    <article
-                      key={`mobile-${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}`}
-                      aria-label={buildEntryAriaLabel(entry)}
-                      className={`calendar-course-slot-${slot} rounded-lg border px-3 py-2 ${heightClass}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 text-sm font-semibold leading-tight">{entry.courseDesignation}</p>
-                        {renderTypeBadge(entry, slot)}
-                      </div>
-                      <p className="mt-1 text-xs font-medium text-calendar-meta">
-                        {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
-                      </p>
-                      <p className="text-xs leading-tight text-calendar-meta">
-                        {formatLocation(entry)}
-                      </p>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
+                    return (
+                      <article
+                        key={`mobile-${entry.sourcePackageId}-${entry.weekday}-${entry.startMinutes}-${entry.endMinutes}`}
+                        aria-label={buildEntryAriaLabel(entry)}
+                        className={`calendar-course-slot-${slot} rounded-lg border px-3 py-2 ${heightClass}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 text-sm font-semibold leading-tight">{entry.courseDesignation}</p>
+                          {renderTypeBadge(entry, slot)}
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-calendar-meta">
+                          {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
+                        </p>
+                        <p className="text-xs leading-tight text-calendar-meta">
+                          {formatLocation(entry)}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })
+        )}
       </div>
 
       <div className="hidden lg:block">
@@ -173,7 +166,30 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
               })}
             </div>
 
-            {visibleWeekdays.map((weekday) => {
+            {isEmpty ? (
+              <div
+                className="relative rounded-md border border-border bg-surface"
+                style={{
+                  height: `${calendarHeightRem}rem`,
+                  gridColumn: `2 / span ${visibleWeekdays.length}`,
+                }}
+              >
+                {timeLabels.map((labelMinute) => {
+                  const top = getOffsetPercent(labelMinute, timeWindow.startMinutes, timeWindow.endMinutes);
+                  return (
+                    <div
+                      key={labelMinute}
+                      className="absolute left-0 right-0 border-t border-dashed border-border"
+                      style={{ top: `${top}%` }}
+                    />
+                  );
+                })}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-sm text-text-weak">{emptyMessage}</p>
+                </div>
+              </div>
+            ) : (
+              visibleWeekdays.map((weekday) => {
               const segments = buildDesktopSegments(
                 entries.filter((entry) => entry.weekday === weekday),
               );
@@ -205,7 +221,6 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                       6,
                     );
                     const slot = courseSlots.get(entry.courseDesignation) ?? 1;
-                    const compact = height < 11;
                     const medium = height >= 11 && height < 18;
                     const laneStyle =
                       laneCount > 1
@@ -238,7 +253,7 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                             <p className="font-medium text-calendar-meta">
                               {formatMinutes(entry.startMinutes)}-{formatMinutes(entry.endMinutes)}
                             </p>
-                            {!compact ? (
+                            {entry.endMinutes - entry.startMinutes >= 50 ? (
                               <p className={`${medium ? "truncate" : "leading-tight"} text-calendar-meta`}>
                                 {formatLocation(entry)}
                               </p>
@@ -252,7 +267,8 @@ export function ScheduleCalendar({ schedule, entries }: ScheduleCalendarProps) {
                   })}
                 </section>
               );
-            })}
+            })
+            )}
           </div>
         </div>
       </div>
