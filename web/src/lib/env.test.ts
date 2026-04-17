@@ -9,6 +9,7 @@ import {
 } from "./env";
 
 const ORIGINAL_ENV = {
+  MADGRADES_DB_PATH: process.env.MADGRADES_DB_PATH,
   TURSO_COURSE_DATABASE_URL: process.env.TURSO_COURSE_DATABASE_URL,
   TURSO_COURSE_AUTH_TOKEN: process.env.TURSO_COURSE_AUTH_TOKEN,
   TURSO_MADGRADES_DATABASE_URL: process.env.TURSO_MADGRADES_DATABASE_URL,
@@ -48,6 +49,12 @@ test("getDatabasePath resolves to the course replica path", () => {
     getDatabasePath("/repo/web"),
     path.join("/repo/web", "tmp", "course-replica.db"),
   );
+});
+
+test("getDatabasePath still honors MADGRADES_DB_PATH when it is set", () => {
+  process.env.MADGRADES_DB_PATH = "./custom.sqlite";
+
+  assert.equal(getDatabasePath("/repo/web"), path.join("/repo/web", "custom.sqlite"));
 });
 
 test("getMadgradesDatabaseConfig resolves the Madgrades replica path from cwd", () => {

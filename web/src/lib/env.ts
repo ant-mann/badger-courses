@@ -14,6 +14,12 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function getOptionalEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+
+  return value || null;
+}
+
 export type LibsqlDatabaseConfig = {
   url: string;
   authToken: string;
@@ -29,6 +35,12 @@ export function getCourseDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConf
 }
 
 export function getDatabasePath(cwd = process.cwd()): string {
+  const dbPath = getOptionalEnv('MADGRADES_DB_PATH');
+
+  if (dbPath) {
+    return resolveFromCwd(dbPath, cwd);
+  }
+
   return getCourseDatabaseConfig(cwd).replicaPath;
 }
 
