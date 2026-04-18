@@ -68,7 +68,7 @@ export function getSupabaseDatabaseUrl(): string | null {
   return getOptionalEnv("SUPABASE_DATABASE_URL");
 }
 
-export function useSupabaseRuntime(): boolean {
+export function isSupabaseRuntimeEnabled(): boolean {
   return getSupabaseDatabaseUrl() !== null;
 }
 

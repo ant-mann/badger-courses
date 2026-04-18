@@ -9,7 +9,7 @@ import {
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
 import { getCourseSqliteDb } from '@/lib/db';
-import { useSupabaseRuntime } from '@/lib/env';
+import { isSupabaseRuntimeEnabled } from '@/lib/env';
 import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
 
 type ScheduleRequestBody = {
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
-  const schedules = useSupabaseRuntime()
+  const schedules = isSupabaseRuntimeEnabled()
     ? await generateSchedulesFromPostgres({
         courses,
         lockPackages,

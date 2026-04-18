@@ -11,10 +11,9 @@ COPY web/package.json ./web/
 RUN pnpm install --frozen-lockfile
 
 COPY src ./src
-COPY data/fall-2026.sqlite ./data/fall-2026.sqlite
+COPY data ./data
 COPY web ./web
 
-# `next build` still needs a local SQLite file in the build stage.
 ENV MADGRADES_DB_PATH=/app/data/fall-2026.sqlite
 
 RUN pnpm --filter uw-madison-courses-web exec next build

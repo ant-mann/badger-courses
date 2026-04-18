@@ -4,7 +4,7 @@ import type { PreferenceRuleId } from "@/app/schedule-builder/preferences";
 
 import { normalizeCourseDesignation } from "./course-designation";
 import { getCourseDb, getCourseSqliteDb, getMadgradesDb, getRuntimePostgresDb } from "./db";
-import { useSupabaseRuntime } from "./env";
+import { isSupabaseRuntimeEnabled } from "./env";
 
 type QueryArg = string | number | null;
 type Row = Record<string, unknown>;
@@ -270,7 +270,7 @@ async function allRuntimeRows(sqlText: string, args: QueryArg[] = []): Promise<R
 }
 
 async function allCourseRowsRuntime(sqlText: string, args: QueryArg[] = []): Promise<Row[]> {
-  if (useSupabaseRuntime()) {
+  if (isSupabaseRuntimeEnabled()) {
     return allRuntimeRows(sqlText, args);
   }
 
@@ -278,7 +278,7 @@ async function allCourseRowsRuntime(sqlText: string, args: QueryArg[] = []): Pro
 }
 
 async function firstCourseRowRuntime(sqlText: string, args: QueryArg[] = []): Promise<Row | undefined> {
-  if (useSupabaseRuntime()) {
+  if (isSupabaseRuntimeEnabled()) {
     const rows = await allRuntimeRows(sqlText, args);
     return rows[0];
   }
@@ -287,7 +287,7 @@ async function firstCourseRowRuntime(sqlText: string, args: QueryArg[] = []): Pr
 }
 
 async function allMadgradesRowsRuntime(sqlText: string, args: QueryArg[] = []): Promise<Row[]> {
-  if (useSupabaseRuntime()) {
+  if (isSupabaseRuntimeEnabled()) {
     return allRuntimeRows(sqlText, args);
   }
 
@@ -298,7 +298,7 @@ async function firstMadgradesRowRuntime(
   sqlText: string,
   args: QueryArg[] = [],
 ): Promise<Row | undefined> {
-  if (useSupabaseRuntime()) {
+  if (isSupabaseRuntimeEnabled()) {
     const rows = await allRuntimeRows(sqlText, args);
     return rows[0];
   }
@@ -796,7 +796,7 @@ export async function generateSchedulesFromPostgres(options: {
 }
 
 export async function searchCourses(params: CourseSearchParams = {}): Promise<CourseListItem[]> {
-  const db = useSupabaseRuntime() ? undefined : getCourseDb();
+  const db = isSupabaseRuntimeEnabled() ? undefined : getCourseDb();
   const query = params.query?.trim() ?? "";
   const subject = params.subject?.trim() ?? "";
   const limit = clampLimit(params.limit);
@@ -807,7 +807,7 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
   if (searchContext.matchQuery && (await hasCourseSearchTable(db))) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
-    const runtimeMatchQuery = useSupabaseRuntime()
+    const runtimeMatchQuery = isSupabaseRuntimeEnabled()
       ? searchContext.postgresMatchQuery
       : searchContext.matchQuery;
 
@@ -820,15 +820,15 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
               alias_course_designation_normalized,
               alias_course_designation_compact,
               title_normalized,
-              ${useSupabaseRuntime() ? "ts_rank(ts, to_tsquery('simple', ?))" : "rank"} AS search_rank
+              ${isSupabaseRuntimeEnabled() ? "ts_rank(ts, to_tsquery('simple', ?))" : "rank"} AS search_rank
             FROM course_search_fts
-            WHERE ${useSupabaseRuntime() ? "ts @@ to_tsquery('simple', ?)" : "course_search_fts MATCH ?"}
+            WHERE ${isSupabaseRuntimeEnabled() ? "ts @@ to_tsquery('simple', ?)" : "course_search_fts MATCH ?"}
           ),
           search_matches AS (
             SELECT
               term_code,
               course_id,
-              ${useSupabaseRuntime() ? "MAX(search_rank)" : "MIN(search_rank)"} AS best_search_rank,
+              ${isSupabaseRuntimeEnabled() ? "MAX(search_rank)" : "MIN(search_rank)"} AS best_search_rank,
               MAX(CASE WHEN alias_course_designation_normalized = ? THEN 1 ELSE 0 END) AS exact_alias_match,
               MAX(CASE WHEN alias_course_designation_compact = ? THEN 1 ELSE 0 END) AS exact_compact_alias_match,
               MAX(CASE WHEN alias_course_designation_normalized LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_alias_match,
@@ -865,7 +865,7 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
                   sm.prefix_compact_alias_match DESC,
                   sm.exact_title_match DESC,
                   sm.prefix_title_match DESC,
-                  sm.best_search_rank ${useSupabaseRuntime() ? "DESC" : "ASC"},
+                  sm.best_search_rank ${isSupabaseRuntimeEnabled() ? "DESC" : "ASC"},
                   COALESCE(co.section_count, 0) DESC,
                   COALESCE(co.has_any_open_seats, 0) DESC,
                   COALESCE(co.has_any_full_section, 0) DESC,
@@ -896,14 +896,14 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
             prefix_compact_alias_match DESC,
             exact_title_match DESC,
             prefix_title_match DESC,
-            best_search_rank ${useSupabaseRuntime() ? "DESC" : "ASC"},
+            best_search_rank ${isSupabaseRuntimeEnabled() ? "DESC" : "ASC"},
             COALESCE(has_any_open_seats, 0) DESC,
             COALESCE(section_count, 0) DESC,
             course_designation ASC
           LIMIT ?
         `,
       [
-        ...(useSupabaseRuntime() ? [runtimeMatchQuery] : []),
+        ...(isSupabaseRuntimeEnabled() ? [runtimeMatchQuery] : []),
         runtimeMatchQuery,
         searchContext.normalizedQuery,
         searchContext.compactQuery,
@@ -1085,7 +1085,7 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
 }
 
 export async function getCourseDetail(designation: string): Promise<CourseDetail | null> {
-  if (useSupabaseRuntime()) {
+  if (isSupabaseRuntimeEnabled()) {
     return getCourseDetailRuntime(designation);
   }
 
@@ -1450,12 +1450,16 @@ async function getInstructorHistory(
   termCode: string,
   courseId: string,
 ): Promise<InstructorHistoryItem[]> {
-  if (useSupabaseRuntime()) {
+  if (isSupabaseRuntimeEnabled()) {
     return getInstructorHistoryRuntime(termCode, courseId);
   }
 
+  if (!db) {
+    throw new Error("SQLite database is required when Supabase runtime is disabled");
+  }
+
   if (!hasCompleteMadgradesConfig()) {
-    return getInstructorHistoryFromCompatibilityDb(db!, termCode, courseId);
+    return getInstructorHistoryFromCompatibilityDb(db, termCode, courseId);
   }
 
   const currentSectionInstructorRows = db
@@ -1850,7 +1854,7 @@ async function hasCourseSearchTable(db: Client | undefined): Promise<boolean> {
     return hasCourseSearchFtsTable;
   }
 
-  const row = useSupabaseRuntime()
+  const row = isSupabaseRuntimeEnabled()
     ? await firstCourseRowRuntime("SELECT to_regclass('public.course_search_fts')::text AS name")
     : await firstRow(db!, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'");
 

@@ -9,7 +9,7 @@ import {
   getCourseDatabaseConfig,
   getMadgradesDatabaseConfig,
   getSupabaseDatabaseUrl,
-  useSupabaseRuntime,
+  isSupabaseRuntimeEnabled,
 } from "./env";
 
 const ORIGINAL_ENV = {
@@ -91,20 +91,20 @@ test("getSupabaseDatabaseUrl returns null when absent", () => {
   assert.equal(getSupabaseDatabaseUrl(), null);
 });
 
-test("useSupabaseRuntime returns true when SUPABASE_DATABASE_URL is present", () => {
+test("isSupabaseRuntimeEnabled returns true when SUPABASE_DATABASE_URL is present", () => {
   process.env.SUPABASE_DATABASE_URL = "postgres://example";
 
-  assert.equal(useSupabaseRuntime(), true);
+  assert.equal(isSupabaseRuntimeEnabled(), true);
 });
 
 test("Supabase env tests restore SUPABASE_DATABASE_URL after each case", () => {
   assert.equal(process.env.SUPABASE_DATABASE_URL, ORIGINAL_ENV.SUPABASE_DATABASE_URL);
 });
 
-test("useSupabaseRuntime returns false when SUPABASE_DATABASE_URL is absent", () => {
+test("isSupabaseRuntimeEnabled returns false when SUPABASE_DATABASE_URL is absent", () => {
   delete process.env.SUPABASE_DATABASE_URL;
 
-  assert.equal(useSupabaseRuntime(), false);
+  assert.equal(isSupabaseRuntimeEnabled(), false);
 });
 
 test("getDatabasePath falls back to the first existing local sqlite path", () => {

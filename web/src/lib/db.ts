@@ -10,7 +10,7 @@ import {
   getMadgradesDatabaseConfig,
   getSupabaseDatabaseUrl,
   type LibsqlDatabaseConfig,
-  useSupabaseRuntime,
+  isSupabaseRuntimeEnabled,
 } from "./env";
 
 let cachedDb: Database.Database | null = null;
@@ -146,7 +146,7 @@ export function getMadgradesDb(): Client {
 }
 
 export function getRuntimePostgresDb(): postgres.Sql {
-  if (!useSupabaseRuntime()) {
+  if (!isSupabaseRuntimeEnabled()) {
     throw new Error("SUPABASE_DATABASE_URL environment variable is required");
   }
 
