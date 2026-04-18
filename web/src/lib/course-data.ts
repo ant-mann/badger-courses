@@ -2208,7 +2208,7 @@ function countLargeIdleGapsFromCandidates(
   candidates: PostgresScheduleCandidate[],
   candidateMeetingsById: Map<string, PostgresPackageMeeting[]>,
 ): number {
-  const meetingsByDay = new Map<string, Array<{ start: number; end: number }>>();
+  const meetingsByDay = new Map<string, PostgresPackageMeeting[]>();
 
   for (const candidate of candidates) {
     for (const meeting of candidateMeetingsById.get(candidate.source_package_id) ?? []) {

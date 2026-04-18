@@ -164,7 +164,7 @@ export function __resetDbsForTests(): void {
   }
   cachedCourseDb?.close();
   cachedMadgradesDb?.close();
-  cachedRuntimePostgresDb?.end({ timeout: 0 });
+  void cachedRuntimePostgresDb?.end({ timeout: 0 }).catch(() => {});
   cachedDb = null;
   cachedCourseSqliteDb = null;
   cachedCourseDb = null;
