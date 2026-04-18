@@ -1502,7 +1502,7 @@ async function getInstructorHistory(
       `,
       [termCode, courseId],
     );
-    const madgradesCourseId = asNullableNumber(courseMatchRow?.madgrades_course_id);
+    const madgradesCourseId = asNullableNumeric(courseMatchRow?.madgrades_course_id);
 
     const gradeByInstructorKey = new Map<string, Row>();
 
@@ -1576,10 +1576,10 @@ async function getInstructorHistory(
           sectionNumber: asString(row.section_number),
           sectionType: asString(row.section_type),
           instructorDisplayName: asNullableString(row.instructor_display_name),
-          sameCoursePriorOfferingCount: asNullableNumber(gradeRow?.same_course_prior_offering_count),
-          sameCourseStudentCount: asNullableNumber(gradeRow?.same_course_student_count),
-          sameCourseGpa: asNullableNumber(gradeRow?.same_course_gpa),
-          courseHistoricalGpa: asNullableNumber(gradeRow?.course_historical_gpa),
+          sameCoursePriorOfferingCount: asNullableNumeric(gradeRow?.same_course_prior_offering_count),
+          sameCourseStudentCount: asNullableNumeric(gradeRow?.same_course_student_count),
+          sameCourseGpa: asNullableNumeric(gradeRow?.same_course_gpa),
+          courseHistoricalGpa: asNullableNumeric(gradeRow?.course_historical_gpa),
           instructorMatchStatus: asNullableString(gradeRow?.instructor_match_status),
         };
       })
@@ -1654,7 +1654,7 @@ async function getInstructorHistoryRuntime(
       `,
       [termCode, courseId],
     );
-    const madgradesCourseId = asNullableNumber(courseMatchRow?.madgrades_course_id);
+    const madgradesCourseId = asNullableNumeric(courseMatchRow?.madgrades_course_id);
 
     const gradeByInstructorKey = new Map<string, Row>();
 
@@ -1727,10 +1727,10 @@ async function getInstructorHistoryRuntime(
           sectionNumber: asString(row.section_number),
           sectionType: asString(row.section_type),
           instructorDisplayName: asNullableString(row.instructor_display_name),
-          sameCoursePriorOfferingCount: asNullableNumber(gradeRow?.same_course_prior_offering_count),
-          sameCourseStudentCount: asNullableNumber(gradeRow?.same_course_student_count),
-          sameCourseGpa: asNullableNumber(gradeRow?.same_course_gpa),
-          courseHistoricalGpa: asNullableNumber(gradeRow?.course_historical_gpa),
+          sameCoursePriorOfferingCount: asNullableNumeric(gradeRow?.same_course_prior_offering_count),
+          sameCourseStudentCount: asNullableNumeric(gradeRow?.same_course_student_count),
+          sameCourseGpa: asNullableNumeric(gradeRow?.same_course_gpa),
+          courseHistoricalGpa: asNullableNumeric(gradeRow?.course_historical_gpa),
           instructorMatchStatus: asNullableString(gradeRow?.instructor_match_status),
         };
       })
@@ -2064,9 +2064,9 @@ function mapPostgresPackageMeeting(row: Row): PostgresPackageMeeting {
     meeting_days: asNullableString(row.meeting_days),
     meeting_time_start: meetingTimeStart,
     meeting_time_end: meetingTimeEnd,
-    start_date: asNullableNumber(row.start_date),
-    end_date: asNullableNumber(row.end_date),
-    exam_date: asNullableNumber(row.exam_date),
+    start_date: asNullableNumeric(row.start_date),
+    end_date: asNullableNumeric(row.end_date),
+    exam_date: asNullableNumeric(row.exam_date),
     instruction_mode: asNullableString(row.instruction_mode),
     latitude: asNullableNumber(row.latitude),
     longitude: asNullableNumber(row.longitude),
@@ -2540,6 +2540,24 @@ function asNullableString(value: unknown): string | null {
 
 function asNullableNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
+}
+
+function asNullableNumeric(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }
 
 function asNullableStringOrNumber(value: unknown): string | number | null {
