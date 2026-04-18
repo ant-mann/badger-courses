@@ -16,7 +16,7 @@ The project also ships a programmatic **schedule generator** that finds conflict
 
 ### Current scope
 
-The toolset is entirely **local and offline-first**. You run the extractor once to pull down a snapshot of enrollment data, build the database on your machine, and then use whatever query tool or AI you prefer against the local files. There is no server, no hosted API, and no login required beyond the initial browser-based scrape.
+The core data pipeline is **local and offline-first**. You run the extractor once to pull down a snapshot of enrollment data, build the databases on your machine, and then use whatever query tool or AI you prefer against the local files. There is no login required beyond the initial browser-based scrape. Separately, the deployed web app runs on Fly and serves requests against a hosted Supabase database.
 
 ### Live web app
 
@@ -125,9 +125,9 @@ pnpm run import:madgrades
 MADGRADES_API_TOKEN=<your-token> pnpm run import:madgrades -- --refresh-api
 ```
 
-Snapshots are cached under `data/madgrades/` and can be re-imported into `data/fall-2026-madgrades.sqlite` at any time after rebuilding `data/fall-2026.sqlite`. The deployed web app reads course/enrollment data from the course DB and grade history from the Madgrades DB, then merges them in application code.
+Snapshots are cached under `data/madgrades/` and can be re-imported into `data/fall-2026-madgrades.sqlite` at any time after rebuilding `data/fall-2026.sqlite`. These local SQLite files are the source artifacts for the optional publish/import workflows below. The deployed web runtime is separate: the Fly app connects to Supabase in production.
 
-To split and publish the Turso-backed databases used by the deployed web app:
+To refresh the legacy Turso-backed mirror databases (not the deployed runtime path):
 
 ```bash
 pnpm run build:madgrades-db
@@ -143,6 +143,27 @@ The publish commands now refresh the existing Turso databases in place via the T
 - `TURSO_COURSE_DATABASE_URL` and `TURSO_MADGRADES_DATABASE_URL`
 
 The scripts resolve the configured database names from `turso db list`, dump the local SQLite files, clear remote user tables/views, and load the new dump through `turso db shell`. They no longer use the one-time `/v1/upload` API path.
+
+For the Postgres/Supabase migration work, the repo also includes Postgres schema and importer scripts:
+
+```bash
+pnpm run publish:course-db:postgres
+pnpm run publish:madgrades-db:postgres
+```
+
+These scripts require `SUPABASE_DATABASE_URL` and are for loading the hosted Postgres database from the local SQLite artifacts. The deployed web runtime is configured separately in the deployment section below. In remote verification, the reachable Supabase pooler connections enforced a `2min` statement timeout, so the imports only completed reliably with a smaller SQLite batch size override:
+
+```bash
+SUPABASE_DATABASE_URL='postgresql://<user>:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require' \
+SQLITE_BATCH_SIZE=50 \
+node scripts/publish-course-db-postgres.mjs
+
+SUPABASE_DATABASE_URL='postgresql://<user>:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require' \
+SQLITE_BATCH_SIZE=50 \
+node scripts/publish-madgrades-db-postgres.mjs
+```
+
+Use a percent-encoded password in the Postgres URL when it contains reserved characters. The Postgres publish scripts default to the local SQLite artifacts at `data/fall-2026.sqlite` and `data/fall-2026-madgrades.sqlite`.
 
 ### 4. Generate schedule options
 
@@ -270,18 +291,11 @@ pnpm test
 
 ## Deployment
 
-Fly deploys `web/Dockerfile` from the repo root. The runtime no longer packages a production SQLite file into `web/data` or passes `MADGRADES_DB_SOURCE_PATH` at build time.
+Fly deploys `web/Dockerfile` from the repo root. The production runner image does not bundle a runtime SQLite database; it connects to Supabase at request time.
 
-Configure these Fly runtime env vars in `web/fly.toml` or via per-environment overrides:
+Configure `SUPABASE_DATABASE_URL` for the deployed web runtime via Fly-managed secrets/config before the Fly production cutover. The checked-in `web/fly.toml` keeps an empty placeholder only to document the required variable name; do not commit a real production Postgres URL there.
 
-- `TURSO_COURSE_DATABASE_URL`
-- `TURSO_MADGRADES_DATABASE_URL`
-- `MADGRADES_COURSE_REPLICA_PATH` (default Fly example: `/tmp/course-replica.db`)
-- `MADGRADES_MADGRADES_REPLICA_PATH` (default Fly example: `/tmp/madgrades-replica.db`)
-
-The checked-in `web/fly.toml` may leave `TURSO_COURSE_DATABASE_URL` and `TURSO_MADGRADES_DATABASE_URL` empty as placeholders. You must set both before deploying, either by overriding them per environment or by supplying them through Fly-managed configuration. If they remain empty, the app will fail at runtime.
-
-Set `TURSO_COURSE_AUTH_TOKEN` and `TURSO_MADGRADES_AUTH_TOKEN` as Fly secrets for the web app runtime. The app syncs local embedded-replica cache files at the configured replica paths instead of reading a bundled production SQLite database. The local `publish:*` scripts use your authenticated Turso CLI session instead.
+The Docker build still copies `data/fall-2026.sqlite` into the build stage because `next build` requires a local SQLite file. That file is not copied into the final runner image. The `publish:*:postgres` scripts above are the separate importer workflow for refreshing the hosted Supabase database from local SQLite snapshots.
 
 ## Key Dependencies
 

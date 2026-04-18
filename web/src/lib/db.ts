@@ -2,18 +2,22 @@ import fs from "node:fs";
 
 import Database from "better-sqlite3";
 import { createClient, type Client } from "@libsql/client";
+import postgres from "postgres";
 
 import {
   getCourseDatabaseConfig,
   getDatabasePath,
   getMadgradesDatabaseConfig,
+  getSupabaseDatabaseUrl,
   type LibsqlDatabaseConfig,
+  useSupabaseRuntime,
 } from "./env";
 
 let cachedDb: Database.Database | null = null;
 let cachedCourseSqliteDb: Database.Database | null = null;
 let cachedCourseDb: Client | null = null;
 let cachedMadgradesDb: Client | null = null;
+let cachedRuntimePostgresDb: postgres.Sql | null = null;
 let courseReplicaEnsured = false;
 let courseReplicaEnsureInFlight: Promise<void> | null = null;
 
@@ -141,6 +145,18 @@ export function getMadgradesDb(): Client {
   return cachedMadgradesDb;
 }
 
+export function getRuntimePostgresDb(): postgres.Sql {
+  if (!useSupabaseRuntime()) {
+    throw new Error("SUPABASE_DATABASE_URL environment variable is required");
+  }
+
+  if (!cachedRuntimePostgresDb) {
+    cachedRuntimePostgresDb = postgres(getSupabaseDatabaseUrl()!);
+  }
+
+  return cachedRuntimePostgresDb;
+}
+
 export function __resetDbsForTests(): void {
   cachedDb?.close();
   if (cachedCourseSqliteDb && cachedCourseSqliteDb !== cachedDb) {
@@ -148,10 +164,12 @@ export function __resetDbsForTests(): void {
   }
   cachedCourseDb?.close();
   cachedMadgradesDb?.close();
+  cachedRuntimePostgresDb?.end({ timeout: 0 });
   cachedDb = null;
   cachedCourseSqliteDb = null;
   cachedCourseDb = null;
   cachedMadgradesDb = null;
+  cachedRuntimePostgresDb = null;
   courseReplicaEnsured = false;
   courseReplicaEnsureInFlight = null;
 }
