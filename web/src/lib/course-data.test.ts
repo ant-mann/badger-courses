@@ -1,10 +1,11 @@
-import { after, test } from "node:test";
+import { after, afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildCourseDbFixture, makeCourse } from "../../../tests/helpers/madgrades-db-fixture.mjs";
-import { __resetDbsForTests } from "./db";
+import { __resetDbsForTests, getRuntimePostgresDb } from "./db";
 import {
   __resetCourseDataCachesForTests,
+  buildPostgresTsquery,
   getCourseDetail,
   normalizeDesignation,
   parseCourseGroupsJson,
@@ -711,6 +712,7 @@ function seedTopicVariantRows(db: import("better-sqlite3").Database) {
 const fixture = buildCourseDataFixture();
 seedCourseDetailRows(fixture.db);
 seedTopicVariantRows(fixture.db);
+const originalSupabaseDatabaseUrl = process.env.SUPABASE_DATABASE_URL;
 process.env.MADGRADES_DB_PATH = fixture.dbPath;
 process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
 process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
@@ -718,6 +720,14 @@ process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
 process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
 process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
 process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
+afterEach(() => {
+  if (originalSupabaseDatabaseUrl === undefined) {
+    delete process.env.SUPABASE_DATABASE_URL;
+  } else {
+    process.env.SUPABASE_DATABASE_URL = originalSupabaseDatabaseUrl;
+  }
+});
+
 after(() => {
   __resetDbsForTests();
   __resetCourseDataCachesForTests();
@@ -1085,6 +1095,26 @@ test("searchCourses uses the course database without requiring the compatibility
   }
 });
 
+test("getRuntimePostgresDb returns a Postgres client when SUPABASE_DATABASE_URL is set", () => {
+  process.env.SUPABASE_DATABASE_URL = "postgres://example";
+  __resetDbsForTests();
+
+  const db = getRuntimePostgresDb();
+
+  assert.ok(db);
+});
+
+test("getRuntimePostgresDb tests restore SUPABASE_DATABASE_URL for later cases", () => {
+  assert.equal(process.env.SUPABASE_DATABASE_URL, originalSupabaseDatabaseUrl);
+});
+
+test("getRuntimePostgresDb throws when SUPABASE_DATABASE_URL is missing", () => {
+  delete process.env.SUPABASE_DATABASE_URL;
+  __resetDbsForTests();
+
+  assert.throws(() => getRuntimePostgresDb(), /SUPABASE_DATABASE_URL/);
+});
+
 test("searchCourses still works with only the compatibility sqlite path", async () => {
   delete process.env.TURSO_COURSE_DATABASE_URL;
   delete process.env.TURSO_COURSE_AUTH_TOKEN;
@@ -1310,6 +1340,7 @@ test("getCourseDetail reads instructor history from standalone madgrades tables 
   const compatibilityFixture = buildCourseDataFixture();
 
   try {
+    seedCourseDetailRows(compatibilityFixture.db);
     compatibilityFixture.db.exec(`
       DROP VIEW course_grade_overview_v;
       DROP VIEW instructor_course_history_overview_v;
@@ -1509,4 +1540,352 @@ test("getCourseDetail preserves topic-specific titles for live sections on umbre
       },
     ],
   );
+});
+
+async function withSupabaseRuntimeRows<T>(
+  rowsForQuery: (sqlText: string, args: unknown[], rawArgs: unknown[]) => Record<string, unknown>[],
+  run: (queries: string[]) => Promise<T>,
+): Promise<T> {
+  process.env.SUPABASE_DATABASE_URL = "postgres://example.test/madgrades";
+  process.env.MADGRADES_DB_PATH = `${fixture.dbPath}.missing`;
+  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}.missing`;
+  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
+  process.env.MADGRADES_COURSE_REPLICA_PATH = `${fixture.dbPath}.missing`;
+  process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}.missing`;
+  process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
+  process.env.MADGRADES_MADGRADES_REPLICA_PATH = `${fixture.dbPath}.missing`;
+  __resetDbsForTests();
+  __resetCourseDataCachesForTests();
+
+  const runtimeDb = getRuntimePostgresDb();
+  const queries: string[] = [];
+  const originalUnsafe = runtimeDb.unsafe;
+  runtimeDb.unsafe = (async (...rawArgs: unknown[]) => {
+    const [sqlText, maybeArgs] = rawArgs as [string, unknown[]?];
+    const args = Array.isArray(maybeArgs) ? maybeArgs : [];
+    queries.push(sqlText);
+    return rowsForQuery(sqlText, args, rawArgs);
+  }) as typeof runtimeDb.unsafe;
+
+  try {
+    return await run(queries);
+  } finally {
+    runtimeDb.unsafe = originalUnsafe;
+  }
+}
+
+function makeRuntimeCourseDetailRows(sqlText: string): Record<string, unknown>[] {
+  if (sqlText.includes("SELECT to_regclass('public.course_search_fts')::text AS name")) {
+    return [{ name: "course_search_fts" }];
+  }
+
+  if (sqlText.includes("FROM course_search_fts")) {
+    return [
+      {
+        course_designation: "COMP SCI 577",
+        title: "Algorithms for Large Data",
+        minimum_credits: 3,
+        maximum_credits: 3,
+        cross_list_designations_json: '["COMP SCI 577"]',
+        section_count: 1,
+        has_any_open_seats: 1,
+        has_any_waitlist: 0,
+        has_any_full_section: 0,
+      },
+    ];
+  }
+
+  if (sqlText.includes("FROM course_overview_v") && sqlText.includes("WHERE course_designation =")) {
+    return [{ term_code: "1272", course_id: "005770" }];
+  }
+
+  if (sqlText.includes("FROM course_cross_listing_overview_v")) {
+    return [];
+  }
+
+  if (sqlText.includes("FROM courses c") && sqlText.includes("JOIN course_overview_v co")) {
+    return [
+      {
+        course_designation: "COMP SCI 577",
+        title: "Algorithms for Large Data",
+        description: "Algorithms for Large Data description",
+        subject_code: "302",
+        catalog_number: "577",
+        course_id: "005770",
+        minimum_credits: 3,
+        maximum_credits: 3,
+        enrollment_prerequisites: null,
+        cross_list_designations_json: '["COMP SCI 577"]',
+        section_count: 1,
+        has_any_open_seats: 1,
+        has_any_waitlist: 0,
+        has_any_full_section: 0,
+      },
+    ];
+  }
+
+  if (
+    sqlText.includes("FROM prerequisite_course_summary_overview_v") &&
+    sqlText.includes("LIMIT 1")
+  ) {
+    return [
+      {
+        summary_status: "partial",
+        course_groups_json: '[["COMP SCI 400"]]',
+        escape_clauses_json: '["graduate/professional standing"]',
+        raw_text: "COMP SCI 400 and graduate/professional standing",
+        unparsed_text: "graduate/professional standing",
+      },
+    ];
+  }
+
+  if (sqlText.includes("FROM prerequisite_rule_overview_v p")) {
+    return [
+      {
+        rule_id: "rule:comp-sci-577",
+        parse_status: "partial",
+        parse_confidence: 0.75,
+        summary_status: "partial",
+        course_groups_json: '[["COMP SCI 400"]]',
+        escape_clauses_json: '["graduate/professional standing"]',
+        raw_text: "COMP SCI 400 and graduate/professional standing",
+        unparsed_text: "graduate/professional standing",
+      },
+    ];
+  }
+
+  if (sqlText.includes("FROM section_overview_v") && sqlText.includes("ORDER BY section_type ASC")) {
+    return [
+      {
+        section_class_number: 57701,
+        source_package_id: "1272:302:005770:comp-sci-577-main",
+        section_number: "001",
+        section_type: "LEC",
+        instruction_mode: "IN PERSON",
+        session_code: "1",
+        open_seats: 3,
+        waitlist_current_size: 0,
+        capacity: 30,
+        currently_enrolled: 27,
+        has_open_seats: 1,
+        has_waitlist: 0,
+        is_full: 0,
+      },
+    ];
+  }
+
+  if (sqlText.includes("FROM schedule_planning_v")) {
+    return [
+      {
+        section_class_number: 57701,
+        source_package_id: "1272:302:005770:comp-sci-577-main",
+        meeting_index: 0,
+        meeting_type: "CLASS",
+        meeting_days: "MW",
+        meeting_time_start: 54000000,
+        meeting_time_end: 59400000,
+        start_date: null,
+        end_date: null,
+        exam_date: null,
+        room: "140",
+        building_code: "0140",
+        building_name: "Grainger Hall",
+        street_address: "975 University Ave.",
+        latitude: 43.0727,
+        longitude: -89.4015,
+        location_known: 1,
+      },
+    ];
+  }
+
+  if (sqlText.includes("FROM schedule_candidates_v")) {
+    return [
+      {
+        source_package_id: "1272:302:005770:comp-sci-577-main",
+        section_bundle_label: "COMP SCI 577 LEC 001",
+        open_seats: 3,
+        is_full: 0,
+        has_waitlist: 0,
+        campus_day_count: 2,
+        meeting_summary_local: "MW 3:00 PM-4:30 PM @ Grainger Hall",
+        restriction_note: null,
+      },
+    ];
+  }
+
+  if (sqlText.includes("SELECT DISTINCT package_id, section_class_number")) {
+    return [{ package_id: "1272:302:005770:comp-sci-577-main", section_class_number: 57701 }];
+  }
+
+  if (sqlText.includes("SELECT DISTINCT course_id, title")) {
+    return [{ course_id: "005770", title: "Algorithms for Large Data" }];
+  }
+
+  if (sqlText.includes("JOIN section_instructors si")) {
+    return [
+      {
+        section_number: "001",
+        section_type: "LEC",
+        instructor_key: "ada@example.edu",
+        instructor_display_name: "Ada Lovelace",
+      },
+    ];
+  }
+
+  if (sqlText.includes("madgrades_course_matches")) {
+    return [{ madgrades_course_id: 11 }];
+  }
+
+  if (sqlText.includes("WITH course_history AS")) {
+    return [
+      {
+        instructor_key: "ada@example.edu",
+        instructor_match_status: "matched",
+        same_course_prior_offering_count: 1,
+        same_course_student_count: 20,
+        same_course_gpa: 3.7,
+        course_historical_gpa: 3.7,
+      },
+    ];
+  }
+
+  throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+}
+
+test("searchCourses preserves its result shape when SUPABASE_DATABASE_URL is set", async () => {
+  const expected = await searchCourses({ query: "algorithms", limit: 99 });
+
+  const actual = await withSupabaseRuntimeRows(
+    (sqlText) => makeRuntimeCourseDetailRows(sqlText),
+    async (queries) => {
+      const runtimeResults = await searchCourses({ query: "algorithms", limit: 99 });
+      assert.ok(queries.some((sqlText) => sqlText.includes("course_search_fts")));
+      return runtimeResults;
+    },
+  );
+
+  assert.deepEqual(actual, expected);
+});
+
+test("buildPostgresTsquery converts tokenized search text into valid prefix tsquery syntax", () => {
+  assert.equal(buildPostgresTsquery("engl 462"), "engl:* & 462:*");
+  assert.equal(buildPostgresTsquery("Algorithms   Data"), "algorithms:* & data:*");
+  assert.equal(buildPostgresTsquery("((( )))"), null);
+});
+
+test("searchCourses orders higher Postgres ts_rank matches first", async () => {
+  const results = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("to_regclass('public.course_search_fts')")) {
+        return [{ name: "course_search_fts" }];
+      }
+
+      if (sqlText.includes("FROM course_search_fts")) {
+        assert.match(sqlText, /MAX\(search_rank\) AS best_search_rank/);
+        assert.match(sqlText, /sm\.best_search_rank DESC/);
+        assert.match(sqlText, /best_search_rank DESC/);
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+            minimum_credits: 3,
+            maximum_credits: 3,
+            cross_list_designations_json: '["COMP SCI 577"]',
+            section_count: 1,
+            has_any_open_seats: 1,
+            has_any_waitlist: 0,
+            has_any_full_section: 0,
+          },
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling",
+            minimum_credits: 3,
+            maximum_credits: 3,
+            cross_list_designations_json: '["STAT 340"]',
+            section_count: 2,
+            has_any_open_seats: 1,
+            has_any_waitlist: 0,
+            has_any_full_section: 0,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () => searchCourses({ query: "data", limit: 99 }),
+  );
+
+  assert.deepEqual(
+    results.map((course) => course.designation),
+    ["COMP SCI 577", "STAT 340"],
+  );
+});
+
+test("getCourseDetail preserves instructor history when SUPABASE_DATABASE_URL is set", async () => {
+  const detail = await withSupabaseRuntimeRows(
+    (sqlText) => makeRuntimeCourseDetailRows(sqlText),
+    async (queries) => {
+      const runtimeDetail = await getCourseDetail("COMP SCI 577");
+      assert.ok(queries.some((sqlText) => sqlText.includes("WITH course_history AS")));
+      return runtimeDetail;
+    },
+  );
+
+  assert.ok(detail);
+  assert.deepEqual(detail.instructorGrades, [
+    {
+      sectionNumber: "001",
+      sectionType: "LEC",
+      instructorDisplayName: "Ada Lovelace",
+      sameCoursePriorOfferingCount: 1,
+      sameCourseStudentCount: 20,
+      sameCourseGpa: 3.7,
+      courseHistoricalGpa: 3.7,
+      instructorMatchStatus: "matched",
+    },
+  ]);
+});
+
+test("getCourseDetail qualifies Madgrades tables on the Supabase runtime path", async () => {
+  const detail = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("JOIN section_instructors si")) {
+        return [
+          {
+            section_number: "001",
+            section_type: "LEC",
+            instructor_key: "ada@example.edu",
+            instructor_display_name: "Ada Lovelace",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM madgrades_course_matches")) {
+        assert.match(sqlText, /FROM madgrades\.madgrades_course_matches/);
+        return [{ madgrades_course_id: 11 }];
+      }
+
+      if (sqlText.includes("WITH course_history AS")) {
+        assert.match(sqlText, /FROM madgrades\.madgrades_course_offerings mco/);
+        assert.match(sqlText, /FROM madgrades\.madgrades_course_grades mcg/);
+        assert.match(sqlText, /FROM madgrades\.madgrades_instructor_matches mim/);
+        return [
+          {
+            instructor_key: "ada@example.edu",
+            instructor_match_status: "matched",
+            same_course_prior_offering_count: 1,
+            same_course_student_count: 20,
+            same_course_gpa: 3.7,
+            course_historical_gpa: 3.7,
+          },
+        ];
+      }
+
+      return makeRuntimeCourseDetailRows(sqlText);
+    },
+    async () => getCourseDetail("COMP SCI 577"),
+  );
+
+  assert.ok(detail);
+  assert.equal(detail.instructorGrades[0]?.sameCourseGpa, 3.7);
 });
