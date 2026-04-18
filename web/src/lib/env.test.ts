@@ -8,13 +8,10 @@ import {
   getDatabasePath,
   getCourseDatabaseConfig,
   getMadgradesDatabaseConfig,
-  getSupabaseDatabaseUrl,
-  useSupabaseRuntime,
 } from "./env";
 
 const ORIGINAL_ENV = {
   MADGRADES_DB_PATH: process.env.MADGRADES_DB_PATH,
-  SUPABASE_DATABASE_URL: process.env.SUPABASE_DATABASE_URL,
   TURSO_COURSE_DATABASE_URL: process.env.TURSO_COURSE_DATABASE_URL,
   TURSO_COURSE_AUTH_TOKEN: process.env.TURSO_COURSE_AUTH_TOKEN,
   TURSO_MADGRADES_DATABASE_URL: process.env.TURSO_MADGRADES_DATABASE_URL,
@@ -72,41 +69,6 @@ test("getDatabasePath still honors MADGRADES_DB_PATH when it is set", () => {
   assert.equal(getDatabasePath("/repo/web"), path.join("/repo/web", "custom.sqlite"));
 });
 
-test("getDatabasePath still defaults to local sqlite when SUPABASE_DATABASE_URL is absent", () => {
-  delete process.env.SUPABASE_DATABASE_URL;
-  process.env.MADGRADES_DB_PATH = "./custom.sqlite";
-
-  assert.equal(getDatabasePath("/repo/web"), path.join("/repo/web", "custom.sqlite"));
-});
-
-test("getSupabaseDatabaseUrl returns the trimmed connection string when present", () => {
-  process.env.SUPABASE_DATABASE_URL = " postgres://example ";
-
-  assert.equal(getSupabaseDatabaseUrl(), "postgres://example");
-});
-
-test("getSupabaseDatabaseUrl returns null when absent", () => {
-  delete process.env.SUPABASE_DATABASE_URL;
-
-  assert.equal(getSupabaseDatabaseUrl(), null);
-});
-
-test("useSupabaseRuntime returns true when SUPABASE_DATABASE_URL is present", () => {
-  process.env.SUPABASE_DATABASE_URL = "postgres://example";
-
-  assert.equal(useSupabaseRuntime(), true);
-});
-
-test("Supabase env tests restore SUPABASE_DATABASE_URL after each case", () => {
-  assert.equal(process.env.SUPABASE_DATABASE_URL, ORIGINAL_ENV.SUPABASE_DATABASE_URL);
-});
-
-test("useSupabaseRuntime returns false when SUPABASE_DATABASE_URL is absent", () => {
-  delete process.env.SUPABASE_DATABASE_URL;
-
-  assert.equal(useSupabaseRuntime(), false);
-});
-
 test("getDatabasePath falls back to the first existing local sqlite path", () => {
   withTempDir((dir) => {
     const packagedDbPath = path.join(dir, "web", "data", "fall-2026.sqlite");
@@ -143,17 +105,6 @@ test("getCourseDatabaseConfig does not require a course auth token for file urls
     authToken: undefined,
     replicaPath: path.join("/repo/web", "tmp", "course-replica.db"),
   });
-});
-
-test("getCourseDatabaseConfig still uses Turso settings when explicitly requested by local replica config", () => {
-  process.env.TURSO_COURSE_DATABASE_URL = "libsql://course-db.example.turso.io";
-  process.env.TURSO_COURSE_AUTH_TOKEN = "course-token";
-  process.env.MADGRADES_COURSE_REPLICA_PATH = "./tmp/course-replica.db";
-
-  assert.equal(
-    getCourseDatabaseConfig("/repo/web").url,
-    "libsql://course-db.example.turso.io",
-  );
 });
 
 test("getMadgradesDatabaseConfig does not require a Madgrades auth token for file urls", () => {

@@ -6,7 +6,6 @@ import {
   expandMeetingDays,
   parseTimeToMinutes,
   type GeneratedSchedule,
-  type ScheduleBuilderSchedulesResponse,
   type ScheduleBuilderCourseDetailResponse,
 } from "./schedule-data";
 
@@ -285,66 +284,6 @@ test("deriveScheduleCalendarEntries joins generated schedules to course detail m
       buildingName: "Van Vleck Hall",
     },
   ]);
-});
-
-test("schedule builder accepts the Postgres-backed schedule route response shape", () => {
-  const response: ScheduleBuilderSchedulesResponse = {
-    schedules: [
-      {
-        package_ids: ["1272:220:003210:stat340-early", "1272:302:005770:cs577-main"],
-        packages: [
-          {
-            source_package_id: "1272:220:003210:stat340-early",
-            course_designation: "STAT 340",
-            title: "Data Science Modeling",
-            section_bundle_label: "STAT 340 LEC 001",
-            open_seats: 4,
-            is_full: 0,
-            has_waitlist: 0,
-            meeting_count: 1,
-            campus_day_count: 2,
-            earliest_start_minute_local: 480,
-            latest_end_minute_local: 540,
-            has_online_meeting: 0,
-            has_unknown_location: 0,
-            restriction_note: null,
-            has_temporary_restriction: 0,
-            meeting_summary_local: "MW 8:00 AM-9:00 AM @ Grainger Hall",
-          },
-          {
-            source_package_id: "1272:302:005770:cs577-main",
-            course_designation: "COMP SCI 577",
-            title: "Algorithms for Large Data",
-            section_bundle_label: "COMP SCI 577 LEC 001",
-            open_seats: 2,
-            is_full: 0,
-            has_waitlist: 0,
-            meeting_count: 1,
-            campus_day_count: 1,
-            earliest_start_minute_local: 720,
-            latest_end_minute_local: 780,
-            has_online_meeting: 0,
-            has_unknown_location: 0,
-            restriction_note: null,
-            has_temporary_restriction: 0,
-            meeting_summary_local: "T 12:00 PM-1:00 PM @ Computer Sciences",
-          },
-        ],
-        conflict_count: 0,
-        campus_day_count: 3,
-        earliest_start_minute_local: 480,
-        large_idle_gap_count: 0,
-        tight_transition_count: 0,
-        total_walking_distance_meters: 0,
-        total_open_seats: 6,
-        latest_end_minute_local: 780,
-      },
-    ],
-  };
-
-  assert.equal(response.schedules[0].package_ids.length, 2);
-  assert.equal(response.schedules[0].packages[0].source_package_id, "1272:220:003210:stat340-early");
-  assert.equal(response.schedules[0].total_open_seats, 6);
 });
 
 test("deriveScheduleCalendarEntries falls back to section type from bundle label when class number lookup misses", () => {

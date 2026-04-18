@@ -12,15 +12,12 @@
     "build:madgrades-db": "node src/madgrades/build-madgrades-db.mjs",
     "import:madgrades": "node scripts/import-madgrades.mjs",
     "publish:course-db": "node scripts/publish-course-db.mjs",
-    "publish:course-db:postgres": "node scripts/publish-course-db-postgres.mjs",
     "publish:madgrades-db": "node scripts/publish-madgrades-db.mjs",
-    "publish:madgrades-db:postgres": "node scripts/publish-madgrades-db-postgres.mjs",
     "rebuild:madgrades-matches": "node scripts/rebuild-madgrades-matches.mjs",
     "schedule:options": "node scripts/schedule-options.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
-    "postgres": "^3.4.5",
     "playwright": "^1.54.0"
   }
 }

@@ -64,14 +64,6 @@ export function getCourseDatabaseConfig(cwd = process.cwd()): LibsqlDatabaseConf
   };
 }
 
-export function getSupabaseDatabaseUrl(): string | null {
-  return getOptionalEnv("SUPABASE_DATABASE_URL");
-}
-
-export function useSupabaseRuntime(): boolean {
-  return getSupabaseDatabaseUrl() !== null;
-}
-
 export function getDatabasePath(cwd = process.cwd()): string {
   const dbPath = getOptionalEnv('MADGRADES_DB_PATH');
 

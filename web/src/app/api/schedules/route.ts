@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { generateSchedules } from '@madgrades/schedule';
 import { type PreferenceRuleId } from '@/app/schedule-builder/preferences';
-import { generateSchedulesFromPostgres } from '@/lib/course-data';
 
 import {
   clampScheduleLimit,
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
 import { getCourseSqliteDb } from '@/lib/db';
-import { useSupabaseRuntime } from '@/lib/env';
 import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
 
 type ScheduleRequestBody = {
@@ -120,8 +118,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
-  const schedules = useSupabaseRuntime()
-    ? await generateSchedulesFromPostgres({
+  const db = await getCourseSqliteDb();
+
+  return NextResponse.json(
+    {
+      schedules: generateSchedulesTyped(db, {
         courses,
         lockPackages,
         excludePackages,
@@ -129,26 +130,7 @@ export async function POST(request: Request) {
         preferenceOrder,
         includeWaitlisted,
         includeClosed,
-      })
-    : (() => {
-        const db = getCourseSqliteDb();
-
-        return db.then((resolvedDb) =>
-          generateSchedulesTyped(resolvedDb, {
-            courses,
-            lockPackages,
-            excludePackages,
-            limit,
-            preferenceOrder,
-            includeWaitlisted,
-            includeClosed,
-          }),
-        );
-      })();
-
-  return NextResponse.json(
-    {
-      schedules: await schedules,
+      }),
     },
     {
       headers: {
