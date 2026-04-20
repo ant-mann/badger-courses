@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { NavLinks } from "./NavLinks";
 import { ThemeToggle } from "./ThemeToggle";
+import { LastUpdatedLabel } from "./LastUpdatedLabel";
 import { getLastRefreshedAt } from "@/lib/course-data";
-import { formatRelativeTime } from "@/lib/time";
 
 export async function Navbar() {
   const lastRefreshedAt = await getLastRefreshedAt();
-  const updatedText = lastRefreshedAt ? formatRelativeTime(lastRefreshedAt) : null;
+  const lastRefreshedAtIso = lastRefreshedAt ? lastRefreshedAt.toISOString() : null;
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-bg/90 backdrop-blur-sm">
@@ -17,9 +17,7 @@ export async function Navbar() {
         </Link>
         <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end sm:gap-1">
           <NavLinks />
-          {updatedText && (
-            <span className="hidden text-xs text-text-faint sm:block">{updatedText}</span>
-          )}
+          {lastRefreshedAtIso && <LastUpdatedLabel lastRefreshedAtIso={lastRefreshedAtIso} />}
           <ThemeToggle />
         </div>
       </div>
