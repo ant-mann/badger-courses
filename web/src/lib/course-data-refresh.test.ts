@@ -9,6 +9,8 @@ import { getLastRefreshedAt } from "./course-data.js";
 
 let tmpDbPath = "";
 const originalSupabaseDatabaseUrl = process.env.SUPABASE_DATABASE_URL;
+const originalTursoCourseDatabaseUrl = process.env.TURSO_COURSE_DATABASE_URL;
+const originalMadgradesCourseReplicaPath = process.env.MADGRADES_COURSE_REPLICA_PATH;
 
 function setupTmpDb(rows: Array<{ snapshot_run_at: string; last_refreshed_at: string }>) {
   tmpDbPath = path.join(os.tmpdir(), `test-refresh-runs-${Date.now()}.sqlite`);
@@ -43,6 +45,16 @@ afterEach(() => {
     process.env.SUPABASE_DATABASE_URL = originalSupabaseDatabaseUrl;
   } else {
     delete process.env.SUPABASE_DATABASE_URL;
+  }
+  if (originalTursoCourseDatabaseUrl !== undefined) {
+    process.env.TURSO_COURSE_DATABASE_URL = originalTursoCourseDatabaseUrl;
+  } else {
+    delete process.env.TURSO_COURSE_DATABASE_URL;
+  }
+  if (originalMadgradesCourseReplicaPath !== undefined) {
+    process.env.MADGRADES_COURSE_REPLICA_PATH = originalMadgradesCourseReplicaPath;
+  } else {
+    delete process.env.MADGRADES_COURSE_REPLICA_PATH;
   }
   if (tmpDbPath) {
     fs.rmSync(tmpDbPath, { force: true });
