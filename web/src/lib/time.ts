@@ -1,5 +1,5 @@
 export function formatRelativeTime(date: Date, now: Date = new Date()): string {
-  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const diffSec = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
   const diffMin = Math.floor(diffSec / 60);
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);

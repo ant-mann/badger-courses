@@ -4,8 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { __resetDbsForTests } from "./db.js";
-import { getLastRefreshedAt } from "./course-data.js";
+import { __resetDbsForTests } from "./db";
+import { getLastRefreshedAt } from "./course-data";
 
 let tmpDbPath = "";
 const originalSupabaseDatabaseUrl = process.env.SUPABASE_DATABASE_URL;
