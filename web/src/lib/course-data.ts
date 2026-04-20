@@ -2571,3 +2571,16 @@ function asNullableStringOrNumber(value: unknown): string | number | null {
 function asNullableBoolean(value: unknown): boolean | null {
   return typeof value === "number" ? value !== 0 : null;
 }
+
+export async function getLastRefreshedAt(): Promise<Date | null> {
+  try {
+    const row = await firstCourseRowRuntime(
+      "SELECT last_refreshed_at FROM refresh_runs ORDER BY refresh_id DESC LIMIT 1"
+    );
+    if (!row || typeof row.last_refreshed_at !== "string") return null;
+    const date = new Date(row.last_refreshed_at);
+    return isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+}
