@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { unstable_noStore as noStore } from "next/cache";
 import { NavLinks } from "./NavLinks";
 import { ThemeToggle } from "./ThemeToggle";
 import { getLastRefreshedAt } from "@/lib/course-data";
 import { formatRelativeTime } from "@/lib/time";
 
 export async function Navbar() {
+  noStore();
+
   const lastRefreshedAt = await getLastRefreshedAt();
   const updatedText = lastRefreshedAt ? formatRelativeTime(lastRefreshedAt) : null;
 
