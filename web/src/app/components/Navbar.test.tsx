@@ -55,6 +55,13 @@ test("Navbar passes the raw refresh timestamp to LastUpdatedLabel", async () => 
   assert.doesNotMatch(source, /formatRelativeTime\(/);
 });
 
+test("Navbar opts the refresh timestamp read out of route caching", async () => {
+  const source = await readFile(new URL("./Navbar.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /import\s+\{\s*unstable_noStore\s+as\s+noStore\s*\}\s+from\s+"next\/cache"/);
+  assert.match(source, /noStore\(\);\s*\n\s*const lastRefreshedAt = await getLastRefreshedAt\(\);/);
+});
+
 test("LastUpdatedLabel suppresses the expected hydration text mismatch", async () => {
   const source = await readFile(new URL("./LastUpdatedLabel.tsx", import.meta.url), "utf8");
 
