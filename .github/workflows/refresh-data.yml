@@ -33,9 +33,6 @@ jobs:
       - name: Build course database
         run: pnpm run build:course-db
 
-      - name: Rebuild Madgrades matches
-        run: pnpm run rebuild:madgrades-matches
-
       - name: Publish to Supabase
         run: pnpm run publish:course-db:postgres
         env:
