@@ -6,6 +6,7 @@ import { __resetDbsForTests, getRuntimePostgresDb } from "./db";
 import {
   __resetCourseDataCachesForTests,
   buildPostgresTsquery,
+  generateSchedulesFromPostgres,
   getCourseDetail,
   normalizeDesignation,
   parseCourseGroupsJson,
@@ -1819,6 +1820,146 @@ test("searchCourses orders higher Postgres ts_rank matches first", async () => {
     results.map((course) => course.designation),
     ["COMP SCI 577", "STAT 340"],
   );
+});
+
+test("generateSchedulesFromPostgres rejects hidden canonical meeting conflicts on the runtime path", async () => {
+  const results = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+            source_package_id: "1272:302:005770:cs577-bundle",
+            section_bundle_label: "COMP SCI 577 LEC 002 + DIS 321",
+            open_seats: 2,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 2,
+            earliest_start_minute_local: 725,
+            latest_end_minute_local: 855,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "TR 1:00 PM-2:15 PM; W 12:05 PM-12:55 PM",
+          },
+          {
+            course_designation: "ASIAN AM 462",
+            title: "Topic in Asian American Literature",
+            source_package_id: "1272:184:024200:asianam462-lec2",
+            section_bundle_label: "ASIAN AM 462 LEC 002",
+            open_seats: 1,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 1,
+            campus_day_count: 1,
+            earliest_start_minute_local: 800,
+            latest_end_minute_local: 915,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "T 1:20 PM-3:15 PM @ LEVY HALL",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM schedule_planning_v")) {
+        if (sqlText.includes("FROM canonical_meetings")) {
+          return [
+            {
+              source_package_id: "1272:302:005770:cs577-bundle",
+              meeting_days: "TR",
+              meeting_time_start: 780,
+              meeting_time_end: 855,
+              start_date: null,
+              end_date: null,
+              exam_date: null,
+              instruction_mode: null,
+              latitude: 43.072,
+              longitude: -89.401,
+              location_known: 1,
+            },
+            {
+              source_package_id: "1272:302:005770:cs577-bundle",
+              meeting_days: "W",
+              meeting_time_start: 725,
+              meeting_time_end: 775,
+              start_date: null,
+              end_date: null,
+              exam_date: null,
+              instruction_mode: null,
+              latitude: 43.072,
+              longitude: -89.401,
+              location_known: 1,
+            },
+            {
+              source_package_id: "1272:184:024200:asianam462-lec2",
+              meeting_days: "T",
+              meeting_time_start: 800,
+              meeting_time_end: 915,
+              start_date: null,
+              end_date: null,
+              exam_date: null,
+              instruction_mode: null,
+              latitude: 43.073,
+              longitude: -89.402,
+              location_known: 1,
+            },
+          ];
+        }
+
+        return [
+          {
+            source_package_id: "1272:302:005770:cs577-bundle",
+            meeting_days: "W",
+            meeting_time_start: 725,
+            meeting_time_end: 775,
+            start_date: null,
+            end_date: null,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+          },
+          {
+            source_package_id: "1272:184:024200:asianam462-lec2",
+            meeting_days: "T",
+            meeting_time_start: 800,
+            meeting_time_end: 915,
+            start_date: null,
+            end_date: null,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.073,
+            longitude: -89.402,
+            location_known: 1,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async (queries) => {
+      const runtimeResults = await generateSchedulesFromPostgres({
+        courses: ["COMP SCI 577", "ASIAN AM 462"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        preferenceOrder: ["earlier-finishes", "later-starts", "fewer-campus-days", "fewer-long-gaps"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      });
+      assert.ok(queries.some((sqlText) => sqlText.includes("FROM schedule_candidates_v")));
+      assert.ok(queries.some((sqlText) => sqlText.includes("FROM canonical_meetings")));
+      return runtimeResults;
+    },
+  );
+
+  assert.deepEqual(results, []);
 });
 
 test("getCourseDetail preserves instructor history when SUPABASE_DATABASE_URL is set", async () => {
