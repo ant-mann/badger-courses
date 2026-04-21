@@ -1,8 +1,8 @@
-# uw-madison-courses
+# Badger Courses
 
 A toolset for extracting UW–Madison course and enrollment data and building a local SQLite database you can explore with an AI assistant or query directly.
 
-🌐 **Live web app → [uw-madison-courses.fly.dev](https://uw-madison-courses.fly.dev/)**
+🌐 **Live web app → [badgercourses.dev](https://badgercourses.dev/)**
 
 ## Overview
 
@@ -20,7 +20,7 @@ The core data pipeline is **local and offline-first**. You run the extractor onc
 
 ### Live web app
 
-The project is deployed at **[uw-madison-courses.fly.dev](https://uw-madison-courses.fly.dev/)** — no installation required. The web app lets any UW–Madison student make advanced queries against the enrollment database and interactively build custom schedules directly in the browser.
+The project is deployed at **[badgercourses.dev](https://badgercourses.dev/)** — no installation required. The web app lets any UW–Madison student make advanced queries against the enrollment database and interactively build custom schedules directly in the browser.
 
 The long-term goal is to keep expanding the web app's features: richer schedule-building tools, prerequisite visualization, historical grade overlays, and more.
 

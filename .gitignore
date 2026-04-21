@@ -9,6 +9,8 @@
 .superpowers/
 skills-lock.json
 node_modules/
+.env
+.env.local
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
