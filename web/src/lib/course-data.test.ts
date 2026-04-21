@@ -1824,7 +1824,7 @@ test("searchCourses orders higher Postgres ts_rank matches first", async () => {
 
 test("generateSchedulesFromPostgres rejects hidden canonical meeting conflicts on the runtime path", async () => {
   const results = await withSupabaseRuntimeRows(
-    (sqlText) => {
+    (sqlText, args) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
           {
@@ -1866,52 +1866,23 @@ test("generateSchedulesFromPostgres rejects hidden canonical meeting conflicts o
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
-        if (sqlText.includes("FROM canonical_meetings")) {
-          return [
-            {
-              source_package_id: "1272:302:005770:cs577-bundle",
-              meeting_days: "TR",
-              meeting_time_start: 780,
-              meeting_time_end: 855,
-              start_date: null,
-              end_date: null,
-              exam_date: null,
-              instruction_mode: null,
-              latitude: 43.072,
-              longitude: -89.401,
-              location_known: 1,
-            },
-            {
-              source_package_id: "1272:302:005770:cs577-bundle",
-              meeting_days: "W",
-              meeting_time_start: 725,
-              meeting_time_end: 775,
-              start_date: null,
-              end_date: null,
-              exam_date: null,
-              instruction_mode: null,
-              latitude: 43.072,
-              longitude: -89.401,
-              location_known: 1,
-            },
-            {
-              source_package_id: "1272:184:024200:asianam462-lec2",
-              meeting_days: "T",
-              meeting_time_start: 800,
-              meeting_time_end: 915,
-              start_date: null,
-              end_date: null,
-              exam_date: null,
-              instruction_mode: null,
-              latitude: 43.073,
-              longitude: -89.402,
-              location_known: 1,
-            },
-          ];
-        }
-
+      if (sqlText.includes("FROM canonical_meetings")) {
+        assert.equal(args.length, 2);
+        assert.equal((sqlText.match(/\?/g) ?? []).length, 2);
         return [
+          {
+            source_package_id: "1272:302:005770:cs577-bundle",
+            meeting_days: "TR",
+            meeting_time_start: 780,
+            meeting_time_end: 855,
+            start_date: null,
+            end_date: null,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+          },
           {
             source_package_id: "1272:302:005770:cs577-bundle",
             meeting_days: "W",

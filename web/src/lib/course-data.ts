@@ -668,44 +668,27 @@ export async function generateSchedulesFromPostgres(options: {
     ? []
     : await allCourseRowsRuntime(
         `
-          WITH schedule_planning_v AS (
-            SELECT
-              source_package_id,
-              meeting_days,
-              start_minute_local AS meeting_time_start,
-              end_minute_local AS meeting_time_end,
-              start_date,
-              end_date,
-              exam_date,
-              CASE
-                WHEN COALESCE(is_online, 0) = 1 THEN 'ONLINE'
-                ELSE NULL
-              END AS instruction_mode,
-              latitude,
-              longitude,
-              location_known
-            FROM canonical_meetings
-            WHERE source_package_id IN (${candidates.map(() => "?").join(", ")})
-              AND meeting_type = 'CLASS'
-              AND days_mask IS NOT NULL
-              AND start_minute_local IS NOT NULL
-              AND end_minute_local IS NOT NULL
-          )
           SELECT
             source_package_id,
             meeting_days,
-            meeting_time_start,
-            meeting_time_end,
+            start_minute_local AS meeting_time_start,
+            end_minute_local AS meeting_time_end,
             start_date,
             end_date,
             exam_date,
-            instruction_mode,
+            CASE
+              WHEN COALESCE(is_online, 0) = 1 THEN 'ONLINE'
+              ELSE NULL
+            END AS instruction_mode,
             latitude,
             longitude,
             location_known
-          FROM schedule_planning_v
+          FROM canonical_meetings
           WHERE source_package_id IN (${candidates.map(() => "?").join(", ")})
             AND meeting_type = 'CLASS'
+            AND days_mask IS NOT NULL
+            AND start_minute_local IS NOT NULL
+            AND end_minute_local IS NOT NULL
           ORDER BY source_package_id ASC, meeting_time_start ASC, meeting_time_end ASC
         `,
         candidates.map((candidate) => candidate.source_package_id),

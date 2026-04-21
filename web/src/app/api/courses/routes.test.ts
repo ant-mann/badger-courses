@@ -585,7 +585,7 @@ function makeRuntimeScheduleRows(sqlText: string): Record<string, unknown>[] {
     ];
   }
 
-  if (sqlText.includes("FROM schedule_planning_v")) {
+  if (sqlText.includes("FROM canonical_meetings")) {
     return [
       {
         source_package_id: "1272:220:003210:stat340-early",
@@ -915,7 +915,7 @@ test("schedule route ignores online-only meeting days in Postgres campus day cou
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:220:003210:stat340-anchor",
@@ -1066,7 +1066,7 @@ test("schedule route computes Postgres transition tie-breakers from meeting loca
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:220:003210:stat340-anchor",
@@ -1187,7 +1187,7 @@ test("schedule route dedupes equivalent visible Postgres schedules", async () =>
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:302:005770:cs577-z-duplicate",
@@ -1241,7 +1241,7 @@ test("schedule route dedupes equivalent visible Postgres schedules", async () =>
   assert.deepEqual(body.schedules[0].package_ids, ["1272:302:005770:cs577-a-duplicate"]);
 });
 
-test("schedule route rejects overlapping Postgres packages using schedule_planning_v meetings", async () => {
+test("schedule route rejects overlapping Postgres packages using canonical meeting rows", async () => {
   const response = await withSupabaseRuntimeRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
@@ -1285,7 +1285,7 @@ test("schedule route rejects overlapping Postgres packages using schedule_planni
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:220:003210:stat340-overlap",
@@ -1318,7 +1318,7 @@ test("schedule route rejects overlapping Postgres packages using schedule_planni
         }),
       );
       assert.ok(queries.some((sqlText) => sqlText.includes("FROM schedule_candidates_v")));
-      assert.ok(queries.some((sqlText) => sqlText.includes("FROM schedule_planning_v")));
+      assert.ok(queries.some((sqlText) => sqlText.includes("FROM canonical_meetings")));
       return runtimeResponse;
     },
   );
@@ -1373,7 +1373,7 @@ test("schedule route ignores timed non-class Postgres rows when checking conflic
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         const classOnlyQuery = sqlText.includes("meeting_type = 'CLASS'");
 
         return [
@@ -1426,7 +1426,7 @@ test("schedule route ignores timed non-class Postgres rows when checking conflic
           }),
         }),
       );
-      assert.ok(queries.some((sqlText) => sqlText.includes("FROM schedule_planning_v")));
+      assert.ok(queries.some((sqlText) => sqlText.includes("FROM canonical_meetings")));
       return runtimeResponse;
     },
   );
@@ -1523,7 +1523,7 @@ test("schedule route keeps locked Postgres packages even when they are closed or
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:220:003210:stat340-open",
@@ -1623,7 +1623,7 @@ test("schedule route allows overlapping Postgres meeting times when date ranges 
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:220:003210:stat340-first-half",
@@ -1731,7 +1731,7 @@ test("schedule route computes fewer-long-gaps from normalized meeting minutes on
         ];
       }
 
-      if (sqlText.includes("FROM schedule_planning_v")) {
+      if (sqlText.includes("FROM canonical_meetings")) {
         return [
           {
             source_package_id: "1272:220:003210:stat340-anchor",
