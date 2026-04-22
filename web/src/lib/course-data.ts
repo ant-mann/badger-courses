@@ -1,6 +1,9 @@
 import type Database from "better-sqlite3";
 import type { Client } from "@libsql/client";
-import type { PreferenceRuleId } from "@/app/schedule-builder/preferences";
+import {
+  normalizePreferenceOrder,
+  type PreferenceRuleId,
+} from "@/app/schedule-builder/preferences";
 
 import { normalizeCourseDesignation } from "./course-designation";
 import { getCourseDb, getCourseSqliteDb, getMadgradesDb, getRuntimePostgresDb } from "./db";
@@ -168,6 +171,7 @@ type GeneratedPostgresSchedule = {
   campus_day_count: number | null;
   earliest_start_minute_local: number | null;
   large_idle_gap_count: number;
+  total_between_class_minutes: number;
   tight_transition_count: number;
   total_walking_distance_meters: number;
   total_open_seats: number;
@@ -622,17 +626,30 @@ function dedupeSchedulePackages(
   return [...groupedPackages.values()];
 }
 
-export async function generateSchedulesFromPostgres(options: {
+export async function generateSchedulesFromPostgresWithMetadata(options: {
   courses: string[];
   lockPackages: string[];
   excludePackages: string[];
   limit: number;
+  maxCampusDays: number | null;
+  startAfterMinuteLocal: number | null;
+  endBeforeMinuteLocal: number | null;
   preferenceOrder: PreferenceRuleId[];
   includeWaitlisted: boolean;
   includeClosed: boolean;
-}): Promise<unknown[]> {
+}): Promise<{
+  schedules: GeneratedPostgresSchedule[];
+  emptyStateReason: 'constraints' | 'hard-filters' | null;
+}> {
+  const normalizedPreferenceOrder = normalizePreferenceOrder(options.preferenceOrder, {
+    useDefaultsWhenEmpty: false,
+  });
+
   if (options.limit === 0 || options.courses.length === 0) {
-    return [];
+    return {
+      schedules: [],
+      emptyStateReason: 'constraints',
+    };
   }
 
   const coursePlaceholders = options.courses.map(() => "?").join(", ");
@@ -704,12 +721,18 @@ export async function generateSchedulesFromPostgres(options: {
   for (const packageId of options.lockPackages) {
     const candidate = candidatesById.get(packageId);
     if (!candidate) {
-      return [];
+      return {
+        schedules: [],
+        emptyStateReason: 'constraints',
+      };
     }
 
     const current = lockedByCourse.get(candidate.course_designation);
     if (current && current.source_package_id !== candidate.source_package_id) {
-      return [];
+      return {
+        schedules: [],
+        emptyStateReason: 'constraints',
+      };
     }
 
     lockedByCourse.set(candidate.course_designation, candidate);
@@ -728,15 +751,19 @@ export async function generateSchedulesFromPostgres(options: {
   });
 
   if (groups.some((group) => group.length === 0)) {
-    return [];
+    return {
+      schedules: [],
+      emptyStateReason: 'constraints',
+    };
   }
 
   const schedules: GeneratedPostgresSchedule[] = [];
   const scheduleIndexByVisibilityKey = new Map<string, number>();
   const selected: PostgresScheduleCandidate[] = [];
+  let preFilterScheduleCount = 0;
 
   function trimSchedulesToLimit(): void {
-    schedules.sort((left, right) => compareGeneratedPostgresSchedules(left, right, options.preferenceOrder));
+    schedules.sort((left, right) => compareGeneratedPostgresSchedules(left, right, normalizedPreferenceOrder));
     if (schedules.length > options.limit) {
       schedules.length = options.limit;
     }
@@ -750,6 +777,12 @@ export async function generateSchedulesFromPostgres(options: {
   function visitGroup(groupIndex: number): void {
     if (groupIndex >= groups.length) {
       const schedule = buildGeneratedPostgresSchedule(selected, candidateMeetingsById, transitions);
+      preFilterScheduleCount += 1;
+
+      if (!passesGeneratedPostgresHardFilters(schedule, options)) {
+        return;
+      }
+
       const visibilityKey = makeGeneratedPostgresVisibilityKey(schedule.packages);
       const existingIndex = scheduleIndexByVisibilityKey.get(visibilityKey);
 
@@ -758,7 +791,7 @@ export async function generateSchedulesFromPostgres(options: {
           compareGeneratedPostgresSchedules(
             schedule,
             schedules[existingIndex],
-            options.preferenceOrder,
+            normalizedPreferenceOrder,
           ) < 0
         ) {
           schedules[existingIndex] = schedule;
@@ -798,7 +831,30 @@ export async function generateSchedulesFromPostgres(options: {
   visitGroup(0);
 
   trimSchedulesToLimit();
-  return schedules.slice(0, options.limit);
+  return {
+    schedules: schedules.slice(0, options.limit),
+    emptyStateReason:
+      schedules.length === 0 ? (preFilterScheduleCount > 0 ? 'hard-filters' : 'constraints') : null,
+  };
+}
+
+export async function generateSchedulesFromPostgres(options: {
+  courses: string[];
+  lockPackages: string[];
+  excludePackages: string[];
+  limit: number;
+  preferenceOrder: PreferenceRuleId[];
+  includeWaitlisted: boolean;
+  includeClosed: boolean;
+}): Promise<GeneratedPostgresSchedule[]> {
+  const result = await generateSchedulesFromPostgresWithMetadata({
+    ...options,
+    maxCampusDays: null,
+    startAfterMinuteLocal: null,
+    endBeforeMinuteLocal: null,
+  });
+
+  return result.schedules;
 }
 
 export async function searchCourses(params: CourseSearchParams = {}): Promise<CourseListItem[]> {
@@ -2105,23 +2161,15 @@ function buildGeneratedPostgresSchedule(
   candidateMeetingsById: Map<string, PostgresPackageMeeting[]>,
   transitions: Map<string, PostgresTransition>,
 ): GeneratedPostgresSchedule {
-  let earliestStartMinuteLocal: number | null = null;
-  let latestEndMinuteLocal: number | null = null;
   let totalOpenSeats = 0;
   let tightTransitionCount = 0;
   let totalWalkingDistanceMeters = 0;
 
   for (const candidate of candidates) {
     totalOpenSeats += candidate.open_seats ?? 0;
-    earliestStartMinuteLocal = minNullableNumber(
-      earliestStartMinuteLocal,
-      candidate.earliest_start_minute_local,
-    );
-    latestEndMinuteLocal = maxNullableNumber(
-      latestEndMinuteLocal,
-      candidate.latest_end_minute_local,
-    );
   }
+
+  const generatedTimingMetrics = deriveGeneratedPostgresTimingMetrics(candidates, candidateMeetingsById);
 
   for (const fromCandidate of candidates) {
     for (const toCandidate of candidates) {
@@ -2149,11 +2197,95 @@ function buildGeneratedPostgresSchedule(
     packages: sortedCandidates,
     conflict_count: 0,
     campus_day_count: uniqueCampusDayCount,
-    earliest_start_minute_local: earliestStartMinuteLocal,
+    earliest_start_minute_local: generatedTimingMetrics.earliest_start_minute_local,
     large_idle_gap_count: countLargeIdleGapsFromCandidates(candidates, candidateMeetingsById),
+    total_between_class_minutes: countTotalBetweenClassMinutesFromCandidates(candidates, candidateMeetingsById),
     tight_transition_count: tightTransitionCount,
     total_walking_distance_meters: totalWalkingDistanceMeters,
     total_open_seats: totalOpenSeats,
+    latest_end_minute_local: generatedTimingMetrics.latest_end_minute_local,
+  };
+}
+
+function deriveGeneratedPostgresTimingMetrics(
+  candidates: PostgresScheduleCandidate[],
+  candidateMeetingsById: Map<string, PostgresPackageMeeting[]>,
+): {
+  earliest_start_minute_local: number | null;
+  latest_end_minute_local: number | null;
+} {
+  let earliestStartMinuteLocal: number | null = null;
+  let latestEndMinuteLocal: number | null = null;
+
+  for (const candidate of candidates) {
+    for (const meeting of candidateMeetingsById.get(candidate.source_package_id) ?? []) {
+      if (meeting.start_minute_local !== null) {
+        earliestStartMinuteLocal = minNullableNumber(earliestStartMinuteLocal, meeting.start_minute_local);
+      }
+
+      if (meeting.end_minute_local !== null) {
+        latestEndMinuteLocal = maxNullableNumber(latestEndMinuteLocal, meeting.end_minute_local);
+      }
+    }
+  }
+
+  return {
+    earliest_start_minute_local: earliestStartMinuteLocal,
+    latest_end_minute_local: latestEndMinuteLocal,
+  };
+}
+
+function passesGeneratedPostgresHardFilters(
+  schedule: GeneratedPostgresSchedule,
+  options: {
+    maxCampusDays: number | null;
+    startAfterMinuteLocal: number | null;
+    endBeforeMinuteLocal: number | null;
+  },
+): boolean {
+  const hardFilterMetrics = deriveGeneratedPostgresHardFilterMetrics(schedule);
+
+  if (options.maxCampusDays != null && (hardFilterMetrics.campus_day_count ?? Number.POSITIVE_INFINITY) > options.maxCampusDays) {
+    return false;
+  }
+
+  if (
+    options.startAfterMinuteLocal != null &&
+    hardFilterMetrics.earliest_start_minute_local != null &&
+    hardFilterMetrics.earliest_start_minute_local < options.startAfterMinuteLocal
+  ) {
+    return false;
+  }
+
+  if (
+    options.endBeforeMinuteLocal != null &&
+    hardFilterMetrics.latest_end_minute_local != null &&
+    hardFilterMetrics.latest_end_minute_local > options.endBeforeMinuteLocal
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function deriveGeneratedPostgresHardFilterMetrics(schedule: GeneratedPostgresSchedule): {
+  campus_day_count: number | null;
+  earliest_start_minute_local: number | null;
+  latest_end_minute_local: number | null;
+} {
+  let campusDayCount = schedule.campus_day_count;
+  let earliestStartMinuteLocal = schedule.earliest_start_minute_local;
+  let latestEndMinuteLocal = schedule.latest_end_minute_local;
+
+  for (const candidate of schedule.packages) {
+    campusDayCount = maxNullableNumber(campusDayCount, candidate.campus_day_count);
+    earliestStartMinuteLocal = minNullableNumber(earliestStartMinuteLocal, candidate.earliest_start_minute_local);
+    latestEndMinuteLocal = maxNullableNumber(latestEndMinuteLocal, candidate.latest_end_minute_local);
+  }
+
+  return {
+    campus_day_count: campusDayCount,
+    earliest_start_minute_local: earliestStartMinuteLocal,
     latest_end_minute_local: latestEndMinuteLocal,
   };
 }
@@ -2244,17 +2376,89 @@ function countLargeIdleGapsFromCandidates(
     );
 
     for (let index = 1; index < dayMeetings.length; index += 1) {
-      if (!postgresMeetingsShareDateRange(dayMeetings[index], dayMeetings[index - 1])) {
+      let latestRelevantPriorEnd: number | null = null;
+
+      for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+        const previousMeeting = dayMeetings[previousIndex];
+        if (!postgresMeetingsShareDateRange(dayMeetings[index], previousMeeting)) {
+          continue;
+        }
+
+        latestRelevantPriorEnd = Math.max(
+          latestRelevantPriorEnd ?? Number.NEGATIVE_INFINITY,
+          previousMeeting.end_minute_local ?? Number.NEGATIVE_INFINITY,
+        );
+      }
+
+      if (latestRelevantPriorEnd === null) {
         continue;
       }
 
-      if ((dayMeetings[index].start_minute_local ?? 0) - (dayMeetings[index - 1].end_minute_local ?? 0) >= 90) {
+      if ((dayMeetings[index].start_minute_local ?? 0) - latestRelevantPriorEnd >= 90) {
         gapCount += 1;
       }
     }
   }
 
   return gapCount;
+}
+
+function countTotalBetweenClassMinutesFromCandidates(
+  candidates: PostgresScheduleCandidate[],
+  candidateMeetingsById: Map<string, PostgresPackageMeeting[]>,
+): number {
+  const meetingsByDay = new Map<string, PostgresPackageMeeting[]>();
+
+  for (const candidate of candidates) {
+    for (const meeting of candidateMeetingsById.get(candidate.source_package_id) ?? []) {
+      if (meeting.start_minute_local === null || meeting.end_minute_local === null) {
+        continue;
+      }
+
+      for (const day of expandMeetingDays(meeting.meeting_days)) {
+        const dayMeetings = meetingsByDay.get(day) ?? [];
+        dayMeetings.push(meeting);
+        meetingsByDay.set(day, dayMeetings);
+      }
+    }
+  }
+
+  let totalBetweenClassMinutes = 0;
+
+  for (const dayMeetings of meetingsByDay.values()) {
+    dayMeetings.sort(
+      (left, right) =>
+        (left.start_minute_local ?? Number.POSITIVE_INFINITY) - (right.start_minute_local ?? Number.POSITIVE_INFINITY) ||
+        (left.end_minute_local ?? Number.POSITIVE_INFINITY) - (right.end_minute_local ?? Number.POSITIVE_INFINITY),
+    );
+
+    for (let index = 1; index < dayMeetings.length; index += 1) {
+      let latestRelevantPriorEnd: number | null = null;
+
+      for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+        const previousMeeting = dayMeetings[previousIndex];
+        if (!postgresMeetingsShareDateRange(dayMeetings[index], previousMeeting)) {
+          continue;
+        }
+
+        latestRelevantPriorEnd = Math.max(
+          latestRelevantPriorEnd ?? Number.NEGATIVE_INFINITY,
+          previousMeeting.end_minute_local ?? Number.NEGATIVE_INFINITY,
+        );
+      }
+
+      if (latestRelevantPriorEnd === null) {
+        continue;
+      }
+
+      const gapMinutes = (dayMeetings[index].start_minute_local ?? 0) - latestRelevantPriorEnd;
+      if (gapMinutes > 0) {
+        totalBetweenClassMinutes += gapMinutes;
+      }
+    }
+  }
+
+  return totalBetweenClassMinutes;
 }
 
 function derivePostgresTransitions(
@@ -2364,8 +2568,6 @@ function compareGeneratedPostgresSchedules(
 
   return (
     left.tight_transition_count - right.tight_transition_count ||
-    left.total_walking_distance_meters - right.total_walking_distance_meters ||
-    right.total_open_seats - left.total_open_seats ||
     left.package_ids.join("\u0000").localeCompare(right.package_ids.join("\u0000"))
   );
 }
@@ -2384,14 +2586,22 @@ function compareGeneratedPostgresSchedulesByPreference(
       );
     case "fewer-campus-days":
       return (left.campus_day_count ?? Number.POSITIVE_INFINITY) - (right.campus_day_count ?? Number.POSITIVE_INFINITY);
-    case "fewer-long-gaps":
-      return left.large_idle_gap_count - right.large_idle_gap_count;
+    case "less-time-between-classes":
+      return left.total_between_class_minutes - right.total_between_class_minutes;
+    case "more-time-between-classes":
+      return right.total_between_class_minutes - left.total_between_class_minutes;
+    case "shorter-walks":
+      return left.total_walking_distance_meters - right.total_walking_distance_meters;
+    case "more-open-seats":
+      return right.total_open_seats - left.total_open_seats;
     case "earlier-finishes":
       return compareNullableAscending(
         left.latest_end_minute_local,
         right.latest_end_minute_local,
         Number.NEGATIVE_INFINITY,
       );
+    default:
+      return 0;
   }
 }
 

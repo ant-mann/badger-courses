@@ -41,6 +41,7 @@ export type GeneratedSchedule = {
   campus_day_count: number | null;
   earliest_start_minute_local: number | null;
   large_idle_gap_count: number;
+  total_between_class_minutes: number;
   tight_transition_count: number;
   total_walking_distance_meters: number;
   total_open_seats: number;
@@ -65,6 +66,7 @@ export type ScheduleBuilderCourseDetailResponse = {
 
 export type ScheduleBuilderSchedulesResponse = {
   schedules: GeneratedSchedule[];
+  empty_state_reason: 'constraints' | 'hard-filters' | null;
 };
 
 export type VisibleWeekday = "M" | "T" | "W" | "R" | "F" | "S" | "U";

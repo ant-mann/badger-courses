@@ -7,6 +7,7 @@ import {
   __resetCourseDataCachesForTests,
   buildPostgresTsquery,
   generateSchedulesFromPostgres,
+  generateSchedulesFromPostgresWithMetadata,
   getCourseDetail,
   normalizeDesignation,
   parseCourseGroupsJson,
@@ -1868,7 +1869,7 @@ test("generateSchedulesFromPostgres rejects hidden canonical meeting conflicts o
 
       if (sqlText.includes("FROM canonical_meetings")) {
         assert.equal(args.length, 2);
-        assert.equal((sqlText.match(/\?/g) ?? []).length, 2);
+        assert.equal((sqlText.match(/\$\d+/g) ?? []).length, 2);
         return [
           {
             source_package_id: "1272:302:005770:cs577-bundle",
@@ -1931,6 +1932,887 @@ test("generateSchedulesFromPostgres rejects hidden canonical meeting conflicts o
   );
 
   assert.deepEqual(results, []);
+});
+
+test("generateSchedulesFromPostgresWithMetadata prefers the compact schedule for less-time-between-classes", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-zcompact",
+            section_bundle_label: "STAT 340 LEC 001",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 660,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM",
+          },
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-aspread",
+            section_bundle_label: "STAT 340 LEC 002",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 710,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:50 AM-11:50 AM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "stat340-zcompact",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-zcompact",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-aspread",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-aspread",
+            meeting_days: "M",
+            meeting_time_start: 650,
+            meeting_time_end: 710,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 650,
+            end_minute_local: 710,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["STAT 340"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: null,
+        startAfterMinuteLocal: null,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: ["less-time-between-classes"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.equal(result.schedules[0]?.package_ids[0], "stat340-zcompact");
+});
+
+test("generateSchedulesFromPostgresWithMetadata prefers the spread schedule for more-time-between-classes", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-zcompact",
+            section_bundle_label: "STAT 340 LEC 001",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 660,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM",
+          },
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-aspread",
+            section_bundle_label: "STAT 340 LEC 002",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 710,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:50 AM-11:50 AM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "stat340-zcompact",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-zcompact",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-aspread",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-aspread",
+            meeting_days: "M",
+            meeting_time_start: 650,
+            meeting_time_end: 710,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 650,
+            end_minute_local: 710,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["STAT 340"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: null,
+        startAfterMinuteLocal: null,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: ["more-time-between-classes"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.deepEqual(
+    result.schedules.map((schedule) => schedule.package_ids),
+    [["stat340-aspread"], ["stat340-zcompact"]],
+  );
+});
+
+test("generateSchedulesFromPostgresWithMetadata keeps source ordering when preferenceOrder is explicitly empty", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-zcompact",
+            section_bundle_label: "STAT 340 LEC 001",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 660,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM",
+          },
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-aspread",
+            section_bundle_label: "STAT 340 LEC 002",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 710,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:50 AM-11:50 AM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "stat340-zcompact",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-zcompact",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-aspread",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-aspread",
+            meeting_days: "M",
+            meeting_time_start: 650,
+            meeting_time_end: 710,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 650,
+            end_minute_local: 710,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["STAT 340"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: null,
+        startAfterMinuteLocal: null,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: [],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.deepEqual(
+    result.schedules.map((schedule) => schedule.package_ids),
+    [["stat340-aspread"], ["stat340-zcompact"]],
+  );
+});
+
+test("generateSchedulesFromPostgresWithMetadata reports hard-filter empty state", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+            source_package_id: "cs577-main",
+            section_bundle_label: "COMP SCI 577 LEC 001",
+            open_seats: 2,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 1,
+            campus_day_count: 1,
+            earliest_start_minute_local: 720,
+            latest_end_minute_local: 780,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "T 12:00 PM-1:00 PM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "cs577-main",
+            meeting_days: "T",
+            meeting_time_start: 720,
+            meeting_time_end: 780,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 720,
+            end_minute_local: 780,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["COMP SCI 577"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: 0,
+        startAfterMinuteLocal: null,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: ["later-starts"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.deepEqual(result.schedules, []);
+  assert.equal(result.emptyStateReason, "hard-filters");
+});
+
+test("generateSchedulesFromPostgresWithMetadata applies hard filters using package fallbacks when canonical rows are missing", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+            source_package_id: "cs577-partial-canonical",
+            section_bundle_label: "COMP SCI 577 LEC 001",
+            open_seats: 3,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 1,
+            campus_day_count: 2,
+            earliest_start_minute_local: 600,
+            latest_end_minute_local: 900,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "MW 10:00 AM-3:00 PM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["COMP SCI 577"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: 1,
+        startAfterMinuteLocal: 660,
+        endBeforeMinuteLocal: 840,
+        preferenceOrder: ["later-starts"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.deepEqual(result.schedules, []);
+  assert.equal(result.emptyStateReason, "hard-filters");
+});
+
+test("generateSchedulesFromPostgresWithMetadata applies time hard filters from canonical meetings", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+            source_package_id: "cs577-hidden-early",
+            section_bundle_label: "COMP SCI 577 LEC 001 + DIS 301",
+            open_seats: 3,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 1,
+            campus_day_count: 1,
+            earliest_start_minute_local: 720,
+            latest_end_minute_local: 780,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "T 12:00 PM-1:00 PM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "cs577-hidden-early",
+            meeting_days: "T",
+            meeting_time_start: 600,
+            meeting_time_end: 660,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 600,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "cs577-hidden-early",
+            meeting_days: "T",
+            meeting_time_start: 720,
+            meeting_time_end: 780,
+            start_date: 20260902,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 720,
+            end_minute_local: 780,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["COMP SCI 577"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: null,
+        startAfterMinuteLocal: 660,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: ["later-starts"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.deepEqual(result.schedules, []);
+  assert.equal(result.emptyStateReason, "hard-filters");
+});
+
+test("generateSchedulesFromPostgresWithMetadata counts gaps past non-overlapping intervening meetings", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-compact-gap",
+            section_bundle_label: "STAT 340 LEC 001",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 660,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM",
+          },
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-split-gap",
+            section_bundle_label: "STAT 340 LEC 002",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 3,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 840,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM; M 1:00 PM-2:00 PM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "stat340-compact-gap",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-compact-gap",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-split-gap",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-split-gap",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20260902,
+            end_date: 20261019,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-split-gap",
+            meeting_days: "M",
+            meeting_time_start: 780,
+            meeting_time_end: 840,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 780,
+            end_minute_local: 840,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["STAT 340"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: null,
+        startAfterMinuteLocal: null,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: ["more-time-between-classes"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.equal(result.schedules[0]?.package_ids[0], "stat340-split-gap");
+});
+
+test("generateSchedulesFromPostgresWithMetadata counts long gaps past non-overlapping intervening meetings", async () => {
+  const result = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-zcompact-long-gap",
+            section_bundle_label: "STAT 340 LEC 001",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 660,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM",
+          },
+          {
+            course_designation: "STAT 340",
+            title: "Data Science Modeling I",
+            source_package_id: "stat340-asplit-long-gap",
+            section_bundle_label: "STAT 340 LEC 002",
+            open_seats: 10,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 3,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 840,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "M 9:00 AM-10:00 AM; M 10:10 AM-11:00 AM; M 1:00 PM-2:00 PM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "stat340-zcompact-long-gap",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-zcompact-long-gap",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-asplit-long-gap",
+            meeting_days: "M",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+          },
+          {
+            source_package_id: "stat340-asplit-long-gap",
+            meeting_days: "M",
+            meeting_time_start: 610,
+            meeting_time_end: 660,
+            start_date: 20260902,
+            end_date: 20261019,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 610,
+            end_minute_local: 660,
+          },
+          {
+            source_package_id: "stat340-asplit-long-gap",
+            meeting_days: "M",
+            meeting_time_start: 780,
+            meeting_time_end: 840,
+            start_date: 20261020,
+            end_date: 20261212,
+            exam_date: null,
+            instruction_mode: null,
+            latitude: 43.072,
+            longitude: -89.401,
+            location_known: 1,
+            start_minute_local: 780,
+            end_minute_local: 840,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected runtime query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgresWithMetadata({
+        courses: ["STAT 340"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        maxCampusDays: null,
+        startAfterMinuteLocal: null,
+        endBeforeMinuteLocal: null,
+        preferenceOrder: ["fewer-long-gaps"],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+
+  assert.equal(result.schedules[0]?.package_ids[0], "stat340-zcompact-long-gap");
 });
 
 test("getCourseDetail preserves instructor history when SUPABASE_DATABASE_URL is set", async () => {

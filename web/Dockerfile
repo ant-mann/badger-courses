@@ -11,7 +11,7 @@ COPY web/package.json ./web/
 RUN pnpm install --frozen-lockfile
 
 COPY src ./src
-COPY data ./data
+COPY data/fall-2026.sqlite ./data/fall-2026.sqlite
 COPY web ./web
 
 ENV MADGRADES_DB_PATH=/app/data/fall-2026.sqlite
