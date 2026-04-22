@@ -642,7 +642,7 @@ export async function generateSchedulesFromPostgresWithMetadata(options: {
   emptyStateReason: 'constraints' | 'hard-filters' | null;
 }> {
   const normalizedPreferenceOrder = normalizePreferenceOrder(options.preferenceOrder, {
-    useDefaultsWhenEmpty: options.preferenceOrder.length === 0,
+    useDefaultsWhenEmpty: false,
   });
 
   if (options.limit === 0 || options.courses.length === 0) {
@@ -2243,27 +2243,51 @@ function passesGeneratedPostgresHardFilters(
     endBeforeMinuteLocal: number | null;
   },
 ): boolean {
-  if (options.maxCampusDays != null && (schedule.campus_day_count ?? Number.POSITIVE_INFINITY) > options.maxCampusDays) {
+  const hardFilterMetrics = deriveGeneratedPostgresHardFilterMetrics(schedule);
+
+  if (options.maxCampusDays != null && (hardFilterMetrics.campus_day_count ?? Number.POSITIVE_INFINITY) > options.maxCampusDays) {
     return false;
   }
 
   if (
     options.startAfterMinuteLocal != null &&
-    schedule.earliest_start_minute_local != null &&
-    schedule.earliest_start_minute_local < options.startAfterMinuteLocal
+    hardFilterMetrics.earliest_start_minute_local != null &&
+    hardFilterMetrics.earliest_start_minute_local < options.startAfterMinuteLocal
   ) {
     return false;
   }
 
   if (
     options.endBeforeMinuteLocal != null &&
-    schedule.latest_end_minute_local != null &&
-    schedule.latest_end_minute_local > options.endBeforeMinuteLocal
+    hardFilterMetrics.latest_end_minute_local != null &&
+    hardFilterMetrics.latest_end_minute_local > options.endBeforeMinuteLocal
   ) {
     return false;
   }
 
   return true;
+}
+
+function deriveGeneratedPostgresHardFilterMetrics(schedule: GeneratedPostgresSchedule): {
+  campus_day_count: number | null;
+  earliest_start_minute_local: number | null;
+  latest_end_minute_local: number | null;
+} {
+  let campusDayCount = schedule.campus_day_count;
+  let earliestStartMinuteLocal = schedule.earliest_start_minute_local;
+  let latestEndMinuteLocal = schedule.latest_end_minute_local;
+
+  for (const candidate of schedule.packages) {
+    campusDayCount = maxNullableNumber(campusDayCount, candidate.campus_day_count);
+    earliestStartMinuteLocal = minNullableNumber(earliestStartMinuteLocal, candidate.earliest_start_minute_local);
+    latestEndMinuteLocal = maxNullableNumber(latestEndMinuteLocal, candidate.latest_end_minute_local);
+  }
+
+  return {
+    campus_day_count: campusDayCount,
+    earliest_start_minute_local: earliestStartMinuteLocal,
+    latest_end_minute_local: latestEndMinuteLocal,
+  };
 }
 
 function postgresCandidatesConflict(
