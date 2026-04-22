@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CoursePicker } from "@/app/components/CoursePicker";
 import { ScheduleAvailabilityFilters } from "@/app/components/ScheduleAvailabilityFilters";
 import { ScheduleCalendar } from "@/app/components/ScheduleCalendar";
+import { ScheduleHardFilterBar } from "@/app/components/ScheduleHardFilterBar";
 import { SchedulePriorityList } from "@/app/components/SchedulePriorityList";
 import { ScheduleResults } from "@/app/components/ScheduleResults";
 import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
 import { SelectedCourseList } from "@/app/components/SelectedCourseList";
+import { ScheduleBuilder, navigationHooks } from "./ScheduleBuilder";
 import type {
   GeneratedSchedule,
   ScheduleCalendarEntry,
@@ -83,6 +86,7 @@ function makeSchedule(overrides: Partial<GeneratedSchedule> = {}): GeneratedSche
     campus_day_count: 2,
     earliest_start_minute_local: 660,
     large_idle_gap_count: 0,
+    total_between_class_minutes: 0,
     tight_transition_count: 0,
     total_walking_distance_meters: 0,
     total_open_seats: 4,
@@ -90,6 +94,11 @@ function makeSchedule(overrides: Partial<GeneratedSchedule> = {}): GeneratedSche
     ...overrides,
   };
 }
+
+type ButtonElement = React.ReactElement<{
+  children?: React.ReactNode;
+  "aria-label"?: string;
+}>;
 
 test("SectionOptionPanel starts collapsed with a course summary", () => {
   const markup = renderToStaticMarkup(
@@ -323,6 +332,8 @@ test("ScheduleResults explains how to recover when no schedules match", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
       schedules={[]}
+      emptyStateReason="constraints"
+      preferenceOrder={[]}
       selectedScheduleIndex={0}
       requestState="ready"
       loading={false}
@@ -333,12 +344,15 @@ test("ScheduleResults explains how to recover when no schedules match", () => {
 
   assert.match(markup, /No conflict-free schedules matched these courses and section constraints/i);
   assert.match(markup, /Try unlocking or excluding fewer sections/i);
+  assert.doesNotMatch(markup, /0 schedules generated/i);
 });
 
 test("ScheduleResults explains intentional zero-result limits separately from no-match results", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
       schedules={[]}
+      emptyStateReason={null}
+      preferenceOrder={[]}
       selectedScheduleIndex={0}
       requestState="ready"
       loading={false}
@@ -357,6 +371,8 @@ test("ScheduleResults shows guidance before any generation attempt", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
       schedules={[]}
+      emptyStateReason={null}
+      preferenceOrder={[]}
       selectedScheduleIndex={0}
       requestState="idle"
       loading={false}
@@ -367,12 +383,15 @@ test("ScheduleResults shows guidance before any generation attempt", () => {
 
   assert.match(markup, /Add courses and section constraints to generate schedules/i);
   assert.doesNotMatch(markup, /Relax your locked or excluded sections and try again/i);
+  assert.doesNotMatch(markup, /0 schedules generated/i);
 });
 
 test("ScheduleResults shows a generated schedule count summary", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
       schedules={[makeSchedule(), makeSchedule({ package_ids: ["pkg-2"], packages: [{ ...makeSchedule().packages[0], source_package_id: "pkg-2" }] })]}
+      emptyStateReason={null}
+      preferenceOrder={[]}
       selectedScheduleIndex={0}
       requestState="ready"
       loading={false}
@@ -388,6 +407,8 @@ test("ScheduleResults shows a retry action for error states", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
       schedules={[]}
+      emptyStateReason={null}
+      preferenceOrder={[]}
       selectedScheduleIndex={0}
       requestState="error"
       loading={false}
@@ -400,6 +421,35 @@ test("ScheduleResults shows a retry action for error states", () => {
   assert.match(markup, /Retry/i);
 });
 
+test("ScheduleResults hides stale errors while a replacement request is loading", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[]}
+      emptyStateReason={null}
+      preferenceOrder={[]}
+      selectedScheduleIndex={0}
+      requestState="loading"
+      loading={true}
+      errorMessage="Something went wrong."
+      onRetry={() => {}}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Generating schedules/i);
+  assert.doesNotMatch(markup, /Something went wrong\./i);
+  assert.doesNotMatch(markup, /Retry/i);
+});
+
+test("ScheduleCalendar falls back to the empty preview state when pending results are hidden", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleCalendar schedule={null} entries={[]} />,
+  );
+
+  assert.match(markup, /Select a schedule result below to preview your week/i);
+  assert.doesNotMatch(markup, /section choice/i);
+});
+
 test("ScheduleResults keeps selected state and uses quieter secondary framing", () => {
   const markup = renderToStaticMarkup(
     <ScheduleResults
@@ -410,6 +460,8 @@ test("ScheduleResults keeps selected state and uses quieter secondary framing", 
           packages: [{ ...makeSchedule().packages[0], source_package_id: "pkg-2" }],
         }),
       ]}
+      emptyStateReason={null}
+      preferenceOrder={[]}
       selectedScheduleIndex={0}
       requestState="ready"
       loading={false}
@@ -423,26 +475,278 @@ test("ScheduleResults keeps selected state and uses quieter secondary framing", 
   assert.match(markup, /aria-pressed="false" class="[^"]*rounded-lg[^"]*border-border[^"]*bg-muted\/60/);
 });
 
-test("SchedulePriorityList shows ordered rules, guidance copy, and move controls", () => {
+test("ScheduleResults surfaces up to three ranking metrics in active priority order", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[
+        makeSchedule({
+          campus_day_count: 2,
+          earliest_start_minute_local: 660,
+          latest_end_minute_local: 735,
+          total_between_class_minutes: 35,
+          total_walking_distance_meters: 120,
+        }),
+      ]}
+      emptyStateReason={null}
+      preferenceOrder={[
+        "later-starts",
+        "earlier-finishes",
+        "less-time-between-classes",
+        "shorter-walks",
+      ]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.match(markup, /11:00 AM start/);
+  assert.match(markup, /12:15 PM finish/);
+  assert.match(markup, /35 min less gap/);
+  assert.doesNotMatch(markup, /120m walking/);
+});
+
+test("ScheduleResults backfills later active metrics when an earlier metric is unavailable", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[
+        makeSchedule({
+          earliest_start_minute_local: null,
+          total_between_class_minutes: 35,
+          total_walking_distance_meters: 120,
+          total_open_seats: 8,
+        }),
+      ]}
+      emptyStateReason={null}
+      preferenceOrder={[
+        "later-starts",
+        "less-time-between-classes",
+        "shorter-walks",
+        "more-open-seats",
+      ]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.match(markup, /35 min less gap/);
+  assert.match(markup, /120m walking/);
+  assert.match(markup, /8 open seats/);
+});
+
+test("ScheduleResults preserves directional gap metric labels", () => {
+  const lessGapMarkup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[makeSchedule({ total_between_class_minutes: 35 })]}
+      emptyStateReason={null}
+      preferenceOrder={["less-time-between-classes"]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />, 
+  );
+  const moreGapMarkup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[makeSchedule({ total_between_class_minutes: 35 })]}
+      emptyStateReason={null}
+      preferenceOrder={["more-time-between-classes"]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.match(lessGapMarkup, /35 min less gap/i);
+  assert.match(moreGapMarkup, /35 min more gap/i);
+  assert.notEqual(lessGapMarkup, moreGapMarkup);
+});
+
+test("ScheduleResults skips unavailable campus-day metrics before backfilling later metrics", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[
+        makeSchedule({
+          campus_day_count: null,
+          total_between_class_minutes: 35,
+          total_walking_distance_meters: 120,
+          total_open_seats: 8,
+        }),
+      ]}
+      emptyStateReason={null}
+      preferenceOrder={[
+        "fewer-campus-days",
+        "less-time-between-classes",
+        "shorter-walks",
+        "more-open-seats",
+      ]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /- campus days/);
+  assert.match(markup, /35 min less gap/);
+  assert.match(markup, /120m walking/);
+  assert.match(markup, /8 open seats/);
+});
+
+test("ScheduleResults shows hard-filter-specific recovery copy", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleResults
+      schedules={[]}
+      emptyStateReason="hard-filters"
+      preferenceOrder={[]}
+      selectedScheduleIndex={0}
+      requestState="ready"
+      loading={false}
+      errorMessage={null}
+      onSelectSchedule={() => {}}
+    />,
+  );
+
+  assert.match(markup, /No schedules matched your current schedule limits/i);
+  assert.match(markup, /Try widening your day or time filters/i);
+  assert.doesNotMatch(markup, /Try unlocking or excluding fewer sections/i);
+});
+
+test("ScheduleHardFilterBar renders the approved one-row schedule limits", () => {
+  const markup = renderToStaticMarkup(
+    <ScheduleHardFilterBar
+      maxDays={3}
+      startAfterHour={9}
+      endBeforeHour={16}
+      onMaxDaysChange={() => {}}
+      onStartAfterHourChange={() => {}}
+      onEndBeforeHourChange={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Max days\/week/i);
+  assert.match(markup, /Start classes after/i);
+  assert.match(markup, /Finish classes by/i);
+  assert.match(markup, /role="group" aria-label="Max days\/week"/i);
+  assert.match(markup, /role="group" aria-label="Start classes after"/i);
+  assert.match(markup, /role="group" aria-label="Finish classes by"/i);
+  assert.match(markup, />3</);
+  assert.match(markup, />9 AM</);
+  assert.match(markup, />4 PM</);
+});
+
+test("ScheduleHardFilterBar exposes pressed state and invokes the selected callbacks", () => {
+  const maxDaysChanges: Array<number | null> = [];
+  const startAfterChanges: Array<number | null> = [];
+  const endBeforeChanges: Array<number | null> = [];
+  const buttons = getButtonElements(
+    <ScheduleHardFilterBar
+      maxDays={3}
+      startAfterHour={9}
+      endBeforeHour={16}
+      onMaxDaysChange={(value) => {
+        maxDaysChanges.push(value);
+      }}
+      onStartAfterHourChange={(value) => {
+        startAfterChanges.push(value);
+      }}
+      onEndBeforeHourChange={(value) => {
+        endBeforeChanges.push(value);
+      }}
+    />,
+  );
+
+  const activeMaxDaysButton = getButtonByText(buttons, "3");
+  const inactiveMaxDaysButton = getButtonByText(buttons, "2");
+  const activeStartButton = getButtonByText(buttons, "9 AM");
+  const activeEndButton = getButtonByText(buttons, "4 PM");
+
+  assert.equal(activeMaxDaysButton.props["aria-pressed"], true);
+  assert.equal(inactiveMaxDaysButton.props["aria-pressed"], false);
+  assert.equal(activeStartButton.props["aria-pressed"], true);
+  assert.equal(activeEndButton.props["aria-pressed"], true);
+
+  activeMaxDaysButton.props.onClick();
+  activeStartButton.props.onClick();
+  activeEndButton.props.onClick();
+
+  assert.deepEqual(maxDaysChanges, [3]);
+  assert.deepEqual(startAfterChanges, [9]);
+  assert.deepEqual(endBeforeChanges, [16]);
+});
+
+test("SchedulePriorityList renders active ranking rules and inactive add-back controls", () => {
   const markup = renderToStaticMarkup(
     <SchedulePriorityList
       preferenceOrder={[
         "later-starts",
-        "fewer-campus-days",
-        "fewer-long-gaps",
-        "earlier-finishes",
+        "less-time-between-classes",
+        "shorter-walks",
       ]}
       onMoveRule={() => {}}
+      onRuleEnabledChange={() => {}}
     />,
   );
 
-  assert.match(markup, /Priority order/i);
-  assert.match(markup, />1\.<\/span>\s*<span[^>]*>Later starts</i);
-  assert.match(markup, />2\.<\/span>\s*<span[^>]*>Fewer campus days</i);
-  assert.match(markup, />3\.<\/span>\s*<span[^>]*>Fewer long gaps</i);
-  assert.match(markup, />4\.<\/span>\s*<span[^>]*>Earlier finishes</i);
-  assert.equal(markup.match(/Move up/g)?.length, 4);
-  assert.equal(markup.match(/Move down/g)?.length, 4);
+  assert.match(markup, /Rank schedules by/i);
+  assert.match(markup, /Start classes later/i);
+  assert.match(markup, /Less time between classes/i);
+  assert.match(markup, /Shorter walks/i);
+  assert.match(markup, /More time between classes/i);
+  assert.equal(markup.match(/Move [^\"]+ up/g)?.length, 3);
+});
+
+test("SchedulePriorityList wires move, remove, and add-back controls with descriptive labels", () => {
+  const moveCalls: Array<[string, -1 | 1]> = [];
+  const enabledChanges: Array<[string, boolean]> = [];
+  const buttons = getButtonElements(
+    <SchedulePriorityList
+      preferenceOrder={["later-starts", "less-time-between-classes", "shorter-walks"]}
+      onMoveRule={(ruleId, direction) => {
+        moveCalls.push([ruleId, direction]);
+      }}
+      onRuleEnabledChange={(ruleId, enabled) => {
+        enabledChanges.push([ruleId, enabled]);
+      }}
+    />,
+  );
+
+  const moveUpButton = getButtonByAriaLabel(buttons, "Move Less time between classes up");
+  const moveDownButton = getButtonByAriaLabel(buttons, "Move Less time between classes down");
+  const removeButton = getButtonByAriaLabel(buttons, "Remove Less time between classes");
+  const addBackButton = getButtonByAriaLabel(
+    buttons,
+    "Add Spend fewer days on campus back to ranking",
+  );
+
+  assert.equal(getButtonByAriaLabel(buttons, "Move Start classes later up").props.disabled, true);
+  assert.equal(moveUpButton.props.disabled, false);
+  assert.equal(moveDownButton.props.disabled, false);
+  assert.equal(removeButton.props.children, "Remove");
+  assert.equal(addBackButton.props.children, "Spend fewer days on campus");
+
+  moveUpButton.props.onClick();
+  moveDownButton.props.onClick();
+  removeButton.props.onClick();
+  addBackButton.props.onClick();
+
+  assert.deepEqual(moveCalls, [
+    ["less-time-between-classes", -1],
+    ["less-time-between-classes", 1],
+  ]);
+  assert.deepEqual(enabledChanges, [
+    ["less-time-between-classes", false],
+    ["fewer-campus-days", true],
+  ]);
 });
 
 test("ScheduleAvailabilityFilters renders both toggles and locked-section helper copy", () => {
@@ -1574,6 +1878,469 @@ test("SelectedCourseList shows its key presentational states", () => {
   assert.match(populatedMarkup, /Could not load section options/i);
   assert.match(populatedMarkup, /Remove/i);
 });
+
+test("ScheduleBuilder hides stale results while a hard-filter URL update is pending", async () => {
+  const originalFetch = globalThis.fetch;
+  const { document: fakeDocument, window: fakeWindow, flushTimers, cleanup } = installMiniDom();
+  let currentSearchParams = new URLSearchParams("course=COMP+SCI+577&limit=20&includeWaitlisted=false&includeClosed=false");
+  const replaceCalls: string[] = [];
+  const originalUseRouter = navigationHooks.useRouter;
+  const originalUsePathname = navigationHooks.usePathname;
+  const originalUseSearchParams = navigationHooks.useSearchParams;
+  const scheduleResponses = [
+    {
+      schedules: [makeSchedule()],
+      empty_state_reason: null,
+    },
+    {
+      schedules: [],
+      empty_state_reason: "hard-filters",
+    },
+  ];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes("/api/courses/COMP%20SCI%20577")) {
+      return {
+        ok: true,
+        async json() {
+          return makeCourseDetail();
+        },
+      } as Response;
+    }
+
+    if (url === "/api/schedules") {
+      const nextResponse = scheduleResponses.shift();
+      assert.ok(nextResponse, "expected a queued schedule response");
+      return {
+        ok: true,
+        async json() {
+          return nextResponse;
+        },
+      } as Response;
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  navigationHooks.useRouter = () => ({
+    replace(nextUrl: string) {
+      replaceCalls.push(nextUrl);
+    },
+  } as ReturnType<typeof navigationHooks.useRouter>);
+  navigationHooks.usePathname = () => "/";
+  navigationHooks.useSearchParams = () => currentSearchParams as ReturnType<typeof navigationHooks.useSearchParams>;
+
+  try {
+    const container = fakeDocument.createElement("div");
+    fakeDocument.body.appendChild(container);
+    const root = createRoot(container as unknown as Element);
+
+    await React.act(async () => {
+      root.render(<ScheduleBuilder />);
+    });
+
+    await flushEffects(flushTimers);
+
+    assert.match(container.textContent, /1 schedule generated/i);
+    assert.match(container.textContent, /Schedule 1/i);
+    assert.doesNotMatch(container.textContent, /No schedules matched your current schedule limits/i);
+
+    const maxDaysThreeButton = findElementByText(container, "BUTTON", "3");
+    assert.ok(maxDaysThreeButton, "expected rendered max-days button");
+
+    await React.act(async () => {
+      maxDaysThreeButton.dispatchEvent(new fakeWindow.MouseEvent("click", { bubbles: true }));
+    });
+
+    assert.equal(replaceCalls.length, 1);
+    const replaceUrl = new URL(replaceCalls[0] ?? "", "https://example.test");
+    assert.equal(replaceUrl.pathname, "/");
+    assert.deepEqual(replaceUrl.searchParams.getAll("course"), ["COMP SCI 577"]);
+    assert.equal(replaceUrl.searchParams.get("limit"), "20");
+    assert.equal(replaceUrl.searchParams.get("maxDays"), "3");
+    assert.equal(replaceUrl.searchParams.get("includeWaitlisted"), "false");
+    assert.equal(replaceUrl.searchParams.get("includeClosed"), "false");
+    assert.match(container.textContent, /Generating schedules/i);
+    assert.doesNotMatch(container.textContent, /Schedule 1/i);
+    assert.doesNotMatch(container.textContent, /1 schedule generated/i);
+
+    currentSearchParams = new URLSearchParams(replaceUrl.searchParams.toString());
+
+    await React.act(async () => {
+      root.render(<ScheduleBuilder />);
+    });
+
+    await flushEffects(flushTimers);
+
+    assert.match(container.textContent, /No schedules matched your current schedule limits/i);
+    assert.match(container.textContent, /Try widening your day or time filters/i);
+    assert.doesNotMatch(container.textContent, /Generating schedules/i);
+
+    await React.act(async () => {
+      root.unmount();
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    navigationHooks.useRouter = originalUseRouter;
+    navigationHooks.usePathname = originalUsePathname;
+    navigationHooks.useSearchParams = originalUseSearchParams;
+    cleanup();
+  }
+});
+
+function installMiniDom() {
+  const keys = [
+    "window",
+    "document",
+    "navigator",
+    "HTMLElement",
+    "HTMLInputElement",
+    "HTMLButtonElement",
+    "HTMLDivElement",
+    "HTMLIFrameElement",
+    "SVGElement",
+    "Node",
+    "Text",
+    "Element",
+    "Document",
+    "requestAnimationFrame",
+    "cancelAnimationFrame",
+    "IS_REACT_ACT_ENVIRONMENT",
+  ] as const;
+  const saved = new Map(keys.map((key) => [key, (globalThis as Record<string, unknown>)[key]]));
+  let nextHandle = 1;
+  const timers = new Map<number, () => void>();
+
+  class MiniNode {
+    nodeType: number;
+    ownerDocument: MiniDocument;
+    parentNode: MiniNode | null = null;
+    childNodes: MiniNode[] = [];
+    nodeValue = "";
+    namespaceURI = "http://www.w3.org/1999/xhtml";
+    listeners = new Map<string, Array<(event: Event) => void>>();
+
+    constructor(nodeType: number, ownerDocument: MiniDocument) {
+      this.nodeType = nodeType;
+      this.ownerDocument = ownerDocument;
+    }
+
+    appendChild(child: MiniNode) {
+      return this.insertBefore(child, null);
+    }
+
+    insertBefore(child: MiniNode, before: MiniNode | null) {
+      child.parentNode?.removeChild(child);
+      const index = before ? this.childNodes.indexOf(before) : -1;
+      this.childNodes.splice(index >= 0 ? index : this.childNodes.length, 0, child);
+      child.parentNode = this;
+      return child;
+    }
+
+    removeChild(child: MiniNode) {
+      this.childNodes = this.childNodes.filter((candidate) => candidate !== child);
+      child.parentNode = null;
+      return child;
+    }
+
+    get firstChild() {
+      return this.childNodes[0] ?? null;
+    }
+
+    get textContent() {
+      return this.nodeType === 3 ? this.nodeValue : this.childNodes.map((child) => child.textContent).join("");
+    }
+
+    set textContent(value: string) {
+      this.childNodes = value ? [this.ownerDocument.createTextNode(value)] : [];
+    }
+
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const handler = typeof listener === "function" ? listener : (event: Event) => listener.handleEvent(event);
+      this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler]);
+    }
+
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const handler = typeof listener === "function" ? listener : (event: Event) => listener.handleEvent(event);
+      this.listeners.set(type, (this.listeners.get(type) ?? []).filter((candidate) => candidate !== handler));
+    }
+
+    dispatchEvent(event: Event) {
+      Object.defineProperty(event, "target", { configurable: true, value: this });
+      const dispatchToNode = (node: MiniNode | null) => {
+        if (!node) {
+          return;
+        }
+
+        Object.defineProperty(event, "currentTarget", { configurable: true, value: node });
+        for (const listener of node.listeners.get(event.type) ?? []) {
+          listener(event);
+        }
+
+        dispatchToNode(node.parentNode);
+      };
+
+      dispatchToNode(this);
+      return true;
+    }
+  }
+
+  class MiniElement extends MiniNode {
+    tagName: string;
+    nodeName: string;
+    localName: string;
+    attributes = new Map<string, string>();
+    style: Record<string, unknown>;
+    value = "";
+    checked = false;
+    disabled = false;
+
+    constructor(tagName: string, ownerDocument: MiniDocument) {
+      super(1, ownerDocument);
+      this.tagName = tagName.toUpperCase();
+      this.nodeName = this.tagName;
+      this.localName = tagName.toLowerCase();
+      this.style = {
+        setProperty: (name: string, value: string) => { this.style[name] = value; },
+        removeProperty: (name: string) => { delete this.style[name]; },
+      };
+    }
+
+    setAttribute(name: string, value: string) {
+      this.attributes.set(name, value);
+      if (name === "value") {
+        this.value = value;
+      }
+    }
+
+    getAttribute(name: string) {
+      return this.attributes.get(name) ?? null;
+    }
+
+    removeAttribute(name: string) {
+      this.attributes.delete(name);
+    }
+  }
+
+  class MiniText extends MiniNode {
+    nodeName = "#text";
+
+    constructor(value: string, ownerDocument: MiniDocument) {
+      super(3, ownerDocument);
+      this.nodeValue = value;
+    }
+  }
+
+  class MiniDocument extends MiniNode {
+    documentElement: MiniElement;
+    body: MiniElement;
+    defaultView: Window | null = null;
+    activeElement: MiniElement | null = null;
+
+    constructor() {
+      super(9, undefined as never);
+      this.ownerDocument = this;
+      this.documentElement = new MiniElement("html", this);
+      this.body = new MiniElement("body", this);
+      this.documentElement.appendChild(this.body);
+      this.appendChild(this.documentElement);
+    }
+
+    createElement(tagName: string) {
+      return new MiniElement(tagName, this);
+    }
+
+    createElementNS(_namespace: string, tagName: string) {
+      return this.createElement(tagName);
+    }
+
+    createTextNode(value: string) {
+      return new MiniText(value, this);
+    }
+  }
+
+  const document = new MiniDocument();
+  const window = {
+    document,
+    navigator: { userAgent: "node" },
+    location: { href: "http://localhost/" },
+    HTMLElement: MiniElement,
+    HTMLInputElement: MiniElement,
+    HTMLButtonElement: MiniElement,
+    HTMLDivElement: MiniElement,
+    HTMLIFrameElement: MiniElement,
+    SVGElement: MiniElement,
+    Node: MiniNode,
+    Text: MiniText,
+    Element: MiniElement,
+    Document: MiniDocument,
+    addEventListener() {},
+    removeEventListener() {},
+    getComputedStyle() { return { getPropertyValue() { return ""; } }; },
+    requestAnimationFrame(callback: FrameRequestCallback) {
+      const handle = nextHandle++;
+      timers.set(handle, () => callback(Date.now()));
+      return handle;
+    },
+    cancelAnimationFrame(handle: number) {
+      timers.delete(handle);
+    },
+    setTimeout(callback: TimerHandler) {
+      const handle = nextHandle++;
+      const runnable = typeof callback === "function" ? callback : () => {};
+      timers.set(handle, runnable as () => void);
+      return handle;
+    },
+    clearTimeout(handle: number) {
+      timers.delete(handle);
+    },
+    MouseEvent: class MouseEvent extends Event {},
+  } as unknown as Window & typeof globalThis;
+
+  document.defaultView = window;
+  Object.assign(globalThis, {
+    window,
+    document,
+    navigator: window.navigator,
+    HTMLElement: MiniElement,
+    HTMLInputElement: MiniElement,
+    HTMLButtonElement: MiniElement,
+    HTMLDivElement: MiniElement,
+    HTMLIFrameElement: MiniElement,
+    SVGElement: MiniElement,
+    Node: MiniNode,
+    Text: MiniText,
+    Element: MiniElement,
+    Document: MiniDocument,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
+    cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+
+  return {
+    document,
+    window,
+    flushTimers() {
+      const pendingTimers = Array.from(timers.entries());
+
+      for (const [handle, callback] of pendingTimers) {
+        if (!timers.delete(handle)) {
+          continue;
+        }
+        callback();
+      }
+
+      return pendingTimers.length;
+    },
+    cleanup() {
+      timers.clear();
+      for (const key of keys) {
+        (globalThis as Record<string, unknown>)[key] = saved.get(key);
+      }
+    },
+  };
+}
+
+function flushEffects(flushTimers: () => number) {
+  return React.act(async () => {
+    while (flushTimers() > 0) {
+      await Promise.resolve();
+    }
+  });
+}
+
+function findElementByText(node: Node, tagName: string, text: string): HTMLElement | null {
+  if (node instanceof HTMLElement && node.tagName === tagName && node.textContent === text) {
+    return node;
+  }
+
+  for (const child of Array.from(node.childNodes)) {
+    const match = findElementByText(child, tagName, text);
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+function getButtonElements(node: React.ReactNode): ButtonElement[] {
+  const buttons: ButtonElement[] = [];
+
+  function visit(value: React.ReactNode) {
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        visit(child);
+      }
+      return;
+    }
+
+    if (
+      value === null ||
+      value === undefined ||
+      typeof value === "boolean" ||
+      typeof value === "number" ||
+      typeof value === "string"
+    ) {
+      return;
+    }
+
+    if (!React.isValidElement(value)) {
+      return;
+    }
+
+    if (typeof value.type === "function") {
+      visit(value.type(value.props));
+      return;
+    }
+
+    if (value.type === "button") {
+      buttons.push(value as ButtonElement);
+    }
+
+    visit((value.props as { children?: React.ReactNode }).children);
+  }
+
+  visit(node);
+  return buttons;
+}
+
+function getNodeText(node: React.ReactNode): string {
+  if (Array.isArray(node)) {
+    return node.map((child) => getNodeText(child)).join("");
+  }
+
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (!node || !React.isValidElement(node)) {
+    return "";
+  }
+
+  return getNodeText((node.props as { children?: React.ReactNode }).children);
+}
+
+function getButtonByText(
+  buttons: ButtonElement[],
+  text: string,
+): ButtonElement {
+  const button = buttons.find((candidate) => getNodeText(candidate.props.children) === text);
+
+  assert.ok(button, `expected button with text ${text}`);
+  return button;
+}
+
+function getButtonByAriaLabel(
+  buttons: ButtonElement[],
+  ariaLabel: string,
+): ButtonElement {
+  const button = buttons.find((candidate) => candidate.props["aria-label"] === ariaLabel);
+
+  assert.ok(button, `expected button with aria-label ${ariaLabel}`);
+  return button;
+}
 
 function makeEntry(overrides: Partial<ScheduleCalendarEntry> = {}): ScheduleCalendarEntry {
   return {

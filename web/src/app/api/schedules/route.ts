@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { generateSchedules } from '@madgrades/schedule';
-import { type PreferenceRuleId } from '@/app/schedule-builder/preferences';
-import { generateSchedulesFromPostgres } from '@/lib/course-data';
+import { generateSchedulesWithMetadata } from '@madgrades/schedule';
+import { generateSchedulesFromPostgresWithMetadata } from '@/lib/course-data';
 
 import {
   clampScheduleLimit,
@@ -10,7 +9,12 @@ import {
 } from '@/lib/course-designation';
 import { getCourseSqliteDb } from '@/lib/db';
 import { isSupabaseRuntimeEnabled } from '@/lib/env';
-import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
+import {
+  normalizePreferenceOrderInput,
+  normalizeBooleanInput,
+  normalizeNullableIntegerField,
+  normalizeScheduleGenerationResult,
+} from './normalize';
 
 type ScheduleRequestBody = {
   courses?: unknown;
@@ -20,22 +24,20 @@ type ScheduleRequestBody = {
   preference_order?: unknown;
   include_waitlisted?: unknown;
   include_closed?: unknown;
+  max_campus_days?: unknown;
+  start_after_minute_local?: unknown;
+  end_before_minute_local?: unknown;
 };
 
-type GenerateSchedulesOptions = {
-  courses: string[];
-  lockPackages: string[];
-  excludePackages: string[];
-  limit: number;
-  preferenceOrder: PreferenceRuleId[];
-  includeWaitlisted: boolean;
-  includeClosed: boolean;
-};
+type GenerateSchedulesOptions = Parameters<typeof generateSchedulesFromPostgresWithMetadata>[0];
+type GenerateSchedulesResult = Awaited<ReturnType<typeof generateSchedulesFromPostgresWithMetadata>>;
 
-const generateSchedulesTyped = generateSchedules as unknown as (
+function generateSchedulesFromSqlite(
   db: Awaited<ReturnType<typeof getCourseSqliteDb>>,
   options: GenerateSchedulesOptions,
-) => unknown[];
+): GenerateSchedulesResult {
+  return normalizeScheduleGenerationResult(generateSchedulesWithMetadata(db, options));
+}
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -101,6 +103,9 @@ export async function POST(request: Request) {
   const preferenceOrder = normalizePreferenceOrderInput(body.preference_order);
   const includeWaitlisted = normalizeBooleanInput(body.include_waitlisted);
   const includeClosed = normalizeBooleanInput(body.include_closed);
+  const maxCampusDays = normalizeNullableIntegerField(body.max_campus_days);
+  const startAfterMinuteLocal = normalizeNullableIntegerField(body.start_after_minute_local);
+  const endBeforeMinuteLocal = normalizeNullableIntegerField(body.end_before_minute_local);
 
   if (!courses) {
     return NextResponse.json(
@@ -115,17 +120,23 @@ export async function POST(request: Request) {
     limit === null ||
     !preferenceOrder ||
     includeWaitlisted === null ||
-    includeClosed === null
+    includeClosed === null ||
+    !maxCampusDays.isValid ||
+    !startAfterMinuteLocal.isValid ||
+    !endBeforeMinuteLocal.isValid
   ) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
-  const schedules = isSupabaseRuntimeEnabled()
-    ? await generateSchedulesFromPostgres({
+  const generationResult = await (isSupabaseRuntimeEnabled()
+    ? generateSchedulesFromPostgresWithMetadata({
         courses,
         lockPackages,
         excludePackages,
         limit,
+        maxCampusDays: maxCampusDays.value,
+        startAfterMinuteLocal: startAfterMinuteLocal.value,
+        endBeforeMinuteLocal: endBeforeMinuteLocal.value,
         preferenceOrder,
         includeWaitlisted,
         includeClosed,
@@ -134,21 +145,25 @@ export async function POST(request: Request) {
         const db = getCourseSqliteDb();
 
         return db.then((resolvedDb) =>
-          generateSchedulesTyped(resolvedDb, {
+          generateSchedulesFromSqlite(resolvedDb, {
             courses,
             lockPackages,
             excludePackages,
             limit,
+            maxCampusDays: maxCampusDays.value,
+            startAfterMinuteLocal: startAfterMinuteLocal.value,
+            endBeforeMinuteLocal: endBeforeMinuteLocal.value,
             preferenceOrder,
             includeWaitlisted,
             includeClosed,
           }),
         );
-      })();
+      })());
 
   return NextResponse.json(
     {
-      schedules: await schedules,
+      schedules: generationResult.schedules,
+      empty_state_reason: generationResult.emptyStateReason,
     },
     {
       headers: {

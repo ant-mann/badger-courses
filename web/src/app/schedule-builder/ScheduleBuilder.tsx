@@ -6,17 +6,27 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CoursePicker } from "@/app/components/CoursePicker";
 import { ScheduleAvailabilityFilters } from "@/app/components/ScheduleAvailabilityFilters";
 import { ScheduleCalendar } from "@/app/components/ScheduleCalendar";
+import { ScheduleHardFilterBar } from "@/app/components/ScheduleHardFilterBar";
 import { SchedulePriorityList } from "@/app/components/SchedulePriorityList";
 import { ScheduleResults } from "@/app/components/ScheduleResults";
 import { SectionOptionPanel } from "@/app/components/SectionOptionPanel";
 import { SelectedCourseList } from "@/app/components/SelectedCourseList";
 import {
+  addCourse,
+  applyPendingBuilderStateUpdate,
   buildCourseDetailsRequestSignature,
   buildScheduleRequestSignature,
+  deriveCoursePickerState,
+  deriveInteractiveBuilderState,
+  derivePendingResultsDisplayState,
   parseBuilderState,
+  replacePendingBuilderStateSignature,
+  reconcilePendingBuilderStateFromUrl,
   removeCourse,
   serializeBuilderState,
+  shouldHideGeneratedSchedulePreview,
   movePreferenceRule,
+  setPreferenceRuleEnabled,
   setExcludedSection,
   setLockedSection,
   type ScheduleRequestPayload,
@@ -26,13 +36,18 @@ import {
   deriveScheduleCalendarEntries,
   type GeneratedSchedule,
   type ScheduleBuilderCourseDetailResponse,
+  type ScheduleBuilderSchedulesResponse,
 } from "@/app/schedule-builder/schedule-data";
 import {
   clampScheduleLimit,
-  MAX_SCHEDULE_COURSES,
-  normalizeCourseDesignation,
 } from "@/lib/course-designation";
 import type { CourseListItem } from "@/lib/course-data";
+
+export const navigationHooks = {
+  useRouter,
+  usePathname,
+  useSearchParams,
+};
 
 type CourseDetailRecord = {
   data: ScheduleBuilderCourseDetailResponse | null;
@@ -89,9 +104,9 @@ async function readErrorMessage(response: Response, fallbackMessage: string): Pr
 }
 
 export function ScheduleBuilder() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const router = navigationHooks.useRouter();
+  const pathname = navigationHooks.usePathname();
+  const searchParams = navigationHooks.useSearchParams();
   const [isRoutingPending, startTransition] = useTransition();
   const builderState = parseBuilderState(new URLSearchParams(searchParams.toString()));
   const courseDetailsRequestSignature = buildCourseDetailsRequestSignature(builderState.courses);
@@ -104,14 +119,27 @@ export function ScheduleBuilder() {
   const [courseDetails, setCourseDetails] = useState<Record<string, CourseDetailRecord>>({});
   const [requestState, setRequestState] = useState<ScheduleRequestState>("idle");
   const [schedules, setSchedules] = useState<GeneratedSchedule[]>([]);
+  const [emptyStateReason, setEmptyStateReason] = useState<ScheduleBuilderSchedulesResponse["empty_state_reason"]>(null);
   const [generationErrorMessage, setGenerationErrorMessage] = useState<string | null>(null);
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState(0);
   const [retryNonce, setRetryNonce] = useState(0);
   const courseDetailsRef = useRef(courseDetails);
+  const pendingBuilderStateRef = useRef(builderState);
+  const pendingBuilderStateSignaturesRef = useRef<string[]>([]);
+  const lastReconciledBuilderStateSignatureRef = useRef(serializeBuilderState(builderState).toString());
 
   useEffect(() => {
     courseDetailsRef.current = courseDetails;
   }, [courseDetails]);
+
+  useEffect(() => {
+    reconcilePendingBuilderStateFromUrl(
+      pendingBuilderStateRef,
+      pendingBuilderStateSignaturesRef,
+      builderState,
+      lastReconciledBuilderStateSignatureRef,
+    );
+  }, [builderState]);
 
   useEffect(() => {
     const trimmedQuery = searchQuery.trim();
@@ -220,7 +248,8 @@ export function ScheduleBuilder() {
                 return currentDetails;
               }
 
-              const { [designation]: _abortedDesignation, ...nextDetails } = currentDetails;
+              const nextDetails = { ...currentDetails };
+              delete nextDetails[designation];
               return nextDetails;
             });
             return;
@@ -254,6 +283,7 @@ export function ScheduleBuilder() {
 
     if (schedulePayload.courses.length === 0) {
       setSchedules([]);
+      setEmptyStateReason(null);
       setRequestState("idle");
       setGenerationErrorMessage(null);
       setSelectedScheduleIndex(0);
@@ -263,6 +293,7 @@ export function ScheduleBuilder() {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(async () => {
       setRequestState("loading");
+      setEmptyStateReason(null);
       setGenerationErrorMessage(null);
 
       try {
@@ -279,8 +310,9 @@ export function ScheduleBuilder() {
           throw new Error(await readErrorMessage(response, "Unable to generate schedules right now."));
         }
 
-        const body = (await response.json()) as { schedules?: GeneratedSchedule[] };
+        const body = (await response.json()) as ScheduleBuilderSchedulesResponse;
         setSchedules(Array.isArray(body.schedules) ? body.schedules : []);
+        setEmptyStateReason(body.empty_state_reason ?? null);
         setRequestState("ready");
       } catch (error) {
         if (controller.signal.aborted) {
@@ -288,6 +320,7 @@ export function ScheduleBuilder() {
         }
 
         setSchedules([]);
+        setEmptyStateReason(null);
         setRequestState("error");
         setGenerationErrorMessage(
           error instanceof Error ? error.message : "Unable to generate schedules right now.",
@@ -319,14 +352,52 @@ export function ScheduleBuilder() {
     ? deriveScheduleCalendarEntries(selectedSchedule, selectedCourseDetails)
     : [];
   const searchResultTitles = new Map(searchResults.map((course) => [course.designation, course.title] as const));
-  const maxCoursesReached = builderState.courses.length >= MAX_SCHEDULE_COURSES;
+  const interactiveBuilderState = deriveInteractiveBuilderState(
+    builderState,
+    pendingBuilderStateRef.current,
+    pendingBuilderStateSignaturesRef.current.length > 0,
+  );
+  const hasPendingBuilderState = pendingBuilderStateSignaturesRef.current.length > 0;
+  const pendingResultsDisplayState = derivePendingResultsDisplayState(
+    builderState,
+    pendingBuilderStateRef.current,
+    hasPendingBuilderState,
+  );
+  const coursePickerState = deriveCoursePickerState(
+    builderState,
+    pendingBuilderStateRef.current,
+    hasPendingBuilderState,
+  );
+  const hideGeneratedSchedulePreview = shouldHideGeneratedSchedulePreview(
+    hasPendingBuilderState,
+    requestState,
+  );
+  const visibleSchedules = pendingResultsDisplayState ? [] : schedules;
+  const visibleRequestState = pendingResultsDisplayState?.requestState ?? requestState;
+  const visibleZeroLimit = pendingResultsDisplayState?.zeroLimit ?? interactiveBuilderState.limit === 0;
+  const visibleSelectedSchedule = hideGeneratedSchedulePreview ? null : selectedSchedule;
+  const visibleCalendarEntries = hideGeneratedSchedulePreview ? [] : calendarEntries;
 
-  function replaceBuilderState(nextState: ScheduleBuilderState) {
+  function replaceBuilderState(nextState: ScheduleBuilderState, previousSearchParams: string) {
     const nextSearchParams = serializeBuilderState(nextState).toString();
+    const currentSearchParams = searchParams.toString();
 
-    if (nextSearchParams === searchParams.toString()) {
+    if (nextSearchParams === currentSearchParams) {
+      replacePendingBuilderStateSignature(
+        pendingBuilderStateSignaturesRef,
+        previousSearchParams,
+        nextSearchParams,
+        currentSearchParams,
+      );
       return;
     }
+
+    replacePendingBuilderStateSignature(
+      pendingBuilderStateSignaturesRef,
+      previousSearchParams,
+      nextSearchParams,
+      currentSearchParams,
+    );
 
     startTransition(() => {
       router.replace(nextSearchParams ? `${pathname}?${nextSearchParams}` : pathname, {
@@ -336,30 +407,28 @@ export function ScheduleBuilder() {
   }
 
   function updateBuilderState(updater: (state: ScheduleBuilderState) => ScheduleBuilderState) {
-    replaceBuilderState(updater(builderState));
+    const previousSearchParams = serializeBuilderState(pendingBuilderStateRef.current).toString();
+    const { nextState, changed } = applyPendingBuilderStateUpdate(pendingBuilderStateRef, updater);
+
+    if (!changed) {
+      return;
+    }
+
+    replaceBuilderState(nextState, previousSearchParams);
   }
 
   function handleAddCourse(designation: string) {
-    if (maxCoursesReached) {
+    if (coursePickerState.maxCoursesReached) {
       return;
     }
 
-    let normalizedDesignation: string;
+    const nextState = addCourse(pendingBuilderStateRef.current, designation);
 
-    try {
-      normalizedDesignation = normalizeCourseDesignation(designation);
-    } catch {
+    if (nextState === pendingBuilderStateRef.current) {
       return;
     }
 
-    if (builderState.courses.includes(normalizedDesignation)) {
-      return;
-    }
-
-    updateBuilderState((state) => ({
-      ...state,
-      courses: [...state.courses, normalizedDesignation],
-    }));
+    updateBuilderState(() => nextState);
     setSearchQuery("");
     setSearchResults([]);
     setSearchErrorMessage(null);
@@ -375,10 +444,10 @@ export function ScheduleBuilder() {
         <CoursePicker
           query={searchQuery}
           results={searchResults}
-          selectedCourseDesignations={builderState.courses}
+          selectedCourseDesignations={coursePickerState.selectedCourseDesignations}
           loading={searchLoading}
           errorMessage={searchErrorMessage}
-          maxCoursesReached={maxCoursesReached}
+          maxCoursesReached={coursePickerState.maxCoursesReached}
           onQueryChange={setSearchQuery}
           onAddCourse={handleAddCourse}
         />
@@ -397,13 +466,6 @@ export function ScheduleBuilder() {
           onRemoveCourse={handleRemoveCourse}
         />
 
-        <SchedulePriorityList
-          preferenceOrder={builderState.preferenceOrder}
-          onMoveRule={(ruleId, direction) => {
-            updateBuilderState((state) => movePreferenceRule(state, ruleId, direction));
-          }}
-        />
-
         <section className="flex flex-col gap-4 rounded-[2rem] border border-border bg-surface p-5 shadow-soft">
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold tracking-[-0.02em]">
@@ -414,6 +476,16 @@ export function ScheduleBuilder() {
             </p>
           </div>
 
+          <SchedulePriorityList
+            preferenceOrder={interactiveBuilderState.preferenceOrder}
+            onMoveRule={(ruleId, direction) => {
+              updateBuilderState((state) => movePreferenceRule(state, ruleId, direction));
+            }}
+            onRuleEnabledChange={(ruleId, enabled) => {
+              updateBuilderState((state) => setPreferenceRuleEnabled(state, ruleId, enabled));
+            }}
+          />
+
           <label className="flex flex-col gap-3 text-sm font-medium text-text-weak" htmlFor="schedule-builder-limit">
             Max results
             <input
@@ -421,7 +493,7 @@ export function ScheduleBuilder() {
               type="number"
               min={0}
               max={50}
-              value={builderState.limit}
+              value={interactiveBuilderState.limit}
               onChange={(event) => {
                 updateBuilderState((state) => ({
                   ...state,
@@ -433,8 +505,8 @@ export function ScheduleBuilder() {
           </label>
 
           <ScheduleAvailabilityFilters
-            includeWaitlisted={builderState.includeWaitlisted}
-            includeClosed={builderState.includeClosed}
+            includeWaitlisted={interactiveBuilderState.includeWaitlisted}
+            includeClosed={interactiveBuilderState.includeClosed}
             onIncludeWaitlistedChange={(checked) => {
               updateBuilderState((state) => ({ ...state, includeWaitlisted: checked }));
             }}
@@ -480,15 +552,32 @@ export function ScheduleBuilder() {
       </div>
 
       <div className="sticky top-16 flex flex-col gap-3 self-start">
-        <ScheduleCalendar schedule={selectedSchedule} entries={calendarEntries} />
+        <ScheduleHardFilterBar
+          maxDays={interactiveBuilderState.maxDays}
+          startAfterHour={interactiveBuilderState.startAfterHour}
+          endBeforeHour={interactiveBuilderState.endBeforeHour}
+          onMaxDaysChange={(value) => {
+            updateBuilderState((state) => ({ ...state, maxDays: value }));
+          }}
+          onStartAfterHourChange={(value) => {
+            updateBuilderState((state) => ({ ...state, startAfterHour: value }));
+          }}
+          onEndBeforeHourChange={(value) => {
+            updateBuilderState((state) => ({ ...state, endBeforeHour: value }));
+          }}
+        />
+
+        <ScheduleCalendar schedule={visibleSelectedSchedule} entries={visibleCalendarEntries} />
 
         <ScheduleResults
-          schedules={schedules}
+          schedules={visibleSchedules}
+          emptyStateReason={emptyStateReason}
+          preferenceOrder={interactiveBuilderState.preferenceOrder}
           selectedScheduleIndex={selectedScheduleIndex}
-          requestState={requestState}
-          loading={requestState === "loading"}
+          requestState={visibleRequestState}
+          loading={visibleRequestState === "loading"}
           errorMessage={generationErrorMessage}
-          zeroLimit={builderState.limit === 0}
+          zeroLimit={visibleZeroLimit}
           onRetry={() => setRetryNonce((currentValue) => currentValue + 1)}
           onSelectSchedule={setSelectedScheduleIndex}
         />

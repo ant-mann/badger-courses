@@ -10,7 +10,10 @@ import { DEFAULT_PREFERENCE_ORDER } from "@/app/schedule-builder/preferences";
 import { POST as buildSchedules } from "../schedules/route";
 import {
   normalizeBooleanInput,
+  normalizeNullableIntegerField,
+  normalizeNullableIntegerInput,
   normalizePreferenceOrderInput,
+  normalizeScheduleGenerationResult,
 } from "../schedules/normalize";
 import { GET as searchCourses } from "./search/route";
 
@@ -851,6 +854,7 @@ test("schedule route uses the production Postgres path when SUPABASE_DATABASE_UR
   assert.equal(body.schedules[0].tight_transition_count, 0);
   assert.equal(body.schedules[0].total_walking_distance_meters, 0);
   assert.equal(body.schedules[0].total_open_seats, 6);
+  assert.equal(body.empty_state_reason, null);
 });
 
 test("schedule route ignores online-only meeting days in Postgres campus day counts and ordering", async () => {
@@ -1326,6 +1330,7 @@ test("schedule route rejects overlapping Postgres packages using canonical meeti
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     schedules: [],
+    empty_state_reason: "constraints",
   });
 });
 
@@ -1823,6 +1828,142 @@ test("schedule route rejects blank course strings with 400 json", async () => {
   });
 });
 
+test("schedule route returns hard-filter empty-state metadata when schedule limits remove all valid schedules", async () => {
+  const response = await withSupabaseRuntimeRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Algorithms for Large Data",
+            source_package_id: "1272:302:005770:cs577-midday",
+            section_bundle_label: "COMP SCI 577 LEC 001",
+            open_seats: 2,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 1,
+            campus_day_count: 1,
+            earliest_start_minute_local: 540,
+            latest_end_minute_local: 600,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "T 9:00 AM-10:00 AM @ Computer Sciences",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        return [
+          {
+            source_package_id: "1272:302:005770:cs577-midday",
+            meeting_days: "T",
+            meeting_time_start: 540,
+            meeting_time_end: 600,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+    },
+    async () => buildSchedules(
+      new Request("https://example.test/api/schedules", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          courses: ["COMP SCI 577"],
+          limit: 5,
+          start_after_minute_local: 600,
+          preference_order: ["later-starts"],
+        }),
+      }),
+    ),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    schedules: [],
+    empty_state_reason: "hard-filters",
+  });
+});
+
+test("schedule route forwards hard-filter fields through the SQLite schedule path", async () => {
+  delete process.env.SUPABASE_DATABASE_URL;
+  __resetDbsForTests();
+
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["STAT 340", "COMP SCI 577"],
+        limit: 1,
+        preference_order: ["earlier-finishes"],
+        start_after_minute_local: 600,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).schedules[0].package_ids, [
+    "1272:220:003210:stat340-late",
+    "1272:302:005770:cs577-main",
+  ]);
+});
+
+test("schedule route forwards max_campus_days through the SQLite schedule path", async () => {
+  delete process.env.SUPABASE_DATABASE_URL;
+  __resetDbsForTests();
+
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["STAT 340", "COMP SCI 577"],
+        limit: 5,
+        max_campus_days: 2,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    schedules: [],
+    empty_state_reason: "hard-filters",
+  });
+});
+
+test("schedule route forwards end_before_minute_local through the SQLite schedule path", async () => {
+  delete process.env.SUPABASE_DATABASE_URL;
+  __resetDbsForTests();
+
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["STAT 340"],
+        limit: 1,
+        preference_order: ["later-starts"],
+        end_before_minute_local: 600,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).schedules[0].package_ids, ["1272:220:003210:stat340-early"]);
+});
+
 test("course detail route preserves its response shape when SUPABASE_DATABASE_URL is set", async () => {
   const expectedResponse = await getCourseDetail(
     new Request("https://example.test/api/courses/COMP%20SCI%20577"),
@@ -1914,19 +2055,16 @@ test("schedule route accepts limit zero and returns no schedules", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     schedules: [],
+    empty_state_reason: "constraints",
   });
 });
 
 test("normalizePreferenceOrderInput fills defaults and filters invalid values", () => {
   assert.deepEqual(normalizePreferenceOrderInput(undefined), DEFAULT_PREFERENCE_ORDER);
+  assert.deepEqual(normalizePreferenceOrderInput([]), []);
   assert.deepEqual(
     normalizePreferenceOrderInput(["fewer-long-gaps", "invalid", "fewer-long-gaps"]),
-    [
-      "fewer-long-gaps",
-      "later-starts",
-      "fewer-campus-days",
-      "earlier-finishes",
-    ],
+    ["less-time-between-classes"],
   );
   assert.equal(normalizePreferenceOrderInput(123), null);
 });
@@ -1943,6 +2081,213 @@ test("normalizeBooleanInput accepts true and false", () => {
 test("normalizeBooleanInput rejects non-booleans", () => {
   assert.equal(normalizeBooleanInput("true"), null);
   assert.equal(normalizeBooleanInput(1), null);
+});
+
+test("normalizeNullableIntegerInput accepts undefined and null but rejects strings", () => {
+  assert.equal(normalizeNullableIntegerInput(undefined), null);
+  assert.equal(normalizeNullableIntegerInput(null), null);
+  assert.equal(normalizeNullableIntegerInput(540), 540);
+  assert.equal(normalizeNullableIntegerInput("540"), null);
+});
+
+test("normalizeNullableIntegerField reports validity alongside the normalized value", () => {
+  assert.deepEqual(normalizeNullableIntegerField(undefined), { value: null, isValid: true });
+  assert.deepEqual(normalizeNullableIntegerField(null), { value: null, isValid: true });
+  assert.deepEqual(normalizeNullableIntegerField(540), { value: 540, isValid: true });
+  assert.deepEqual(normalizeNullableIntegerField(-1), { value: null, isValid: false });
+  assert.deepEqual(normalizeNullableIntegerField("540"), { value: null, isValid: false });
+});
+
+const validNormalizedSchedulePackage = {
+  source_package_id: "1272:302:005770:cs577-main",
+  course_designation: "COMP SCI 577",
+  title: "Algorithms for Large Data",
+  section_bundle_label: "COMP SCI 577 LEC 001",
+  open_seats: 2,
+  is_full: 0,
+  has_waitlist: 0,
+  meeting_count: 1,
+  campus_day_count: 1,
+  earliest_start_minute_local: 720,
+  latest_end_minute_local: 780,
+  has_online_meeting: 0,
+  has_unknown_location: 0,
+  restriction_note: null,
+  has_temporary_restriction: 0,
+  meeting_summary_local: "T 12:00 PM-1:00 PM @ Computer Sciences",
+};
+
+test("normalizeScheduleGenerationResult preserves valid results and rejects malformed ones", () => {
+  const schedules = [
+    {
+      package_ids: ["1272:302:005770:cs577-main"],
+      packages: [
+        validNormalizedSchedulePackage,
+      ],
+      conflict_count: 0,
+      campus_day_count: 3,
+      earliest_start_minute_local: 480,
+      large_idle_gap_count: 0,
+      total_between_class_minutes: 0,
+      tight_transition_count: 0,
+      total_walking_distance_meters: 0,
+      total_open_seats: 6,
+      latest_end_minute_local: 780,
+    },
+  ];
+
+  assert.throws(
+    () => normalizeScheduleGenerationResult(schedules),
+    /Invalid schedule generation result/,
+  );
+  assert.deepEqual(
+    normalizeScheduleGenerationResult({
+      schedules,
+      emptyStateReason: "hard-filters",
+    }),
+    {
+      schedules,
+      emptyStateReason: "hard-filters",
+    },
+  );
+});
+
+test("normalizeScheduleGenerationResult rejects malformed schedule entries inside a valid wrapper", () => {
+  assert.throws(
+    () =>
+      normalizeScheduleGenerationResult({
+        schedules: [
+          {
+            packages: [],
+            conflict_count: 0,
+            campus_day_count: 3,
+            earliest_start_minute_local: 480,
+            large_idle_gap_count: 0,
+            total_between_class_minutes: 0,
+            tight_transition_count: 0,
+            total_walking_distance_meters: 0,
+            total_open_seats: 6,
+            latest_end_minute_local: 780,
+          },
+        ],
+        emptyStateReason: null,
+      }),
+    /Invalid schedule generation result/,
+  );
+});
+
+test("normalizeScheduleGenerationResult rejects malformed nested package entries inside a valid wrapper", () => {
+  assert.throws(
+    () =>
+      normalizeScheduleGenerationResult({
+        schedules: [
+          {
+            package_ids: ["1272:302:005770:cs577-main"],
+            packages: [
+              {
+                source_package_id: "1272:302:005770:cs577-main",
+              },
+            ],
+            conflict_count: 0,
+            campus_day_count: 3,
+            earliest_start_minute_local: 480,
+            large_idle_gap_count: 0,
+            total_between_class_minutes: 0,
+            tight_transition_count: 0,
+            total_walking_distance_meters: 0,
+            total_open_seats: 6,
+            latest_end_minute_local: 780,
+          },
+        ],
+        emptyStateReason: null,
+      }),
+    /Invalid schedule generation result/,
+  );
+});
+
+test("normalizeScheduleGenerationResult rejects mismatched package_ids and nested source_package_id values", () => {
+  assert.throws(
+    () =>
+      normalizeScheduleGenerationResult({
+        schedules: [
+          {
+            package_ids: ["1272:302:005770:cs577-main"],
+            packages: [
+              {
+                ...validNormalizedSchedulePackage,
+                source_package_id: "1272:302:005770:cs577-other",
+              },
+            ],
+            conflict_count: 0,
+            campus_day_count: 3,
+            earliest_start_minute_local: 480,
+            large_idle_gap_count: 0,
+            total_between_class_minutes: 0,
+            tight_transition_count: 0,
+            total_walking_distance_meters: 0,
+            total_open_seats: 6,
+            latest_end_minute_local: 780,
+          },
+        ],
+        emptyStateReason: null,
+      }),
+    /Invalid schedule generation result/,
+  );
+});
+
+test("normalizeScheduleGenerationResult rejects package entries that omit required nested fields", () => {
+  assert.throws(
+    () =>
+      normalizeScheduleGenerationResult({
+        schedules: [
+          {
+            package_ids: ["1272:302:005770:cs577-main"],
+            packages: [
+              {
+                source_package_id: "1272:302:005770:cs577-main",
+                course_designation: "COMP SCI 577",
+              },
+            ],
+            conflict_count: 0,
+            campus_day_count: 3,
+            earliest_start_minute_local: 480,
+            large_idle_gap_count: 0,
+            total_between_class_minutes: 0,
+            tight_transition_count: 0,
+            total_walking_distance_meters: 0,
+            total_open_seats: 6,
+            latest_end_minute_local: 780,
+          },
+        ],
+        emptyStateReason: null,
+      }),
+    /Invalid schedule generation result/,
+  );
+});
+
+test("normalizeScheduleGenerationResult rejects non-finite numeric schedule metrics", () => {
+  assert.throws(
+    () =>
+      normalizeScheduleGenerationResult({
+        schedules: [
+          {
+            package_ids: ["1272:302:005770:cs577-main"],
+            packages: [validNormalizedSchedulePackage],
+            conflict_count: NaN,
+            campus_day_count: 3,
+            earliest_start_minute_local: 480,
+            large_idle_gap_count: 0,
+            total_between_class_minutes: 0,
+            tight_transition_count: 0,
+            total_walking_distance_meters: 0,
+            total_open_seats: 6,
+            latest_end_minute_local: 780,
+          },
+        ],
+        emptyStateReason: null,
+      }),
+    /Invalid schedule generation result/,
+  );
 });
 
 test("schedule route accepts a valid preference_order array", async () => {
@@ -1963,6 +2308,7 @@ test("schedule route accepts a valid preference_order array", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     schedules: [],
+    empty_state_reason: "constraints",
   });
 });
 
@@ -1985,6 +2331,7 @@ test("schedule route accepts valid include_waitlisted and include_closed boolean
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     schedules: [],
+    empty_state_reason: "constraints",
   });
 });
 
@@ -2009,6 +2356,75 @@ test("schedule route rejects invalid non-boolean availability values", async () 
   });
 });
 
+test("schedule route rejects invalid numeric hard-filter values", async () => {
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["COMP SCI 577"],
+        max_campus_days: -1,
+        end_before_minute_local: "660",
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "Invalid schedule request body.",
+  });
+});
+
+test("schedule route accepts non-negative integer hard-filter values outside UI presets", async () => {
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["COMP SCI 577"],
+        limit: 0,
+        max_campus_days: 99,
+        start_after_minute_local: 5000,
+        end_before_minute_local: 9999,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    schedules: [],
+    empty_state_reason: "constraints",
+  });
+});
+
+test("schedule route accepts explicit null hard-filter values", async () => {
+  const response = await buildSchedules(
+    new Request("https://example.test/api/schedules", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        courses: ["COMP SCI 577"],
+        limit: 0,
+        max_campus_days: null,
+        start_after_minute_local: null,
+        end_before_minute_local: null,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    schedules: [],
+    empty_state_reason: "constraints",
+  });
+});
+
 test("schedule route forwards normalized preference_order into non-empty generation", async () => {
   const response = await buildSchedules(
     new Request("https://example.test/api/schedules", {
@@ -2029,4 +2445,5 @@ test("schedule route forwards normalized preference_order into non-empty generat
 
   assert.equal(body.schedules.length, 1);
   assert.deepEqual(body.schedules[0].package_ids, ["1272:220:003210:stat340-early"]);
+  assert.equal(body.empty_state_reason, null);
 });
