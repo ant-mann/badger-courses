@@ -2189,7 +2189,10 @@ test("generateSchedulesFromPostgresWithMetadata prefers the spread schedule for 
       }),
   );
 
-  assert.equal(result.schedules[0]?.package_ids[0], "stat340-aspread");
+  assert.deepEqual(
+    result.schedules.map((schedule) => schedule.package_ids),
+    [["stat340-aspread"], ["stat340-zcompact"]],
+  );
 });
 
 test("generateSchedulesFromPostgresWithMetadata keeps source ordering when preferenceOrder is explicitly empty", async () => {
@@ -2318,7 +2321,10 @@ test("generateSchedulesFromPostgresWithMetadata keeps source ordering when prefe
       }),
   );
 
-  assert.equal(result.schedules[0]?.package_ids[0], "stat340-aspread");
+  assert.deepEqual(
+    result.schedules.map((schedule) => schedule.package_ids),
+    [["stat340-aspread"], ["stat340-zcompact"]],
+  );
 });
 
 test("generateSchedulesFromPostgresWithMetadata reports hard-filter empty state", async () => {
