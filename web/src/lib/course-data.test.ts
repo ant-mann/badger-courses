@@ -800,3 +800,30 @@ test("getCourseDetail preserves topic-specific titles for live sections on umbre
     ],
   );
 });
+
+test("searchCourses reads section_count when Postgres returns the bigint count as a string", async () => {
+  const courses = await withDbRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM course_search_fts")) {
+        return [
+          {
+            course_designation: "COMP SCI 577",
+            title: "Introduction to Algorithms",
+            minimum_credits: 4,
+            maximum_credits: 4,
+            cross_list_designations_json: '["COMP SCI 577"]',
+            section_count: "11",
+            has_any_open_seats: 1,
+            has_any_waitlist: 0,
+            has_any_full_section: 1,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected query in course-data test: ${sqlText}`);
+    },
+    async () => searchCourses({ query: "algorithms" }),
+  );
+
+  assert.equal(courses[0].sectionCount, 11);
+});

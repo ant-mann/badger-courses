@@ -1289,7 +1289,7 @@ function mapCourseListItem(row: Row): CourseListItem {
     minimumCredits: asNullableNumber(row.minimum_credits),
     maximumCredits: asNullableNumber(row.maximum_credits),
     crossListDesignations: parseStringArrayJson(asNullableString(row.cross_list_designations_json)),
-    sectionCount: asNullableNumber(row.section_count) ?? 0,
+    sectionCount: asNullableNumeric(row.section_count) ?? 0,
     hasAnyOpenSeats: asNullableBoolean(row.has_any_open_seats),
     hasAnyWaitlist: asNullableBoolean(row.has_any_waitlist),
     hasAnyFullSection: asNullableBoolean(row.has_any_full_section),
