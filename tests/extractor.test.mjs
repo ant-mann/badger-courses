@@ -7,7 +7,7 @@ import {
   buildSearchRequest,
   extractSearchPage,
 } from '../src/extractor-helpers.mjs';
-import { makeExtractionContextOptions } from '../scripts/extract-fall-2026-courses.mjs';
+import { makeExtractionContextOptions } from '../scripts/extract-courses.mjs';
 
 test('extractSearchPage returns hits and found from a valid response', () => {
   const page = extractSearchPage({
@@ -59,5 +59,5 @@ test('makeExtractionContextOptions returns a realistic desktop profile for headl
 });
 
 test('importing extractor helpers does not execute the extractor entrypoint', () => {
-  assert.notEqual(process.argv[1], fileURLToPath(new URL('../scripts/extract-fall-2026-courses.mjs', import.meta.url)));
+  assert.notEqual(process.argv[1], fileURLToPath(new URL('../scripts/extract-courses.mjs', import.meta.url)));
 });

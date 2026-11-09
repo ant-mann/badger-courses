@@ -2,9 +2,9 @@
 
 ## Start Here
 
-- Primary database: `data/fall-2026.sqlite`
-- Term code for Fall 2026 is `'1272'`.
-- There are ~5,031 courses, ~26,898 sections, ~3,587 instructors, and 98 buildings in the database.
+- Primary database: `data/courses.sqlite`
+- Term code for Spring 2027 is `'1274'`.
+- There are ~5,110 courses, ~27,376 sections, ~4,012 instructors, and 100 buildings in the database.
 
 ### View routing guide
 
@@ -80,7 +80,7 @@ LIMIT 1;
 - Madgrades data is manual enrichment, not a live query dependency.
 - Reuse the latest saved snapshot: `npm run import:madgrades`
 - Fetch a new Madgrades snapshot and import it: `MADGRADES_API_TOKEN=... npm run import:madgrades -- --refresh-api`
-- Madgrades snapshots are stored under `data/madgrades/` and can be re-imported after rebuilding `data/fall-2026.sqlite`.
+- Madgrades snapshots are stored under `data/madgrades/` and can be re-imported after rebuilding `data/courses.sqlite`.
 - Historical GPA is a proxy for grading outcomes, not a full teaching-quality measure.
 
 ```sql
@@ -249,8 +249,8 @@ ORDER BY course_designation, earliest_start_minute_local;
 SELECT *
 FROM canonical_meetings
 WHERE source_package_id IN (
-  '1272:266:004289:35469',
-  '1272:266:004289:35471'
+  '1274:266:004289:49313',
+  '1274:266:004289:49330'
 )
 ORDER BY source_package_id, start_date, start_minute_local;
 ```

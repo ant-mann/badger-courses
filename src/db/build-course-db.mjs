@@ -40,9 +40,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 
-const coursesPath = path.join(repoRoot, 'data', 'fall-2026-courses.json');
-const packageSnapshotPath = path.join(repoRoot, 'data', 'fall-2026-enrollment-packages.json');
-const dbPath = path.join(repoRoot, 'data', 'fall-2026.sqlite');
+const coursesPath = path.join(repoRoot, 'data', 'courses.json');
+const packageSnapshotPath = path.join(repoRoot, 'data', 'enrollment-packages.json');
+const dbPath = path.join(repoRoot, 'data', 'courses.sqlite');
 const schemaPath = path.join(__dirname, 'schema.sql');
 
 function getPrerequisiteParseConfidence(parseStatus) {
@@ -1391,7 +1391,7 @@ export function buildCourseDatabase({
         snapshot_run_at: snapshotRunAt,
         last_refreshed_at: new Date().toISOString(),
         source_term_code: sourceTermCode,
-        snapshot_kind: 'fall-2026-enrollment-packages',
+        snapshot_kind: 'enrollment-packages',
       });
     });
 

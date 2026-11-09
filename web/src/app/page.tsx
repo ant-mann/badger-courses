@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
 import { ScheduleBuilder } from "@/app/schedule-builder/ScheduleBuilder";
+import { TERM_LABEL } from "@/lib/term";
 
 export default function HomePage() {
   return (
@@ -11,7 +12,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col gap-3">
             <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
-              Build Fall 2026 schedules in the browser.
+              Build {TERM_LABEL} schedules in the browser.
             </h1>
             <p className="max-w-3xl text-base leading-7 text-text-weak">
               Add courses, lock or exclude section combinations, and compare ranked schedules with a weekly calendar.

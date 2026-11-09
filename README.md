@@ -6,7 +6,7 @@ A toolset for extracting UW–Madison course and enrollment data and building a 
 
 ## Overview
 
-This project targets **Fall 2026** enrollment data from the [UW–Madison public enrollment site](https://public.enroll.wisc.edu). The intended workflow is:
+This project targets one term of enrollment data from the [UW–Madison public enrollment site](https://public.enroll.wisc.edu), currently **Spring 2027** (see [Switching terms](#switching-terms)). The intended workflow is:
 
 1. **Extract** – scrape all course and enrollment data locally to a JSON file.
 2. **Build** – import the JSON into a structured SQLite database ready for queries.
@@ -29,17 +29,17 @@ The long-term goal is to keep expanding the web app's features: richer schedule-
 ```
 uw-madison-courses/
 ├── data/
-│   ├── fall-2026-courses.json                  # Raw course records (extracted)
-│   ├── fall-2026-enrollment-packages.json      # Per-course package snapshots (optional)
-│   ├── fall-2026.sqlite                        # Built course/enrollment SQLite database
-│   ├── fall-2026-madgrades.sqlite              # Standalone Madgrades history + match database
+│   ├── courses.json                  # Raw course records (extracted)
+│   ├── enrollment-packages.json      # Per-course package snapshots (optional)
+│   ├── courses.sqlite                        # Built course/enrollment SQLite database
+│   ├── madgrades.sqlite              # Standalone Madgrades history + match database
 │   └── madgrades/                              # Cached Madgrades API snapshots
 │       └── <snapshot-id>/                      # One folder per snapshot run
 ├── docs/
 │   ├── querying-course-db.md                   # SQL reference and example queries
 │   └── superpowers/                            # Agent plans and specs
 ├── scripts/
-│   ├── extract-fall-2026-courses.mjs           # Playwright-based course extractor
+│   ├── extract-courses.mjs           # Playwright-based course extractor
 │   ├── import-madgrades.mjs                    # Madgrades historical grade importer
 │   ├── publish-course-db-postgres.mjs          # Course SQLite → Postgres publisher
 │   ├── publish-madgrades-db-postgres.mjs       # Madgrades SQLite → Postgres publisher
@@ -85,17 +85,17 @@ npx playwright install chromium
 
 ### 1. Extract course data
 
-Scrapes all Fall 2026 courses from the enrollment search API and writes them to `data/fall-2026-courses.json`.
+Scrapes all courses for the configured term from the enrollment search API and writes them to `data/courses.json`.
 
 ```bash
 # Headed browser (default — lets you observe the session)
-pnpm run extract:fall-2026
+pnpm run extract:courses
 
 # Headless browser
-pnpm run extract:fall-2026 -- --headless
+pnpm run extract:courses -- --headless
 
 # Also fetch per-course enrollment package details
-pnpm run extract:fall-2026 -- --headless --include-packages
+pnpm run extract:courses -- --headless --include-packages
 ```
 
 ### 2. Build the local databases
@@ -108,7 +108,7 @@ pnpm run build:madgrades-db
 pnpm run rebuild:madgrades-matches
 ```
 
-`pnpm run build:course-db` writes `data/fall-2026.sqlite` with the enrollment/course tables used by the schedule builder and search tools. `pnpm run build:madgrades-db` writes `data/fall-2026-madgrades.sqlite` from the latest cached or freshly refreshed Madgrades snapshot. After rebuilding the course DB, `pnpm run rebuild:madgrades-matches` refreshes only the local-to-Madgrades match tables without re-importing historical grade rows.
+`pnpm run build:course-db` writes `data/courses.sqlite` with the enrollment/course tables used by the schedule builder and search tools. `pnpm run build:madgrades-db` writes `data/madgrades.sqlite` from the latest cached or freshly refreshed Madgrades snapshot. After rebuilding the course DB, `pnpm run rebuild:madgrades-matches` refreshes only the local-to-Madgrades match tables without re-importing historical grade rows.
 
 ### 3. Import Madgrades historical grade data *(optional)*
 
@@ -122,7 +122,7 @@ pnpm run import:madgrades
 MADGRADES_API_TOKEN=<your-token> pnpm run import:madgrades -- --refresh-api
 ```
 
-Snapshots are cached under `data/madgrades/` and can be re-imported into `data/fall-2026-madgrades.sqlite` at any time after rebuilding `data/fall-2026.sqlite`.
+Snapshots are cached under `data/madgrades/` and can be re-imported into `data/madgrades.sqlite` at any time after rebuilding `data/courses.sqlite`.
 
 ### 4. Publish to Postgres *(web app only)*
 
@@ -148,7 +148,7 @@ SQLITE_BATCH_SIZE=100 \
 node scripts/publish-madgrades-db-postgres.mjs
 ```
 
-Use a percent-encoded password in the Postgres URL when it contains reserved characters. The Postgres publish scripts default to the local SQLite artifacts at `data/fall-2026.sqlite` and `data/fall-2026-madgrades.sqlite`.
+Use a percent-encoded password in the Postgres URL when it contains reserved characters. The Postgres publish scripts default to the local SQLite artifacts at `data/courses.sqlite` and `data/madgrades.sqlite`.
 
 ### 5. Generate schedule options
 
@@ -156,7 +156,7 @@ Finds conflict-free section combinations for a set of courses and ranks them.
 
 ```bash
 pnpm run schedule:options -- \
-  --db data/fall-2026.sqlite \
+  --db data/courses.sqlite \
   --course "COMP SCI 577" \
   --course "STAT 340" \
   --course "ENGL 462"
@@ -201,7 +201,7 @@ After running steps 1-2 (and optionally 3) above you have everything an AI assis
 **Recommended approach**
 
 1. Open the project directory in your AI-enabled editor or chat client (e.g. Cursor, Claude Desktop, VS Code + Copilot).
-2. Point the AI at `data/fall-2026.sqlite` for course/enrollment queries and optionally `data/fall-2026-madgrades.sqlite` for historical GPA queries, along with `docs/querying-course-db.md` as the query reference.
+2. Point the AI at `data/courses.sqlite` for course/enrollment queries and optionally `data/madgrades.sqlite` for historical GPA queries, along with `docs/querying-course-db.md` as the query reference.
 3. Ask questions in plain English — the AI can write and run SQL against the local database, explore availability, compare sections, and suggest schedules.
 
 **Example prompts**
@@ -217,10 +217,10 @@ See [`docs/querying-course-db.md`](docs/querying-course-db.md) for the recommend
 
 The project now builds two SQLite databases:
 
-- `data/fall-2026.sqlite` for course, enrollment, prerequisite, and schedule-planning data
-- `data/fall-2026-madgrades.sqlite` for standalone Madgrades history and match tables
+- `data/courses.sqlite` for course, enrollment, prerequisite, and schedule-planning data
+- `data/madgrades.sqlite` for standalone Madgrades history and match tables
 
-### Course DB Tables (`data/fall-2026.sqlite`)
+### Course DB Tables (`data/courses.sqlite`)
 
 | Table | Description |
 |-------|-------------|
@@ -239,7 +239,7 @@ The project now builds two SQLite databases:
 | `prerequisite_nodes` / `prerequisite_edges` | Parsed prerequisite AST |
 | `prerequisite_course_summaries` | AI-friendly course-group summaries |
 
-### Madgrades DB Tables (`data/fall-2026-madgrades.sqlite`)
+### Madgrades DB Tables (`data/madgrades.sqlite`)
 
 | Table | Description |
 |-------|-------------|
@@ -252,7 +252,7 @@ The project now builds two SQLite databases:
 | `madgrades_course_matches` / `madgrades_instructor_matches` | Match links between local and Madgrades records |
 | `madgrades_refresh_runs` | Madgrades snapshot metadata |
 
-### Course DB Views (`data/fall-2026.sqlite`)
+### Course DB Views (`data/courses.sqlite`)
 
 | View | Description |
 |------|-------------|
@@ -267,6 +267,19 @@ The project now builds two SQLite databases:
 | `prerequisite_course_summary_overview_v` | AI-friendly prerequisite course groups |
 
 See [`docs/querying-course-db.md`](docs/querying-course-db.md) for example SQL queries.
+
+## Switching terms
+
+The term is set in two places; file names and scripts are term-neutral.
+
+1. `TERM_CODE` in `scripts/extract-courses.mjs` — the UW term code (`1274` = Spring 2027; the last digit is 2 for fall, 4 for spring, 6 for summer).
+2. `TERM_LABEL` in `web/src/lib/term.ts` — the name shown in the web app.
+
+After changing them:
+
+1. Re-run the pipeline: extract, then `build:course-db`.
+2. Refresh Madgrades with `MADGRADES_API_TOKEN=<token> pnpm run import:madgrades -- --refresh-api`. A Madgrades snapshot only holds grade history for courses offered in the term it was pulled for, and match tables are keyed by term code. Without a token, `build:madgrades-db` followed by `rebuild:madgrades-matches` re-matches the cached snapshot, but courses that were not offered in the previous term get no grade history.
+3. Publish both databases and redeploy the web app.
 
 ## Running Tests
 

@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { CourseCard } from "@/app/components/CourseCard";
 import { SearchBar } from "@/app/components/SearchBar";
 import { searchCourses, type CourseListItem } from "@/lib/course-data";
+import { TERM_LABEL } from "@/lib/term";
 
 type CoursesPageProps = {
   searchParams?: Promise<{
@@ -51,7 +52,7 @@ export default async function CoursesPage({ searchParams }: CoursesPageProps) {
           </p>
           <div className="flex flex-col gap-3">
             <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
-              Every Fall 2026 course, with sections and prerequisites.
+              Every {TERM_LABEL} course, with sections and prerequisites.
             </h1>
           </div>
           <div>

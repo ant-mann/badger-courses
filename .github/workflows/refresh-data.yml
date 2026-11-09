@@ -29,7 +29,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Extract course data
-        run: pnpm run extract:fall-2026 -- --headless --include-packages
+        run: pnpm run extract:courses -- --headless --include-packages
 
       - name: Build course database
         run: pnpm run build:course-db

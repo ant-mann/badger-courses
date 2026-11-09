@@ -3,6 +3,7 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import Home from "@/app/page";
+import { TERM_LABEL } from "@/lib/term";
 
 type ScheduleBuilderPage = (props?: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -27,7 +28,7 @@ async function invokeScheduleBuilderPageRedirect(searchParams: Record<string, st
 test("home page renders schedule builder content at /", async () => {
   const markup = renderToStaticMarkup(await Home());
 
-  assert.match(markup, /Build Fall 2026 schedules in the browser/i);
+  assert.ok(markup.includes(`Build ${TERM_LABEL} schedules in the browser`));
   assert.match(
     markup,
     /Add courses, lock or exclude section combinations, and compare ranked schedules with a weekly calendar/i,

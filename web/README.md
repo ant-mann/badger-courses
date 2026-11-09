@@ -1,6 +1,6 @@
 # Badger Courses – web
 
-The Next.js front-end for **[badgercourses.dev](https://badgercourses.dev/)** — a web app for UW–Madison students to search courses, check seat availability, view historical grade data, and build conflict-free schedules for Fall 2026.
+The Next.js front-end for **[badgercourses.dev](https://badgercourses.dev/)** — a web app for UW–Madison students to search courses, check seat availability, view historical grade data, and build conflict-free schedules for the current term.
 
 ## Local development
 
