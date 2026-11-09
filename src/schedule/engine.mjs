@@ -5,9 +5,15 @@ export const LARGE_IDLE_GAP_MINUTES = 90;
 export const DEFAULT_PREFERENCE_ORDER = [
   'later-starts',
   'fewer-campus-days',
-  'fewer-long-gaps',
+  'less-time-between-classes',
+  'shorter-walks',
+  'more-open-seats',
   'earlier-finishes',
 ];
+
+const LEGACY_PREFERENCE_RULE_ALIASES = {
+  'fewer-long-gaps': 'less-time-between-classes',
+};
 
 const SCHEDULE_PREFERENCE_RULES = {
   'later-starts': (left, right) => compareNullableDescending(
@@ -15,8 +21,14 @@ const SCHEDULE_PREFERENCE_RULES = {
     right.earliest_start_minute_local,
     Number.POSITIVE_INFINITY,
   ),
-  'fewer-campus-days': (left, right) => left.campus_day_count - right.campus_day_count,
-  'fewer-long-gaps': (left, right) => left.large_idle_gap_count - right.large_idle_gap_count,
+  'fewer-campus-days': (left, right) => (left.campus_day_count ?? 0) - (right.campus_day_count ?? 0),
+  'less-time-between-classes': (left, right) =>
+    (left.total_between_class_minutes ?? 0) - (right.total_between_class_minutes ?? 0),
+  'more-time-between-classes': (left, right) =>
+    (right.total_between_class_minutes ?? 0) - (left.total_between_class_minutes ?? 0),
+  'shorter-walks': (left, right) =>
+    (left.total_walking_distance_meters ?? 0) - (right.total_walking_distance_meters ?? 0),
+  'more-open-seats': (left, right) => (right.total_open_seats ?? 0) - (left.total_open_seats ?? 0),
   'earlier-finishes': (left, right) => compareNullableAscending(
     left.latest_end_minute_local,
     right.latest_end_minute_local,
@@ -337,11 +349,26 @@ export function countLargeIdleGaps(candidates) {
     dayMeetings.sort((left, right) => left.start_minute_local - right.start_minute_local);
 
     for (let index = 1; index < dayMeetings.length; index += 1) {
-      if (!meetingsShareDateRange(dayMeetings[index], dayMeetings[index - 1])) {
+      const currentMeeting = dayMeetings[index];
+      let latestRelevantPriorEnd = null;
+
+      for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+        const previousMeeting = dayMeetings[previousIndex];
+        if (!meetingsShareDateRange(currentMeeting, previousMeeting)) {
+          continue;
+        }
+
+        latestRelevantPriorEnd = Math.max(
+          latestRelevantPriorEnd ?? Number.NEGATIVE_INFINITY,
+          previousMeeting.end_minute_local,
+        );
+      }
+
+      if (latestRelevantPriorEnd == null) {
         continue;
       }
 
-      const gapMinutes = dayMeetings[index].start_minute_local - dayMeetings[index - 1].end_minute_local;
+      const gapMinutes = currentMeeting.start_minute_local - latestRelevantPriorEnd;
       if (gapMinutes >= LARGE_IDLE_GAP_MINUTES) {
         largeIdleGapCount += 1;
       }
@@ -349,6 +376,57 @@ export function countLargeIdleGaps(candidates) {
   }
 
   return largeIdleGapCount;
+}
+
+export function countTotalBetweenClassMinutes(candidates) {
+  const meetingsByDay = new Map();
+
+  for (const candidate of candidates) {
+    for (const meeting of candidate.meetings) {
+      for (let bit = 1; bit <= 64; bit <<= 1) {
+        if ((meeting.days_mask & bit) === 0) {
+          continue;
+        }
+
+        const dayMeetings = meetingsByDay.get(bit) ?? [];
+        dayMeetings.push(meeting);
+        meetingsByDay.set(bit, dayMeetings);
+      }
+    }
+  }
+
+  let totalBetweenClassMinutes = 0;
+  for (const dayMeetings of meetingsByDay.values()) {
+    dayMeetings.sort((left, right) => left.start_minute_local - right.start_minute_local);
+
+    for (let index = 1; index < dayMeetings.length; index += 1) {
+      const currentMeeting = dayMeetings[index];
+      let latestRelevantPriorEnd = null;
+
+      for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+        const previousMeeting = dayMeetings[previousIndex];
+        if (!meetingsShareDateRange(currentMeeting, previousMeeting)) {
+          continue;
+        }
+
+        latestRelevantPriorEnd = Math.max(
+          latestRelevantPriorEnd ?? Number.NEGATIVE_INFINITY,
+          previousMeeting.end_minute_local,
+        );
+      }
+
+      if (latestRelevantPriorEnd == null) {
+        continue;
+      }
+
+      const gapMinutes = currentMeeting.start_minute_local - latestRelevantPriorEnd;
+      if (gapMinutes > 0) {
+        totalBetweenClassMinutes += gapMinutes;
+      }
+    }
+  }
+
+  return totalBetweenClassMinutes;
 }
 
 export function buildScheduleMetrics(candidates, transitions) {
@@ -396,10 +474,45 @@ export function buildScheduleMetrics(candidates, transitions) {
     campus_day_count: countBits(campusDaysMask),
     earliest_start_minute_local: earliestStartMinuteLocal,
     large_idle_gap_count: countLargeIdleGaps(candidates),
+    total_between_class_minutes: countTotalBetweenClassMinutes(candidates),
     tight_transition_count: tightTransitionCount,
     total_walking_distance_meters: totalWalkingDistanceMeters,
     total_open_seats: totalOpenSeats,
     latest_end_minute_local: latestEndMinuteLocal,
+  };
+}
+
+function buildConservativeHardFilterSchedule(schedule, packages) {
+  return {
+    ...schedule,
+    campus_day_count: Math.max(
+      schedule.campus_day_count ?? 0,
+      ...packages.map((pkg) => pkg.campus_day_count ?? 0),
+    ),
+    earliest_start_minute_local: packages.reduce(
+      (earliest, pkg) => {
+        if (pkg.earliest_start_minute_local == null) {
+          return earliest;
+        }
+
+        return earliest == null
+          ? pkg.earliest_start_minute_local
+          : Math.min(earliest, pkg.earliest_start_minute_local);
+      },
+      schedule.earliest_start_minute_local,
+    ),
+    latest_end_minute_local: packages.reduce(
+      (latest, pkg) => {
+        if (pkg.latest_end_minute_local == null) {
+          return latest;
+        }
+
+        return latest == null
+          ? pkg.latest_end_minute_local
+          : Math.max(latest, pkg.latest_end_minute_local);
+      },
+      schedule.latest_end_minute_local,
+    ),
   };
 }
 
@@ -428,18 +541,13 @@ export function normalizePreferenceOrder(preferenceOrder = DEFAULT_PREFERENCE_OR
   const normalized = [];
 
   for (const ruleId of preferenceOrder) {
-    if (!Object.hasOwn(SCHEDULE_PREFERENCE_RULES, ruleId) || seen.has(ruleId)) {
+    const normalizedRuleId = LEGACY_PREFERENCE_RULE_ALIASES[ruleId] ?? ruleId;
+    if (!Object.hasOwn(SCHEDULE_PREFERENCE_RULES, normalizedRuleId) || seen.has(normalizedRuleId)) {
       continue;
     }
 
-    seen.add(ruleId);
-    normalized.push(ruleId);
-  }
-
-  for (const ruleId of DEFAULT_PREFERENCE_ORDER) {
-    if (!seen.has(ruleId)) {
-      normalized.push(ruleId);
-    }
+    seen.add(normalizedRuleId);
+    normalized.push(normalizedRuleId);
   }
 
   return normalized;
@@ -455,10 +563,32 @@ export function compareSchedules(left, right, preferenceOrder = DEFAULT_PREFEREN
 
   return (
     left.tight_transition_count - right.tight_transition_count ||
-    left.total_walking_distance_meters - right.total_walking_distance_meters ||
-    right.total_open_seats - left.total_open_seats ||
     left.package_ids.join('\u0000').localeCompare(right.package_ids.join('\u0000'))
   );
+}
+
+export function passesHardFilters(schedule, options) {
+  if (options.maxCampusDays != null && schedule.campus_day_count > options.maxCampusDays) {
+    return false;
+  }
+
+  if (
+    options.startAfterMinuteLocal != null &&
+    schedule.earliest_start_minute_local != null &&
+    schedule.earliest_start_minute_local < options.startAfterMinuteLocal
+  ) {
+    return false;
+  }
+
+  if (
+    options.endBeforeMinuteLocal != null &&
+    schedule.latest_end_minute_local != null &&
+    schedule.latest_end_minute_local > options.endBeforeMinuteLocal
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 export function hasConflict(conflicts, packageId, selectedPackageIds) {
@@ -516,6 +646,10 @@ export function buildSchedules({
   includeWaitlisted = false,
   includeClosed = false,
   limit,
+  maxCampusDays = null,
+  startAfterMinuteLocal = null,
+  endBeforeMinuteLocal = null,
+  onScheduleBuilt = null,
 }) {
   const eligibleGroups = orderedGroups.map((group) => {
     const lockedPackageId = lockedByCourse.get(group.courseDesignation) ?? null;
@@ -538,6 +672,11 @@ export function buildSchedules({
   const scheduleIndexByVisibilityKey = new Map();
   const selectedCandidates = [];
   const selectedPackageIds = new Set();
+  const hardFilterOptions = {
+    maxCampusDays,
+    startAfterMinuteLocal,
+    endBeforeMinuteLocal,
+  };
 
   function trimSchedulesToLimit() {
     schedules.sort((left, right) => compareSchedules(left, right, preferenceOrder));
@@ -581,6 +720,11 @@ export function buildSchedules({
         conflict_count: 0,
         ...buildScheduleMetrics(selectedCandidates, transitions),
       };
+      onScheduleBuilt?.(schedule);
+      if (!passesHardFilters(buildConservativeHardFilterSchedule(schedule, packages), hardFilterOptions)) {
+        return false;
+      }
+
       const visibilityKey = makeScheduleVisibilityKey(packages);
       const existingIndex = scheduleIndexByVisibilityKey.get(visibilityKey);
 
@@ -633,7 +777,32 @@ export function buildSchedules({
   return schedules.slice(0, limit);
 }
 
-export function generateSchedules(
+/**
+ * @typedef {object} ScheduleGenerationOptions
+ * @property {string[]} courses
+ * @property {string[]} [lockPackages]
+ * @property {string[]} [excludePackages]
+ * @property {string[]} [preferenceOrder]
+ * @property {boolean} [includeWaitlisted]
+ * @property {boolean} [includeClosed]
+ * @property {number} [limit]
+ * @property {number | null} [maxCampusDays]
+ * @property {number | null} [startAfterMinuteLocal]
+ * @property {number | null} [endBeforeMinuteLocal]
+ */
+
+/**
+ * @typedef {object} ScheduleGenerationResult
+ * @property {Array<Record<string, unknown>>} schedules
+ * @property {'constraints' | 'hard-filters' | null} emptyStateReason
+ */
+
+/**
+ * @param {unknown} db
+ * @param {ScheduleGenerationOptions} options
+ * @returns {ScheduleGenerationResult}
+ */
+export function generateSchedulesWithMetadata(
   db,
   {
     courses,
@@ -643,10 +812,16 @@ export function generateSchedules(
     includeWaitlisted = false,
     includeClosed = false,
     limit = DEFAULT_LIMIT,
+    maxCampusDays = null,
+    startAfterMinuteLocal = null,
+    endBeforeMinuteLocal = null,
   },
 ) {
   if (!Array.isArray(courses) || courses.length === 0) {
-    return [];
+    return {
+      schedules: [],
+      emptyStateReason: 'constraints',
+    };
   }
 
   const excludedPackageIds = new Set(excludePackages);
@@ -657,7 +832,10 @@ export function generateSchedules(
   const lockedByCourse = buildLockedByCourse(lockPackages, candidatesById);
 
   if (!lockedByCourse) {
-    return [];
+    return {
+      schedules: [],
+      emptyStateReason: 'constraints',
+    };
   }
 
   const requiredGroups = courses.map((courseDesignation) => ({
@@ -665,7 +843,10 @@ export function generateSchedules(
     candidates: groups.get(courseDesignation) ?? [],
   }));
   if (requiredGroups.some((group) => group.candidates.length === 0)) {
-    return [];
+    return {
+      schedules: [],
+      emptyStateReason: 'constraints',
+    };
   }
 
   const orderedGroups = requiredGroups
@@ -676,7 +857,8 @@ export function generateSchedules(
     .sort((left, right) => left.candidates.length - right.candidates.length || left.courseDesignation.localeCompare(right.courseDesignation));
 
   const activePackageIds = [...new Set(requiredGroups.flatMap((group) => group.candidates.map((candidate) => candidate.packageId)))];
-  return buildSchedules({
+  let preFilterScheduleCount = 0;
+  const schedules = buildSchedules({
     orderedGroups,
     lockedByCourse,
     conflicts: deriveConflicts(meetingsByPackageId, activePackageIds),
@@ -685,5 +867,25 @@ export function generateSchedules(
     includeWaitlisted,
     includeClosed,
     limit,
+    maxCampusDays,
+    startAfterMinuteLocal,
+    endBeforeMinuteLocal,
+    onScheduleBuilt: () => {
+      preFilterScheduleCount += 1;
+    },
   });
+
+  return {
+    schedules,
+    emptyStateReason:
+      schedules.length === 0 ? (preFilterScheduleCount > 0 ? 'hard-filters' : 'constraints') : null,
+  };
+}
+
+/**
+ * @param {unknown} db
+ * @param {ScheduleGenerationOptions} options
+ */
+export function generateSchedules(db, options) {
+  return generateSchedulesWithMetadata(db, options).schedules;
 }

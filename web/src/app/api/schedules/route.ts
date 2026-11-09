@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 
-import { generateSchedulesFromPostgres } from '@/lib/course-data';
+import { generateSchedulesFromPostgresWithMetadata } from '@/lib/course-data';
 
 import {
   clampScheduleLimit,
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
-import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
+import {
+  normalizePreferenceOrderInput,
+  normalizeBooleanInput,
+  normalizeNullableIntegerField,
+} from './normalize';
 
 type ScheduleRequestBody = {
   courses?: unknown;
@@ -16,6 +20,9 @@ type ScheduleRequestBody = {
   preference_order?: unknown;
   include_waitlisted?: unknown;
   include_closed?: unknown;
+  max_campus_days?: unknown;
+  start_after_minute_local?: unknown;
+  end_before_minute_local?: unknown;
 };
 
 function isStringArray(value: unknown): value is string[] {
@@ -82,6 +89,9 @@ export async function POST(request: Request) {
   const preferenceOrder = normalizePreferenceOrderInput(body.preference_order);
   const includeWaitlisted = normalizeBooleanInput(body.include_waitlisted);
   const includeClosed = normalizeBooleanInput(body.include_closed);
+  const maxCampusDays = normalizeNullableIntegerField(body.max_campus_days);
+  const startAfterMinuteLocal = normalizeNullableIntegerField(body.start_after_minute_local);
+  const endBeforeMinuteLocal = normalizeNullableIntegerField(body.end_before_minute_local);
 
   if (!courses) {
     return NextResponse.json(
@@ -96,16 +106,22 @@ export async function POST(request: Request) {
     limit === null ||
     !preferenceOrder ||
     includeWaitlisted === null ||
-    includeClosed === null
+    includeClosed === null ||
+    !maxCampusDays.isValid ||
+    !startAfterMinuteLocal.isValid ||
+    !endBeforeMinuteLocal.isValid
   ) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
-  const schedules = await generateSchedulesFromPostgres({
+  const generationResult = await generateSchedulesFromPostgresWithMetadata({
     courses,
     lockPackages,
     excludePackages,
     limit,
+    maxCampusDays: maxCampusDays.value,
+    startAfterMinuteLocal: startAfterMinuteLocal.value,
+    endBeforeMinuteLocal: endBeforeMinuteLocal.value,
     preferenceOrder,
     includeWaitlisted,
     includeClosed,
@@ -113,7 +129,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     {
-      schedules,
+      schedules: generationResult.schedules,
+      empty_state_reason: generationResult.emptyStateReason,
     },
     {
       headers: {

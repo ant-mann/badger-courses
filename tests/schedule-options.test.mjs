@@ -1070,29 +1070,261 @@ test('compareSchedules falls through null time metrics to later rules and tie-br
   );
 });
 
-test('normalizePreferenceOrder fills missing rules and ignores unknown values', async () => {
+test('normalizePreferenceOrder uses the default active order and maps legacy gap rules', async () => {
   const scheduleEngine = await loadScheduleEngineModule();
 
   assert.deepEqual(scheduleEngine.normalizePreferenceOrder(), [
     'later-starts',
     'fewer-campus-days',
-    'fewer-long-gaps',
+    'less-time-between-classes',
+    'shorter-walks',
+    'more-open-seats',
     'earlier-finishes',
   ]);
 
   assert.deepEqual(
     scheduleEngine.normalizePreferenceOrder([
       'fewer-long-gaps',
-      'later-starts',
-      'later-starts',
-      'not-a-rule',
+      'shorter-walks',
     ]),
     [
-      'fewer-long-gaps',
-      'later-starts',
-      'fewer-campus-days',
-      'earlier-finishes',
+      'less-time-between-classes',
+      'shorter-walks',
     ],
+  );
+});
+
+test('compareSchedules supports opposite time-between-classes rules', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const compact = {
+    package_ids: ['compact'],
+    campus_day_count: 2,
+    earliest_start_minute_local: 540,
+    total_between_class_minutes: 25,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 2,
+    latest_end_minute_local: 900,
+  };
+  const spread = {
+    package_ids: ['spread'],
+    campus_day_count: 2,
+    earliest_start_minute_local: 540,
+    total_between_class_minutes: 160,
+    tight_transition_count: 0,
+    total_walking_distance_meters: 0,
+    total_open_seats: 2,
+    latest_end_minute_local: 900,
+  };
+
+  assert.equal(
+    scheduleEngine.compareSchedules(compact, spread, ['less-time-between-classes']) < 0,
+    true,
+  );
+  assert.equal(
+    scheduleEngine.compareSchedules(compact, spread, ['more-time-between-classes']) > 0,
+    true,
+  );
+});
+
+test('countTotalBetweenClassMinutes counts same-term gaps across split-term meetings', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const firstHalfStart = Date.UTC(2026, 8, 2);
+  const firstHalfEnd = Date.UTC(2026, 9, 2);
+  const secondHalfStart = Date.UTC(2026, 9, 10);
+  const secondHalfEnd = Date.UTC(2026, 10, 10);
+
+  assert.equal(
+    scheduleEngine.countTotalBetweenClassMinutes([
+      makeTestCandidate('first-half-morning', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+            start_date: firstHalfStart,
+            end_date: firstHalfEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('second-half-midday', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 600,
+            end_minute_local: 660,
+            start_date: secondHalfStart,
+            end_date: secondHalfEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('first-half-afternoon', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 720,
+            end_minute_local: 780,
+            start_date: firstHalfStart,
+            end_date: firstHalfEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+    ]),
+    120,
+  );
+});
+
+test('countLargeIdleGaps counts same-term large gaps across split-term meetings', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const firstHalfStart = Date.UTC(2026, 8, 2);
+  const firstHalfEnd = Date.UTC(2026, 9, 2);
+  const secondHalfStart = Date.UTC(2026, 9, 10);
+  const secondHalfEnd = Date.UTC(2026, 10, 10);
+
+  assert.equal(
+    scheduleEngine.countLargeIdleGaps([
+      makeTestCandidate('first-half-morning', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 540,
+            end_minute_local: 600,
+            start_date: firstHalfStart,
+            end_date: firstHalfEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('second-half-midday', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 600,
+            end_minute_local: 660,
+            start_date: secondHalfStart,
+            end_date: secondHalfEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('first-half-afternoon', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 720,
+            end_minute_local: 780,
+            start_date: firstHalfStart,
+            end_date: firstHalfEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+    ]),
+    1,
+  );
+});
+
+test('countTotalBetweenClassMinutes uses the latest relevant prior end time for nested overlaps', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const termStart = Date.UTC(2026, 8, 2);
+  const termEnd = Date.UTC(2026, 11, 15);
+
+  assert.equal(
+    scheduleEngine.countTotalBetweenClassMinutes([
+      makeTestCandidate('outer-block', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 540,
+            end_minute_local: 720,
+            start_date: termStart,
+            end_date: termEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('nested-block', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 600,
+            end_minute_local: 660,
+            start_date: termStart,
+            end_date: termEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('afternoon-block', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 780,
+            end_minute_local: 840,
+            start_date: termStart,
+            end_date: termEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+    ]),
+    60,
+  );
+});
+
+test('countLargeIdleGaps uses the latest relevant prior end time for nested overlaps', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const termStart = Date.UTC(2026, 8, 2);
+  const termEnd = Date.UTC(2026, 11, 15);
+
+  assert.equal(
+    scheduleEngine.countLargeIdleGaps([
+      makeTestCandidate('outer-block', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 540,
+            end_minute_local: 720,
+            start_date: termStart,
+            end_date: termEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('nested-block', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 600,
+            end_minute_local: 660,
+            start_date: termStart,
+            end_date: termEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+      makeTestCandidate('afternoon-block', {
+        meetings: [
+          {
+            days_mask: 1,
+            start_minute_local: 780,
+            end_minute_local: 840,
+            start_date: termStart,
+            end_date: termEnd,
+            is_online: 0,
+          },
+        ],
+      }),
+    ]),
+    0,
   );
 });
 
@@ -1130,6 +1362,63 @@ test('generateSchedules returns no schedules when courses is empty', async () =>
   } finally {
     fixture.cleanup();
   }
+});
+
+test('generateSchedulesWithMetadata reports hard-filter empty state separately from conflicts', async () => {
+  const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
+
+  try {
+    const { generateSchedulesWithMetadata } = await loadScheduleEngineModule();
+    const result = generateSchedulesWithMetadata(fixture.db, {
+      courses: ['STAT 340', 'ENGL 462'],
+      limit: 25,
+      maxCampusDays: 0,
+      startAfterMinuteLocal: null,
+      endBeforeMinuteLocal: null,
+      preferenceOrder: ['later-starts'],
+    });
+
+    assert.deepEqual(result.schedules, []);
+    assert.equal(result.emptyStateReason, 'hard-filters');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('buildSchedules does not let incomplete timed meeting coverage bypass hard filters', async () => {
+  const scheduleEngine = await loadScheduleEngineModule();
+
+  const schedules = scheduleEngine.buildSchedules({
+    orderedGroups: [
+      {
+        courseDesignation: 'COURSE A',
+        candidates: [
+          makeTestCandidate('a-incomplete-timing', {
+            courseDesignation: 'COURSE A',
+            meetingCount: 2,
+            campusDayCount: 1,
+            earliestStartMinuteLocal: 540,
+            latestEndMinuteLocal: 900,
+            meetings: [
+              {
+                days_mask: 1,
+                start_minute_local: 540,
+                end_minute_local: 600,
+                is_online: 0,
+              },
+            ],
+          }),
+        ],
+      },
+    ],
+    lockedByCourse: new Map(),
+    conflicts: new Map(),
+    transitions: new Map(),
+    limit: 10,
+    endBeforeMinuteLocal: 840,
+  });
+
+  assert.deepEqual(schedules, []);
 });
 
 test('schedule-options honors excluded packages and result limits', () => {

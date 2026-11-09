@@ -12,7 +12,7 @@ export function normalizePreferenceOrderInput(value: unknown): PreferenceRuleId[
     return null;
   }
 
-  return normalizePreferenceOrder(value);
+  return normalizePreferenceOrder(value, { useDefaultsWhenEmpty: false });
 }
 
 export function normalizeBooleanInput(value: unknown): boolean | null {
@@ -25,4 +25,25 @@ export function normalizeBooleanInput(value: unknown): boolean | null {
   }
 
   return value;
+}
+
+export type NormalizedNullableIntegerField = {
+  value: number | null;
+  isValid: boolean;
+};
+
+export function normalizeNullableIntegerField(value: unknown): NormalizedNullableIntegerField {
+  if (value === undefined || value === null) {
+    return { value: null, isValid: true };
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    return { value: null, isValid: false };
+  }
+
+  return { value, isValid: true };
+}
+
+export function normalizeNullableIntegerInput(value: unknown): number | null {
+  return normalizeNullableIntegerField(value).value;
 }
