@@ -1669,3 +1669,50 @@ test('root package.json includes a repeatable web test command', async () => {
   assert.equal(typeof webPackageJson.scripts?.test, 'string');
   assert.match(webPackageJson.scripts.test, /tsx --test/);
 });
+
+test('loadMeetings returns a shared section meeting for a package that is not its canonical source', async () => {
+  const { loadMeetings } = await loadScheduleEngineModule();
+  const db = new Database(':memory:');
+
+  try {
+    db.exec(`
+      CREATE TABLE canonical_meetings (
+        package_id TEXT NOT NULL,
+        source_package_id TEXT NOT NULL,
+        meeting_type TEXT,
+        days_mask INTEGER,
+        start_minute_local INTEGER,
+        end_minute_local INTEGER,
+        start_date INTEGER,
+        end_date INTEGER,
+        exam_date INTEGER,
+        is_online INTEGER NOT NULL,
+        location_known INTEGER,
+        latitude REAL,
+        longitude REAL
+      )
+    `);
+    const insert = db.prepare(`
+      INSERT INTO canonical_meetings (
+        package_id, source_package_id, meeting_type, days_mask, start_minute_local, end_minute_local, is_online
+      ) VALUES (?, ?, 'CLASS', ?, ?, ?, 0)
+    `);
+
+    // Lecture shared by both packages; pkg-lec-dis-1 is its canonical source.
+    insert.run('pkg-lec-dis-1', 'pkg-lec-dis-1', 21, 595, 645);
+    insert.run('pkg-lec-dis-2', 'pkg-lec-dis-1', 21, 595, 645);
+    // Each package's own discussion.
+    insert.run('pkg-lec-dis-1', 'pkg-lec-dis-1', 2, 800, 850);
+    insert.run('pkg-lec-dis-2', 'pkg-lec-dis-2', 8, 865, 915);
+
+    const meetings = loadMeetings(db, ['pkg-lec-dis-2']);
+
+    assert.deepEqual(
+      (meetings.get('pkg-lec-dis-2') ?? []).map((meeting) => meeting.start_minute_local),
+      [595, 865],
+    );
+    assert.equal(meetings.has('pkg-lec-dis-1'), false);
+  } finally {
+    db.close();
+  }
+});

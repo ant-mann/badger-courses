@@ -593,7 +593,7 @@ export async function generateSchedulesFromPostgresWithMetadata(options: {
     : await allRows(
         `
           SELECT
-            source_package_id,
+            package_id AS source_package_id,
             meeting_days,
             start_minute_local AS meeting_time_start,
             end_minute_local AS meeting_time_end,
@@ -608,12 +608,12 @@ export async function generateSchedulesFromPostgresWithMetadata(options: {
             longitude,
             location_known
           FROM canonical_meetings
-          WHERE source_package_id IN (${candidates.map(() => "?").join(", ")})
+          WHERE package_id IN (${candidates.map(() => "?").join(", ")})
             AND meeting_type = 'CLASS'
             AND days_mask IS NOT NULL
             AND start_minute_local IS NOT NULL
             AND end_minute_local IS NOT NULL
-          ORDER BY source_package_id ASC, meeting_time_start ASC, meeting_time_end ASC
+          ORDER BY package_id ASC, meeting_time_start ASC, meeting_time_end ASC
         `,
         candidates.map((candidate) => candidate.source_package_id),
       );
