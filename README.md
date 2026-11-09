@@ -41,7 +41,12 @@ uw-madison-courses/
 ├── scripts/
 │   ├── extract-fall-2026-courses.mjs           # Playwright-based course extractor
 │   ├── import-madgrades.mjs                    # Madgrades historical grade importer
-│   └── schedule-options.mjs                    # Schedule combination generator
+│   ├── publish-course-db-postgres.mjs          # Course SQLite → Postgres publisher
+│   ├── publish-madgrades-db-postgres.mjs       # Madgrades SQLite → Postgres publisher
+│   ├── rebuild-madgrades-matches.mjs           # Refresh local-to-Madgrades match tables
+│   ├── schedule-options.mjs                    # Schedule combination generator
+│   ├── schema-postgres.sql                     # Postgres course schema
+│   └── schema-madgrades-postgres.sql           # Postgres Madgrades schema
 ├── src/
 │   ├── extractor-helpers.mjs                   # API request/response utilities
 │   ├── db/
@@ -51,27 +56,19 @@ uw-madison-courses/
 │   │   ├── prerequisite-summary-helpers.mjs    # AI-friendly prerequisite summaries
 │   │   ├── schedule-helpers.mjs                # Time/day/distance utilities
 │   │   └── schema.sql                          # Full DB schema (tables, views, indexes)
-│   └── madgrades/
-│       ├── api-client.mjs                      # Madgrades REST API client
-│       ├── import-helpers.mjs                  # Madgrades row-normalization helpers
-│       ├── import-runner.mjs                   # Orchestrates the full Madgrades import
-│       ├── match-helpers.mjs                   # Course/instructor fuzzy-matching logic
-│       └── snapshot-helpers.mjs                # Snapshot read/write utilities
-└── tests/
-    ├── db-import.test.mjs
-    ├── extractor.test.mjs
-    ├── helpers/
-    │   └── madgrades-db-fixture.mjs            # Shared DB fixture for Madgrades tests
-    ├── madgrades-api-client.test.mjs
-    ├── madgrades-cli.test.mjs
-    ├── madgrades-db.test.mjs
-    ├── madgrades-import.test.mjs
-    ├── madgrades-match-helpers.test.mjs
-    ├── madgrades-snapshot-helpers.test.mjs
-    ├── prerequisite-helpers.test.mjs
-    ├── prerequisite-summary-helpers.test.mjs
-    ├── schedule-helpers.test.mjs
-    └── schedule-options.test.mjs
+│   ├── madgrades/
+│   │   ├── api-client.mjs                      # Madgrades REST API client
+│   │   ├── import-helpers.mjs                  # Madgrades row-normalization helpers
+│   │   ├── import-runner.mjs                   # Orchestrates the full Madgrades import
+│   │   ├── build-madgrades-db.mjs              # Standalone Madgrades DB builder
+│   │   ├── match-helpers.mjs                   # Course/instructor fuzzy-matching logic
+│   │   ├── rebuild-match-tables.mjs            # Match-table refresh without re-importing grades
+│   │   ├── schema.sql                          # Madgrades DB schema
+│   │   └── snapshot-helpers.mjs                # Snapshot read/write utilities
+│   └── schedule/
+│       └── engine.mjs                          # Schedule generation engine (CLI)
+├── tests/                                      # Root tests (node:test)
+└── web/                                        # Next.js app (see web/README.md)
 ```
 
 ## Prerequisites
@@ -125,33 +122,16 @@ pnpm run import:madgrades
 MADGRADES_API_TOKEN=<your-token> pnpm run import:madgrades -- --refresh-api
 ```
 
-Snapshots are cached under `data/madgrades/` and can be re-imported into `data/fall-2026-madgrades.sqlite` at any time after rebuilding `data/fall-2026.sqlite`. These local SQLite files are the source artifacts for the optional publish/import workflows below. The deployed web runtime is separate: the Fly app connects to Supabase in production.
+Snapshots are cached under `data/madgrades/` and can be re-imported into `data/fall-2026-madgrades.sqlite` at any time after rebuilding `data/fall-2026.sqlite`.
 
-To refresh the legacy Turso-backed mirror databases (not the deployed runtime path):
+### 4. Publish to Postgres *(web app only)*
 
-```bash
-pnpm run build:madgrades-db
-pnpm run rebuild:madgrades-matches
-pnpm run publish:course-db
-pnpm run publish:madgrades-db
-```
-
-The publish commands now refresh the existing Turso databases in place via the Turso CLI. They require:
-
-- `turso auth login`
-- `sqlite3` on your `PATH`
-- `TURSO_COURSE_DATABASE_URL` and `TURSO_MADGRADES_DATABASE_URL`
-
-The scripts resolve the configured database names from `turso db list`, dump the local SQLite files, clear remote user tables/views, and load the new dump through `turso db shell`. They no longer use the one-time `/v1/upload` API path.
-
-For the Postgres/Supabase migration work, the repo also includes Postgres schema and importer scripts:
+The web app reads from Postgres. These scripts load the local SQLite files into the hosted database:
 
 ```bash
 pnpm run publish:course-db:postgres
 pnpm run publish:madgrades-db:postgres
 ```
-
-These scripts require an importer database URL and are for loading the hosted Postgres database from the local SQLite artifacts. The deployed web runtime is configured separately in the deployment section below.
 
 - Prefer `SUPABASE_DIRECT_DATABASE_URL` for bulk imports (direct connection, no session pool checkout contention).
 - `SUPABASE_DATABASE_URL` remains a backward-compatible fallback for local runs.
@@ -170,7 +150,7 @@ node scripts/publish-madgrades-db-postgres.mjs
 
 Use a percent-encoded password in the Postgres URL when it contains reserved characters. The Postgres publish scripts default to the local SQLite artifacts at `data/fall-2026.sqlite` and `data/fall-2026-madgrades.sqlite`.
 
-### 4. Generate schedule options
+### 5. Generate schedule options
 
 Finds conflict-free section combinations for a set of courses and ranks them.
 
@@ -296,11 +276,16 @@ pnpm test
 
 ## Deployment
 
-Fly deploys `web/Dockerfile` from the repo root. The production runner image does not bundle a runtime SQLite database; it connects to Supabase at request time.
+The web app runs on Fly and reads from Supabase Postgres. Deploy from the repo root:
 
-Configure `SUPABASE_DATABASE_URL` for the deployed web runtime via Fly-managed secrets/config before the Fly production cutover. The checked-in `web/fly.toml` keeps an empty placeholder only to document the required variable name; do not commit a real production Postgres URL there.
+```bash
+fly secrets set SUPABASE_DATABASE_URL='postgresql://...'   # once
+fly deploy
+```
 
-The Docker build still copies `data/fall-2026.sqlite` into the build stage because `next build` requires a local SQLite file. That file is not copied into the final runner image. The `publish:*:postgres` scripts above are the separate importer workflow for refreshing the hosted Supabase database from local SQLite snapshots.
+`fly.toml` builds `web/Dockerfile` with the repo root as build context. The image contains only the web package; no database file is bundled.
+
+`.github/workflows/refresh-data.yml` re-extracts course data and republishes it to Supabase every 6 hours.
 
 ## Key Dependencies
 

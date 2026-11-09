@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server';
 
-import { generateSchedules } from '@madgrades/schedule';
-import { type PreferenceRuleId } from '@/app/schedule-builder/preferences';
 import { generateSchedulesFromPostgres } from '@/lib/course-data';
 
 import {
   clampScheduleLimit,
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
-import { getCourseSqliteDb } from '@/lib/db';
-import { isSupabaseRuntimeEnabled } from '@/lib/env';
 import { normalizePreferenceOrderInput, normalizeBooleanInput } from './normalize';
 
 type ScheduleRequestBody = {
@@ -21,21 +17,6 @@ type ScheduleRequestBody = {
   include_waitlisted?: unknown;
   include_closed?: unknown;
 };
-
-type GenerateSchedulesOptions = {
-  courses: string[];
-  lockPackages: string[];
-  excludePackages: string[];
-  limit: number;
-  preferenceOrder: PreferenceRuleId[];
-  includeWaitlisted: boolean;
-  includeClosed: boolean;
-};
-
-const generateSchedulesTyped = generateSchedules as unknown as (
-  db: Awaited<ReturnType<typeof getCourseSqliteDb>>,
-  options: GenerateSchedulesOptions,
-) => unknown[];
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -120,35 +101,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
-  const schedules = isSupabaseRuntimeEnabled()
-    ? await generateSchedulesFromPostgres({
-        courses,
-        lockPackages,
-        excludePackages,
-        limit,
-        preferenceOrder,
-        includeWaitlisted,
-        includeClosed,
-      })
-    : (() => {
-        const db = getCourseSqliteDb();
-
-        return db.then((resolvedDb) =>
-          generateSchedulesTyped(resolvedDb, {
-            courses,
-            lockPackages,
-            excludePackages,
-            limit,
-            preferenceOrder,
-            includeWaitlisted,
-            includeClosed,
-          }),
-        );
-      })();
+  const schedules = await generateSchedulesFromPostgres({
+    courses,
+    lockPackages,
+    excludePackages,
+    limit,
+    preferenceOrder,
+    includeWaitlisted,
+    includeClosed,
+  });
 
   return NextResponse.json(
     {
-      schedules: await schedules,
+      schedules,
     },
     {
       headers: {

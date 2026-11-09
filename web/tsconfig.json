@@ -20,9 +20,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"],
-      "@madgrades/schedule": ["../src/schedule/engine.mjs"],
-      "@madgrades/db-helpers": ["../src/db/schedule-helpers.mjs"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

@@ -4,16 +4,14 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "test": "node --test && pnpm run test:web",
+    "test": "node --test \"tests/*.test.mjs\" && pnpm run test:web",
     "test:web": "pnpm --filter uw-madison-courses-web run test",
     "test:prerequisite-helpers": "node --test tests/prerequisite-helpers.test.mjs",
     "extract:fall-2026": "node scripts/extract-fall-2026-courses.mjs",
     "build:course-db": "node src/db/build-course-db.mjs",
     "build:madgrades-db": "node src/madgrades/build-madgrades-db.mjs",
     "import:madgrades": "node scripts/import-madgrades.mjs",
-    "publish:course-db": "node scripts/publish-course-db.mjs",
     "publish:course-db:postgres": "node scripts/publish-course-db-postgres.mjs",
-    "publish:madgrades-db": "node scripts/publish-madgrades-db.mjs",
     "publish:madgrades-db:postgres": "node scripts/publish-madgrades-db-postgres.mjs",
     "rebuild:madgrades-matches": "node scripts/rebuild-madgrades-matches.mjs",
     "schedule:options": "node scripts/schedule-options.mjs"

@@ -1,10 +1,7 @@
-import type Database from "better-sqlite3";
-import type { Client } from "@libsql/client";
 import type { PreferenceRuleId } from "@/app/schedule-builder/preferences";
 
 import { normalizeCourseDesignation } from "./course-designation";
-import { getCourseDb, getCourseSqliteDb, getMadgradesDb, getRuntimePostgresDb } from "./db";
-import { isSupabaseRuntimeEnabled } from "./env";
+import { getDb } from "./db";
 
 type QueryArg = string | number | null;
 type Row = Record<string, unknown>;
@@ -183,8 +180,6 @@ type PostgresTransition = {
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 
-let hasCourseSearchFtsTable: boolean | null = null;
-
 export const normalizeDesignation = normalizeCourseDesignation;
 
 const SCHEDULE_TIMEZONE = "America/Chicago";
@@ -194,10 +189,6 @@ const localTimePartsFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "numeric",
   hour12: false,
 });
-
-export function __resetCourseDataCachesForTests(): void {
-  hasCourseSearchFtsTable = null;
-}
 
 export function parseStringArrayJson(value: string | null): string[] {
   if (!value) {
@@ -247,63 +238,20 @@ export function buildPostgresTsquery(query: string): string | null {
     .join(" & ");
 }
 
-async function allRows(db: Client, sql: string, args: QueryArg[] = []): Promise<Row[]> {
-  const result = await db.execute({ sql, args });
-  return result.rows as Row[];
-}
-
-async function firstRow(db: Client, sql: string, args: QueryArg[] = []): Promise<Row | undefined> {
-  const rows = await allRows(db, sql, args);
-  return rows[0];
-}
-
 function toPostgresSql(sqlText: string): string {
   let placeholderIndex = 0;
 
   return sqlText.replace(/\?/g, () => `$${++placeholderIndex}`);
 }
 
-async function allRuntimeRows(sqlText: string, args: QueryArg[] = []): Promise<Row[]> {
-  const db = getRuntimePostgresDb();
-  const rows = await db.unsafe(toPostgresSql(sqlText), args);
+async function allRows(sqlText: string, args: QueryArg[] = []): Promise<Row[]> {
+  const rows = await getDb().unsafe(toPostgresSql(sqlText), args);
   return rows as Row[];
 }
 
-async function allCourseRowsRuntime(sqlText: string, args: QueryArg[] = []): Promise<Row[]> {
-  if (isSupabaseRuntimeEnabled()) {
-    return allRuntimeRows(sqlText, args);
-  }
-
-  return allRows(getCourseDb(), sqlText, args);
-}
-
-async function firstCourseRowRuntime(sqlText: string, args: QueryArg[] = []): Promise<Row | undefined> {
-  if (isSupabaseRuntimeEnabled()) {
-    const rows = await allRuntimeRows(sqlText, args);
-    return rows[0];
-  }
-
-  return firstRow(getCourseDb(), sqlText, args);
-}
-
-async function allMadgradesRowsRuntime(sqlText: string, args: QueryArg[] = []): Promise<Row[]> {
-  if (isSupabaseRuntimeEnabled()) {
-    return allRuntimeRows(sqlText, args);
-  }
-
-  return allRows(getMadgradesDb(), sqlText, args);
-}
-
-async function firstMadgradesRowRuntime(
-  sqlText: string,
-  args: QueryArg[] = [],
-): Promise<Row | undefined> {
-  if (isSupabaseRuntimeEnabled()) {
-    const rows = await allRuntimeRows(sqlText, args);
-    return rows[0];
-  }
-
-  return firstRow(getMadgradesDb(), sqlText, args);
+async function firstRow(sqlText: string, args: QueryArg[] = []): Promise<Row | undefined> {
+  const rows = await allRows(sqlText, args);
+  return rows[0];
 }
 
 function parseSourcePackageSubjectCode(sourcePackageId: string): string | null {
@@ -349,48 +297,7 @@ function mergeRestrictionNotes(...notes: Array<string | null>): string | null {
   return fragments.size > 0 ? [...fragments].join(" | ") : null;
 }
 
-function hasValue(name: string): boolean {
-  return Boolean(process.env[name]?.trim());
-}
-
-function hasCompleteMadgradesConfig(): boolean {
-  return [
-    "TURSO_MADGRADES_DATABASE_URL",
-    "TURSO_MADGRADES_AUTH_TOKEN",
-    "MADGRADES_MADGRADES_REPLICA_PATH",
-  ].every(hasValue);
-}
-
-function buildCourseTitleLookup(
-  db: Database.Database,
-  termCode: string,
-  sourcePackageIds: string[],
-): Map<string, string> {
-  const courseIds = [...new Set(sourcePackageIds.map(parseSourcePackageCourseId).filter(Boolean))];
-
-  if (courseIds.length === 0) {
-    return new Map();
-  }
-
-  const placeholders = courseIds.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `
-        SELECT DISTINCT course_id, title
-        FROM courses
-        WHERE term_code = ? AND course_id IN (${placeholders})
-      `,
-    )
-    .all(termCode, ...courseIds) as Row[];
-
-  return new Map(
-    rows
-      .map((row) => [asString(row.course_id), asString(row.title)] as const)
-      .filter((entry) => entry[1].length > 0),
-  );
-}
-
-async function buildCourseTitleLookupRuntime(
+async function buildCourseTitleLookup(
   termCode: string,
   sourcePackageIds: string[],
 ): Promise<Map<string, string>> {
@@ -401,7 +308,7 @@ async function buildCourseTitleLookupRuntime(
   }
 
   const placeholders = courseIds.map(() => "?").join(", ");
-  const rows = await allCourseRowsRuntime(
+  const rows = await allRows(
     `
         SELECT DISTINCT course_id, title
         FROM courses
@@ -637,7 +544,7 @@ export async function generateSchedulesFromPostgres(options: {
 
   const coursePlaceholders = options.courses.map(() => "?").join(", ");
   const excludedPackagePlaceholders = options.excludePackages.map(() => "?").join(", ");
-  const rows = await allCourseRowsRuntime(
+  const rows = await allRows(
     `
       SELECT
         source_package_id,
@@ -666,7 +573,7 @@ export async function generateSchedulesFromPostgres(options: {
   const candidates = rows.map(mapPostgresScheduleCandidate);
   const meetingRows = candidates.length === 0
     ? []
-    : await allCourseRowsRuntime(
+    : await allRows(
         `
           SELECT
             source_package_id,
@@ -802,7 +709,6 @@ export async function generateSchedulesFromPostgres(options: {
 }
 
 export async function searchCourses(params: CourseSearchParams = {}): Promise<CourseListItem[]> {
-  const db = isSupabaseRuntimeEnabled() ? undefined : getCourseDb();
   const query = params.query?.trim() ?? "";
   const subject = params.subject?.trim() ?? "";
   const limit = clampLimit(params.limit);
@@ -810,14 +716,11 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
   const searchContext = buildCourseSearchContext(query);
   let rows: Row[];
 
-  if (searchContext.matchQuery && (await hasCourseSearchTable(db))) {
+  if (searchContext.matchQuery) {
     const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
     const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
-    const runtimeMatchQuery = isSupabaseRuntimeEnabled()
-      ? searchContext.postgresMatchQuery
-      : searchContext.matchQuery;
 
-    rows = await allCourseRowsRuntime(
+    rows = await allRows(
       `
           WITH raw_search_matches AS (
             SELECT
@@ -826,15 +729,15 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
               alias_course_designation_normalized,
               alias_course_designation_compact,
               title_normalized,
-              ${isSupabaseRuntimeEnabled() ? "ts_rank(ts, to_tsquery('simple', ?))" : "rank"} AS search_rank
+              ts_rank(ts, to_tsquery('simple', ?)) AS search_rank
             FROM course_search_fts
-            WHERE ${isSupabaseRuntimeEnabled() ? "ts @@ to_tsquery('simple', ?)" : "course_search_fts MATCH ?"}
+            WHERE ts @@ to_tsquery('simple', ?)
           ),
           search_matches AS (
             SELECT
               term_code,
               course_id,
-              ${isSupabaseRuntimeEnabled() ? "MAX(search_rank)" : "MIN(search_rank)"} AS best_search_rank,
+              MAX(search_rank) AS best_search_rank,
               MAX(CASE WHEN alias_course_designation_normalized = ? THEN 1 ELSE 0 END) AS exact_alias_match,
               MAX(CASE WHEN alias_course_designation_compact = ? THEN 1 ELSE 0 END) AS exact_compact_alias_match,
               MAX(CASE WHEN alias_course_designation_normalized LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_alias_match,
@@ -871,7 +774,7 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
                   sm.prefix_compact_alias_match DESC,
                   sm.exact_title_match DESC,
                   sm.prefix_title_match DESC,
-                  sm.best_search_rank ${isSupabaseRuntimeEnabled() ? "DESC" : "ASC"},
+                  sm.best_search_rank DESC,
                   COALESCE(co.section_count, 0) DESC,
                   COALESCE(co.has_any_open_seats, 0) DESC,
                   COALESCE(co.has_any_full_section, 0) DESC,
@@ -902,15 +805,15 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
             prefix_compact_alias_match DESC,
             exact_title_match DESC,
             prefix_title_match DESC,
-            best_search_rank ${isSupabaseRuntimeEnabled() ? "DESC" : "ASC"},
+            best_search_rank DESC,
             COALESCE(has_any_open_seats, 0) DESC,
             COALESCE(section_count, 0) DESC,
             course_designation ASC
           LIMIT ?
         `,
       [
-        ...(isSupabaseRuntimeEnabled() ? [runtimeMatchQuery] : []),
-        runtimeMatchQuery,
+        searchContext.matchQuery,
+        searchContext.matchQuery,
         searchContext.normalizedQuery,
         searchContext.compactQuery,
         normalizedQueryLike,
@@ -921,129 +824,12 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
         limit,
       ],
     );
-  } else if (searchContext.matchQuery) {
-    const normalizedQueryLike = `${escapeLike(searchContext.normalizedQuery)}%`;
-    const compactQueryLike = `${escapeLike(searchContext.compactQuery)}%`;
-    const queryTokens = searchContext.normalizedQuery.split(" ").filter((token) => token.length > 0);
-    const tokenMatchClauses = queryTokens
-      .map(
-        () => `
-              (
-                EXISTS (
-                  SELECT 1
-                  FROM course_cross_listing_overview_v ccl_match
-                  WHERE ccl_match.term_code = co.term_code
-                    AND ccl_match.course_id = co.course_id
-                    AND (
-                      LOWER(ccl_match.alias_course_designation) LIKE ? ESCAPE '\\'
-                      OR REPLACE(LOWER(ccl_match.alias_course_designation), ' ', '') LIKE ? ESCAPE '\\'
-                    )
-                )
-                OR LOWER(co.title) LIKE ? ESCAPE '\\'
-                OR LOWER(c.description) LIKE ? ESCAPE '\\'
-              )
-            `,
-      )
-      .join(" AND ");
-    const tokenMatchParams = queryTokens.flatMap((token) => {
-      const tokenLike = `%${escapeLike(token)}%`;
-      return [tokenLike, tokenLike, tokenLike, tokenLike];
-    });
-
-    rows = await allCourseRowsRuntime(
-      `
-          WITH matched_courses AS (
-            SELECT
-              co.term_code,
-              co.course_id,
-              MAX(CASE WHEN LOWER(ccl.alias_course_designation) = ? THEN 1 ELSE 0 END) AS exact_alias_match,
-              MAX(CASE WHEN LOWER(ccl.alias_course_designation) LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_alias_match,
-              MAX(CASE WHEN REPLACE(LOWER(ccl.alias_course_designation), ' ', '') LIKE REPLACE(?, ' ', '') ESCAPE '\\' THEN 1 ELSE 0 END) AS compact_alias_match,
-              MAX(CASE WHEN LOWER(co.title) = ? THEN 1 ELSE 0 END) AS exact_title_match,
-              MAX(CASE WHEN LOWER(co.title) LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END) AS prefix_title_match
-            FROM course_overview_v co
-            JOIN courses c
-              ON c.term_code = co.term_code AND c.course_id = co.course_id
-            JOIN course_cross_listing_overview_v ccl
-              ON ccl.term_code = co.term_code AND ccl.course_id = co.course_id
-            WHERE ${tokenMatchClauses}
-            GROUP BY co.term_code, co.course_id
-          ),
-          combined_matches AS (
-            SELECT
-              co.course_designation,
-              co.title,
-              co.minimum_credits,
-              co.maximum_credits,
-              co.cross_list_designations_json,
-              co.section_count,
-              co.has_any_open_seats,
-              co.has_any_waitlist,
-              co.has_any_full_section,
-              mc.exact_alias_match,
-              mc.prefix_alias_match,
-              mc.compact_alias_match,
-              mc.exact_title_match,
-              mc.prefix_title_match,
-              ROW_NUMBER() OVER (
-                PARTITION BY co.course_designation
-                ORDER BY
-                  mc.exact_alias_match DESC,
-                  mc.compact_alias_match DESC,
-                  mc.prefix_alias_match DESC,
-                  mc.exact_title_match DESC,
-                  mc.prefix_title_match DESC,
-                  COALESCE(co.section_count, 0) DESC,
-                  COALESCE(co.has_any_open_seats, 0) DESC,
-                  COALESCE(co.has_any_full_section, 0) DESC,
-                  co.title ASC,
-                  co.course_id ASC
-              ) AS designation_rank
-            FROM course_overview_v co
-            JOIN matched_courses mc
-              ON mc.term_code = co.term_code AND mc.course_id = co.course_id
-            ${normalizedSubjectPrefix ? "WHERE UPPER(co.course_designation) LIKE ? ESCAPE '\\'" : ""}
-          )
-          SELECT
-            course_designation,
-            title,
-            minimum_credits,
-            maximum_credits,
-            cross_list_designations_json,
-            section_count,
-            has_any_open_seats,
-            has_any_waitlist,
-            has_any_full_section
-          FROM combined_matches
-          WHERE designation_rank = 1
-          ORDER BY
-            exact_alias_match DESC,
-            compact_alias_match DESC,
-            prefix_alias_match DESC,
-            exact_title_match DESC,
-            prefix_title_match DESC,
-            COALESCE(has_any_open_seats, 0) DESC,
-            COALESCE(section_count, 0) DESC,
-            course_designation ASC
-          LIMIT ?
-        `,
-      [
-        searchContext.normalizedQuery,
-        normalizedQueryLike,
-        compactQueryLike,
-        searchContext.normalizedQuery,
-        normalizedQueryLike,
-        ...tokenMatchParams,
-        ...(normalizedSubjectPrefix ? [normalizedSubjectPrefix] : []),
-        limit,
-      ],
-    );
   } else {
     if (query && !subject) {
       return [];
     }
 
-    rows = await allCourseRowsRuntime(
+    rows = await allRows(
       `
           WITH ranked_courses AS (
             SELECT
@@ -1091,11 +877,6 @@ export async function searchCourses(params: CourseSearchParams = {}): Promise<Co
 }
 
 export async function getCourseDetail(designation: string): Promise<CourseDetail | null> {
-  if (isSupabaseRuntimeEnabled()) {
-    return getCourseDetailRuntime(designation);
-  }
-
-  const db = await getCourseSqliteDb();
   let normalizedDesignation: string;
 
   try {
@@ -1104,196 +885,13 @@ export async function getCourseDetail(designation: string): Promise<CourseDetail
     return null;
   }
 
-  const canonical = resolveCanonicalCourse(db, normalizedDesignation);
+  const canonical = await resolveCanonicalCourse(normalizedDesignation);
 
   if (!canonical) {
     return null;
   }
 
-  const courseRow = db
-    .prepare(
-      `
-        SELECT
-          c.course_designation,
-          c.title,
-          c.description,
-          c.subject_code,
-          c.catalog_number,
-          c.course_id,
-          c.minimum_credits,
-          c.maximum_credits,
-          c.enrollment_prerequisites,
-          co.cross_list_designations_json,
-          co.section_count,
-          co.has_any_open_seats,
-          co.has_any_waitlist,
-          co.has_any_full_section
-        FROM courses c
-        JOIN course_overview_v co
-          ON co.term_code = c.term_code AND co.course_id = c.course_id
-        WHERE c.term_code = ? AND c.course_id = ?
-        LIMIT 1
-      `,
-    )
-    .get(canonical.termCode, canonical.courseId) as Row | undefined;
-
-  if (!courseRow) {
-    return null;
-  }
-
-  const prerequisiteRow = db
-    .prepare(
-      `
-        SELECT summary_status, course_groups_json, escape_clauses_json, raw_text, unparsed_text
-        FROM prerequisite_course_summary_overview_v
-        WHERE term_code = ? AND course_id = ?
-        ORDER BY rule_id ASC
-        LIMIT 1
-      `,
-    )
-    .get(canonical.termCode, canonical.courseId) as Row | undefined;
-
-  const prerequisiteRows = db
-    .prepare(
-      `
-        SELECT
-          p.rule_id,
-          p.parse_status,
-          p.parse_confidence,
-          pcs.summary_status,
-          pcs.course_groups_json,
-          pcs.escape_clauses_json,
-          p.raw_text,
-          p.unparsed_text
-        FROM prerequisite_rule_overview_v p
-        LEFT JOIN prerequisite_course_summary_overview_v pcs
-          ON pcs.rule_id = p.rule_id
-        WHERE p.term_code = ? AND p.course_id = ?
-        ORDER BY p.rule_id ASC
-      `,
-    )
-    .all(canonical.termCode, canonical.courseId) as Row[];
-
-  const sections = db
-    .prepare(
-      `
-        SELECT
-          section_class_number,
-          source_package_id,
-          section_number,
-          section_type,
-          instruction_mode,
-          session_code,
-          open_seats,
-          waitlist_current_size,
-          capacity,
-          currently_enrolled,
-          has_open_seats,
-          has_waitlist,
-          is_full
-        FROM section_overview_v
-        WHERE term_code = ? AND course_id = ?
-        ORDER BY section_type ASC, section_number ASC
-      `,
-    )
-    .all(canonical.termCode, canonical.courseId) as Row[];
-
-  const meetings = db
-    .prepare(
-      `
-        SELECT
-          section_class_number,
-          source_package_id,
-          meeting_index,
-          meeting_type,
-          meeting_days,
-          meeting_time_start,
-          meeting_time_end,
-          start_date,
-          end_date,
-          exam_date,
-          room,
-          building_code,
-          building_name,
-          street_address,
-          latitude,
-          longitude,
-          location_known
-        FROM schedule_planning_v
-        WHERE term_code = ? AND course_id = ?
-        ORDER BY section_class_number ASC, meeting_index ASC, source_package_id ASC
-      `,
-    )
-    .all(canonical.termCode, canonical.courseId) as Row[];
-
-  const schedulePackages = db
-    .prepare(
-      `
-        SELECT
-          source_package_id,
-          section_bundle_label,
-          open_seats,
-          is_full,
-          has_waitlist,
-          campus_day_count,
-          meeting_summary_local,
-          restriction_note
-        FROM schedule_candidates_v
-        WHERE term_code = ? AND course_id = ?
-        ORDER BY is_full ASC, campus_day_count ASC, earliest_start_minute_local ASC, source_package_id ASC
-      `,
-    )
-    .all(canonical.termCode, canonical.courseId) as Row[];
-
-  const packageSectionMembershipRows = db
-    .prepare(
-      `
-        SELECT DISTINCT package_id, section_class_number
-        FROM sections
-        WHERE term_code = ? AND course_id = ?
-        ORDER BY package_id, section_class_number
-      `,
-    )
-    .all(canonical.termCode, canonical.courseId) as Row[];
-
-  const instructorGrades = await getInstructorHistory(db, canonical.termCode, canonical.courseId);
-  const courseTitleLookup = buildCourseTitleLookup(
-    db,
-    canonical.termCode,
-    [
-      ...sections.map((row) => asString(row.source_package_id)),
-      ...schedulePackages.map((row) => asString(row.source_package_id)),
-    ],
-  );
-  return buildCourseDetailResult({
-    courseRow,
-    prerequisiteRow,
-    prerequisiteRows,
-    sections,
-    meetings,
-    schedulePackages,
-    packageSectionMembershipRows,
-    instructorGrades,
-    courseTitleLookup,
-  });
-}
-
-async function getCourseDetailRuntime(designation: string): Promise<CourseDetail | null> {
-  let normalizedDesignation: string;
-
-  try {
-    normalizedDesignation = normalizeDesignation(decodeURIComponent(designation));
-  } catch {
-    return null;
-  }
-
-  const canonical = await resolveCanonicalCourseRuntime(normalizedDesignation);
-
-  if (!canonical) {
-    return null;
-  }
-
-  const courseRow = await firstCourseRowRuntime(
+  const courseRow = await firstRow(
     `
       SELECT
         c.course_designation,
@@ -1323,7 +921,7 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     return null;
   }
 
-  const prerequisiteRow = await firstCourseRowRuntime(
+  const prerequisiteRow = await firstRow(
     `
       SELECT summary_status, course_groups_json, escape_clauses_json, raw_text, unparsed_text
       FROM prerequisite_course_summary_overview_v
@@ -1334,7 +932,7 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     [canonical.termCode, canonical.courseId],
   );
 
-  const prerequisiteRows = await allCourseRowsRuntime(
+  const prerequisiteRows = await allRows(
     `
       SELECT
         p.rule_id,
@@ -1354,7 +952,7 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     [canonical.termCode, canonical.courseId],
   );
 
-  const sections = await allCourseRowsRuntime(
+  const sections = await allRows(
     `
       SELECT
         section_class_number,
@@ -1377,7 +975,7 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     [canonical.termCode, canonical.courseId],
   );
 
-  const meetings = await allCourseRowsRuntime(
+  const meetings = await allRows(
     `
       SELECT
         section_class_number,
@@ -1404,7 +1002,7 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     [canonical.termCode, canonical.courseId],
   );
 
-  const schedulePackages = await allCourseRowsRuntime(
+  const schedulePackages = await allRows(
     `
       SELECT
         source_package_id,
@@ -1422,7 +1020,7 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     [canonical.termCode, canonical.courseId],
   );
 
-  const packageSectionMembershipRows = await allCourseRowsRuntime(
+  const packageSectionMembershipRows = await allRows(
     `
       SELECT DISTINCT package_id, section_class_number
       FROM sections
@@ -1432,8 +1030,8 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
     [canonical.termCode, canonical.courseId],
   );
 
-  const instructorGrades = await getInstructorHistory(undefined, canonical.termCode, canonical.courseId);
-  const courseTitleLookup = await buildCourseTitleLookupRuntime(canonical.termCode, [
+  const instructorGrades = await getInstructorHistory(canonical.termCode, canonical.courseId);
+  const courseTitleLookup = await buildCourseTitleLookup(canonical.termCode, [
     ...sections.map((row) => asString(row.source_package_id)),
     ...schedulePackages.map((row) => asString(row.source_package_id)),
   ]);
@@ -1452,178 +1050,10 @@ async function getCourseDetailRuntime(designation: string): Promise<CourseDetail
 }
 
 async function getInstructorHistory(
-  db: Database.Database | undefined,
   termCode: string,
   courseId: string,
 ): Promise<InstructorHistoryItem[]> {
-  if (isSupabaseRuntimeEnabled()) {
-    return getInstructorHistoryRuntime(termCode, courseId);
-  }
-
-  if (!db) {
-    throw new Error("SQLite database is required when Supabase runtime is disabled");
-  }
-
-  if (!hasCompleteMadgradesConfig()) {
-    return getInstructorHistoryFromCompatibilityDb(db, termCode, courseId);
-  }
-
-  const currentSectionInstructorRows = db
-    .prepare(
-      `
-        SELECT
-          so.section_number,
-          so.section_type,
-          si.instructor_key,
-          TRIM(COALESCE(i.first_name || ' ', '') || COALESCE(i.last_name, '')) AS instructor_display_name
-        FROM section_overview_v so
-        JOIN section_instructors si
-          ON si.package_id = so.source_package_id
-         AND si.section_class_number = so.section_class_number
-        JOIN instructors i
-          ON i.instructor_key = si.instructor_key
-        WHERE so.term_code = ? AND so.course_id = ?
-        ORDER BY so.section_type ASC, so.section_number ASC, instructor_display_name ASC, si.instructor_key ASC
-      `,
-    )
-    .all(termCode, courseId) as Row[];
-
-  if (currentSectionInstructorRows.length === 0) {
-    return [];
-  }
-
-  const instructorKeys = [...new Set(currentSectionInstructorRows.map((row) => asString(row.instructor_key)))];
-
-  if (instructorKeys.length === 0) {
-    return [];
-  }
-
-  const emptyRows = mapCurrentInstructorRows(currentSectionInstructorRows);
-  const madgradesDb = getMadgradesDb();
-
-  try {
-    const courseMatchRow = await firstRow(
-      madgradesDb,
-      `
-        SELECT madgrades_course_id
-        FROM madgrades_course_matches
-        WHERE term_code = ? AND course_id = ?
-        LIMIT 1
-      `,
-      [termCode, courseId],
-    );
-    const madgradesCourseId = asNullableNumeric(courseMatchRow?.madgrades_course_id);
-
-    const gradeByInstructorKey = new Map<string, Row>();
-
-    if (madgradesCourseId !== null) {
-      const placeholders = instructorKeys.map(() => "?").join(", ");
-      const gradeRows = await allRows(
-        madgradesDb,
-        `
-          WITH course_history AS (
-            SELECT
-              mco.madgrades_course_id,
-              mco.madgrades_instructor_id,
-              COUNT(*) AS prior_offering_count,
-              COALESCE(SUM(mco.student_count), 0) AS student_count,
-              CASE
-                WHEN COALESCE(SUM(mco.student_count), 0) = 0 THEN NULL
-                ELSE SUM(mco.avg_gpa * mco.student_count) / SUM(mco.student_count)
-              END AS same_course_gpa
-            FROM madgrades_course_offerings mco
-            WHERE mco.madgrades_course_id = ?
-            GROUP BY mco.madgrades_course_id, mco.madgrades_instructor_id
-          ),
-          latest_course_grades AS (
-            SELECT
-              mcg.*,
-              ROW_NUMBER() OVER (
-                PARTITION BY mcg.madgrades_course_id, mcg.term_code
-                ORDER BY mcg.madgrades_refresh_run_id DESC, mcg.madgrades_course_grade_id DESC
-              ) AS refresh_rank
-            FROM madgrades_course_grades mcg
-            WHERE mcg.madgrades_course_id = ?
-          ),
-          course_gpa AS (
-            SELECT
-              lcg.madgrades_course_id,
-              CASE
-                WHEN COALESCE(SUM(lcg.student_count), 0) = 0 THEN NULL
-                ELSE SUM(lcg.avg_gpa * lcg.student_count) / SUM(lcg.student_count)
-              END AS historical_gpa
-            FROM latest_course_grades lcg
-            WHERE lcg.refresh_rank = 1
-            GROUP BY lcg.madgrades_course_id
-          )
-          SELECT
-            mim.instructor_key,
-            mim.match_status AS instructor_match_status,
-            ch.prior_offering_count AS same_course_prior_offering_count,
-            ch.student_count AS same_course_student_count,
-            ch.same_course_gpa,
-            cg.historical_gpa AS course_historical_gpa
-          FROM madgrades_instructor_matches mim
-          LEFT JOIN course_history ch
-            ON ch.madgrades_instructor_id = mim.madgrades_instructor_id
-          LEFT JOIN course_gpa cg
-            ON cg.madgrades_course_id = ?
-          WHERE mim.instructor_key IN (${placeholders})
-        `,
-        [madgradesCourseId, madgradesCourseId, madgradesCourseId, ...instructorKeys],
-      );
-
-      for (const row of gradeRows) {
-        gradeByInstructorKey.set(asString(row.instructor_key), row);
-      }
-    }
-
-    return currentSectionInstructorRows
-      .map((row) => {
-        const gradeRow = gradeByInstructorKey.get(asString(row.instructor_key));
-
-        return {
-          sectionNumber: asString(row.section_number),
-          sectionType: asString(row.section_type),
-          instructorDisplayName: asNullableString(row.instructor_display_name),
-          sameCoursePriorOfferingCount: asNullableNumeric(gradeRow?.same_course_prior_offering_count),
-          sameCourseStudentCount: asNullableNumeric(gradeRow?.same_course_student_count),
-          sameCourseGpa: asNullableNumeric(gradeRow?.same_course_gpa),
-          courseHistoricalGpa: asNullableNumeric(gradeRow?.course_historical_gpa),
-          instructorMatchStatus: asNullableString(gradeRow?.instructor_match_status),
-        };
-      })
-      .sort((left, right) => {
-        const priorOfferingDiff =
-          (right.sameCoursePriorOfferingCount ?? -1) - (left.sameCoursePriorOfferingCount ?? -1);
-
-        if (priorOfferingDiff !== 0) {
-          return priorOfferingDiff;
-        }
-
-        const studentCountDiff = (right.sameCourseStudentCount ?? -1) - (left.sameCourseStudentCount ?? -1);
-
-        if (studentCountDiff !== 0) {
-          return studentCountDiff;
-        }
-
-        const sectionTypeDiff = left.sectionType.localeCompare(right.sectionType);
-        if (sectionTypeDiff !== 0) {
-          return sectionTypeDiff;
-        }
-
-        return left.sectionNumber.localeCompare(right.sectionNumber);
-      });
-  } catch {
-    return emptyRows;
-  }
-}
-
-async function getInstructorHistoryRuntime(
-  termCode: string,
-  courseId: string,
-): Promise<InstructorHistoryItem[]> {
-  const currentSectionInstructorRows = await allCourseRowsRuntime(
+  const currentSectionInstructorRows = await allRows(
     `
       SELECT
         so.section_number,
@@ -1655,7 +1085,7 @@ async function getInstructorHistoryRuntime(
   const emptyRows = mapCurrentInstructorRows(currentSectionInstructorRows);
 
   try {
-    const courseMatchRow = await firstMadgradesRowRuntime(
+    const courseMatchRow = await firstRow(
       `
         SELECT madgrades_course_id
         FROM madgrades.madgrades_course_matches
@@ -1670,7 +1100,7 @@ async function getInstructorHistoryRuntime(
 
     if (madgradesCourseId !== null) {
       const placeholders = instructorKeys.map(() => "?").join(", ");
-      const gradeRows = await allMadgradesRowsRuntime(
+      const gradeRows = await allRows(
         `
           WITH course_history AS (
             SELECT
@@ -1770,46 +1200,6 @@ async function getInstructorHistoryRuntime(
   }
 }
 
-function getInstructorHistoryFromCompatibilityDb(
-  db: Database.Database,
-  termCode: string,
-  courseId: string,
-): InstructorHistoryItem[] {
-  if (!supportsInstructorHistoryView(db)) {
-    return [];
-  }
-
-  const rows = db
-    .prepare(
-      `
-        SELECT
-          section_number,
-          section_type,
-          instructor_display_name,
-          same_course_prior_offering_count,
-          same_course_student_count,
-          same_course_gpa,
-          course_historical_gpa,
-          instructor_match_status
-        FROM current_term_section_instructor_grade_overview_v
-        WHERE term_code = ? AND course_id = ?
-        ORDER BY same_course_prior_offering_count DESC, same_course_student_count DESC, section_type ASC, section_number ASC
-      `,
-    )
-    .all(termCode, courseId) as Row[];
-
-  return rows.map((row) => ({
-    sectionNumber: asString(row.section_number),
-    sectionType: asString(row.section_type),
-    instructorDisplayName: asNullableString(row.instructor_display_name),
-    sameCoursePriorOfferingCount: asNullableNumber(row.same_course_prior_offering_count),
-    sameCourseStudentCount: asNullableNumber(row.same_course_student_count),
-    sameCourseGpa: asNullableNumber(row.same_course_gpa),
-    courseHistoricalGpa: asNullableNumber(row.course_historical_gpa),
-    instructorMatchStatus: asNullableString(row.instructor_match_status),
-  }));
-}
-
 function mapCurrentInstructorRows(rows: Row[]): InstructorHistoryItem[] {
   return rows
     .map((row) => ({
@@ -1832,16 +1222,6 @@ function mapCurrentInstructorRows(rows: Row[]): InstructorHistoryItem[] {
     });
 }
 
-function supportsInstructorHistoryView(db: Database.Database): boolean {
-  const row = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'current_term_section_instructor_grade_overview_v'",
-    )
-    .get() as { name?: string } | undefined;
-
-  return row?.name === "current_term_section_instructor_grade_overview_v";
-}
-
 function mapPrerequisiteRule(row: Row): PrerequisiteRule {
   return {
     ruleId: asString(row.rule_id),
@@ -1855,23 +1235,10 @@ function mapPrerequisiteRule(row: Row): PrerequisiteRule {
   };
 }
 
-async function hasCourseSearchTable(db: Client | undefined): Promise<boolean> {
-  if (hasCourseSearchFtsTable !== null) {
-    return hasCourseSearchFtsTable;
-  }
-
-  const row = isSupabaseRuntimeEnabled()
-    ? await firstCourseRowRuntime("SELECT to_regclass('public.course_search_fts')::text AS name")
-    : await firstRow(db!, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'course_search_fts'");
-
-  hasCourseSearchFtsTable = row?.name === "course_search_fts" || row?.name === "public.course_search_fts";
-  return hasCourseSearchFtsTable;
-}
-
-async function resolveCanonicalCourseRuntime(
+async function resolveCanonicalCourse(
   designation: string,
 ): Promise<{ termCode: string; courseId: string } | null> {
-  const canonical = await firstCourseRowRuntime(
+  const canonical = await firstRow(
     `
       SELECT term_code, course_id
       FROM course_overview_v
@@ -1894,7 +1261,7 @@ async function resolveCanonicalCourseRuntime(
     };
   }
 
-  const alias = await firstCourseRowRuntime(
+  const alias = await firstRow(
     `
       SELECT term_code, course_id
       FROM course_cross_listing_overview_v
@@ -1904,56 +1271,6 @@ async function resolveCanonicalCourseRuntime(
     `,
     [designation],
   );
-
-  if (!alias) {
-    return null;
-  }
-
-  return {
-    termCode: asString(alias.term_code),
-    courseId: asString(alias.course_id),
-  };
-}
-
-function resolveCanonicalCourse(
-  db: Database.Database,
-  designation: string,
-): { termCode: string; courseId: string } | null {
-  const canonical = db
-    .prepare(
-      `
-        SELECT term_code, course_id
-        FROM course_overview_v
-        WHERE course_designation = ?
-        ORDER BY
-          COALESCE(section_count, 0) DESC,
-          COALESCE(has_any_open_seats, 0) DESC,
-          COALESCE(has_any_full_section, 0) DESC,
-          title ASC,
-          course_id ASC
-        LIMIT 1
-      `,
-    )
-    .get(designation) as Row | undefined;
-
-  if (canonical) {
-    return {
-      termCode: asString(canonical.term_code),
-      courseId: asString(canonical.course_id),
-    };
-  }
-
-  const alias = db
-    .prepare(
-      `
-        SELECT term_code, course_id
-        FROM course_cross_listing_overview_v
-        WHERE alias_course_designation = ?
-        ORDER BY is_primary DESC, canonical_course_designation ASC
-        LIMIT 1
-      `,
-    )
-    .get(designation) as Row | undefined;
 
   if (!alias) {
     return null;
@@ -1995,29 +1312,11 @@ function buildCourseSearchContext(query: string): {
   normalizedQuery: string;
   compactQuery: string;
   matchQuery: string | null;
-  postgresMatchQuery: string | null;
 } {
-  const normalizedQuery = normalizeSearchText(query);
-  const compactQuery = makeCompactCourseDesignation(query);
-
-  if (!normalizedQuery) {
-    return {
-      normalizedQuery,
-      compactQuery,
-      matchQuery: null,
-      postgresMatchQuery: null,
-    };
-  }
-
   return {
-    normalizedQuery,
-    compactQuery,
-    matchQuery: normalizedQuery
-      .split(" ")
-      .filter((token) => token.length > 0)
-      .map((token) => `${token}*`)
-      .join(" "),
-    postgresMatchQuery: buildPostgresTsquery(normalizedQuery),
+    normalizedQuery: normalizeSearchText(query),
+    compactQuery: makeCompactCourseDesignation(query),
+    matchQuery: buildPostgresTsquery(query),
   };
 }
 
@@ -2580,7 +1879,7 @@ function asNullableBoolean(value: unknown): boolean | null {
 
 export async function getLastRefreshedAt(): Promise<Date | null> {
   try {
-    const row = await firstCourseRowRuntime(
+    const row = await firstRow(
       "SELECT last_refreshed_at FROM refresh_runs ORDER BY refresh_id DESC LIMIT 1"
     );
     if (!row || typeof row.last_refreshed_at !== "string") return null;

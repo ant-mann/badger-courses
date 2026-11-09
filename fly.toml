@@ -2,16 +2,13 @@ app = "uw-madison-courses"
 primary_region = "ord"
 
 [build]
-  # Deploy from the repo root so the Dockerfile can copy shared workspace files.
+  # Deploy from the repo root: the Docker build needs the pnpm workspace files.
   dockerfile = "web/Dockerfile"
 
-  [build.args]
-    MADGRADES_DB_SOURCE_PATH = "../data/fall-2026.sqlite"
-
+# SUPABASE_DATABASE_URL is required at runtime and is set with `fly secrets set`.
 [env]
   NODE_ENV = "production"
   PORT = "3000"
-  MADGRADES_DB_PATH = "/app/web/data/fall-2026.sqlite"
 
 [http_service]
   internal_port = 3000

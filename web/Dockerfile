@@ -1,6 +1,5 @@
 FROM node:22-slim AS base
 
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 
 WORKDIR /app
@@ -8,13 +7,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter uw-madison-courses-web
 
-COPY src ./src
-COPY data ./data
 COPY web ./web
-
-ENV MADGRADES_DB_PATH=/app/data/fall-2026.sqlite
 
 RUN pnpm --filter uw-madison-courses-web exec next build
 
@@ -32,7 +27,6 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/web/node_modules ./web/node_modules
 
 COPY --from=base /app/web/.next ./web/.next
-COPY --from=base /app/web/public ./web/public
 
 EXPOSE 3000
 
