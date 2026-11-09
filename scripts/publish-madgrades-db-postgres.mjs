@@ -9,7 +9,7 @@ import postgres from 'postgres';
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
 const MADGRADES_SCHEMA_PATH = path.join(repoRoot, 'scripts', 'schema-madgrades-postgres.sql');
-const SQLITE_BATCH_SIZE = 1000;
+const SQLITE_BATCH_SIZE = 250;
 
 export const MADGRADES_IMPORT_TABLES = [
   'madgrades_refresh_runs',
@@ -76,6 +76,22 @@ export function requireEnv(env, name) {
   }
 
   return value;
+}
+
+export function resolveImporterDatabaseUrl(env) {
+  const directDatabaseUrl = env.SUPABASE_DIRECT_DATABASE_URL;
+
+  if (directDatabaseUrl) {
+    return directDatabaseUrl;
+  }
+
+  const pooledDatabaseUrl = env.SUPABASE_DATABASE_URL;
+
+  if (pooledDatabaseUrl) {
+    return pooledDatabaseUrl;
+  }
+
+  throw new Error('Missing SUPABASE_DIRECT_DATABASE_URL or SUPABASE_DATABASE_URL');
 }
 
 function normalizeSqliteBatchSize(sqliteBatchSize) {
@@ -234,7 +250,7 @@ export async function publishMadgradesDbPostgres({
   sqlFactory = postgres,
 } = {}) {
   const normalizedSqliteBatchSize = normalizeSqliteBatchSize(sqliteBatchSize);
-  const databaseUrl = requireEnv(env, 'SUPABASE_DATABASE_URL');
+  const databaseUrl = resolveImporterDatabaseUrl(env);
   let sql;
   let sqlite;
   let originalError;

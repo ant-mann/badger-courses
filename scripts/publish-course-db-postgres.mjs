@@ -9,7 +9,7 @@ import postgres from 'postgres';
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
 const COURSE_SCHEMA_PATH = path.join(repoRoot, 'scripts', 'schema-postgres.sql');
-const SQLITE_BATCH_SIZE = 1000;
+const SQLITE_BATCH_SIZE = 250;
 
 export const COURSE_IMPORT_TABLES = [
   'refresh_runs',
@@ -73,6 +73,10 @@ const COURSE_IDENTITY_COLUMNS = [
 ];
 
 const COURSE_STAGING_DROP_TABLES = [...COURSE_SWAP_TRUNCATE_TABLES.slice(1), 'course_search_fts'];
+const COURSE_RUNTIME_INDEX_QUERIES = [
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_schedulable_packages_course_sort
+   ON schedulable_packages(term_code, course_id, is_full, campus_day_count, earliest_start_minute_local, source_package_id)`,
+];
 const COURSE_SEARCH_FTS_COLUMNS = [
   'term_code',
   'course_id',
@@ -107,6 +111,22 @@ export function requireEnv(env, name) {
   }
 
   return value;
+}
+
+export function resolveImporterDatabaseUrl(env) {
+  const directDatabaseUrl = env.SUPABASE_DIRECT_DATABASE_URL;
+
+  if (directDatabaseUrl) {
+    return directDatabaseUrl;
+  }
+
+  const pooledDatabaseUrl = env.SUPABASE_DATABASE_URL;
+
+  if (pooledDatabaseUrl) {
+    return pooledDatabaseUrl;
+  }
+
+  throw new Error('Missing SUPABASE_DIRECT_DATABASE_URL or SUPABASE_DATABASE_URL');
 }
 
 function normalizeSqliteBatchSize(sqliteBatchSize) {
@@ -189,6 +209,16 @@ async function syncCourseIdentitySequences(sql) {
   }
 }
 
+async function disableStatementTimeout(sql) {
+  await sql.unsafe('SET statement_timeout = 0');
+}
+
+async function ensureCourseRuntimeIndexes(sql) {
+  for (const query of COURSE_RUNTIME_INDEX_QUERIES) {
+    await sql.unsafe(query);
+  }
+}
+
 async function loadSqliteTableIntoStage({ sqlite, sql, tableName, sqliteBatchSize = SQLITE_BATCH_SIZE }) {
   const stageTableName = qualifyPublicIdentifier(`${tableName}_staging`);
 
@@ -233,18 +263,31 @@ function makeStageCountSql(sql) {
 function makeSwapSql(sql) {
   const truncateList = COURSE_SWAP_TRUNCATE_TABLES.map((tableName) => `public.${escapePostgresIdentifier(tableName)}`).join(', ');
 
-  return sql.begin(async (transactionSql) => {
-    await transactionSql.unsafe(`TRUNCATE TABLE ${truncateList}`);
+  return (async () => {
+    await sql.unsafe('BEGIN');
 
-    for (const tableName of COURSE_IMPORT_TABLES) {
-      await transactionSql`
-        INSERT INTO ${sqlIdentifier(transactionSql, qualifyPublicIdentifier(tableName))}
-        SELECT * FROM ${sqlIdentifier(transactionSql, qualifyPublicIdentifier(`${tableName}_staging`))}
-      `;
+    try {
+      await sql.unsafe(`TRUNCATE TABLE ${truncateList}`);
+
+      for (const tableName of COURSE_IMPORT_TABLES) {
+        await sql`
+          INSERT INTO ${sqlIdentifier(sql, qualifyPublicIdentifier(tableName))}
+          SELECT * FROM ${sqlIdentifier(sql, qualifyPublicIdentifier(`${tableName}_staging`))}
+        `;
+      }
+
+      await syncCourseIdentitySequences(sql);
+      await sql.unsafe('COMMIT');
+    } catch (error) {
+      try {
+        await sql.unsafe('ROLLBACK');
+      } catch {
+        // Preserve the original swap failure if rollback also fails.
+      }
+
+      throw error;
     }
-
-    await syncCourseIdentitySequences(transactionSql);
-  });
+  })();
 }
 
 export async function dropCourseStagingTables(sql) {
@@ -302,16 +345,18 @@ export async function publishCourseDbPostgres({
   sqlFactory = postgres,
 } = {}) {
   const normalizedSqliteBatchSize = normalizeSqliteBatchSize(sqliteBatchSize);
-  const databaseUrl = requireEnv(env, 'SUPABASE_DATABASE_URL');
+  const databaseUrl = resolveImporterDatabaseUrl(env);
   let sql;
+  let reserved;
   let sqlite;
   let originalError;
 
   try {
     sql = sqlFactory(databaseUrl);
+    reserved = await sql.reserve();
     sqlite = new Database(sqlitePath, { readonly: true, fileMustExist: true });
 
-    const schemaState = await getCourseSchemaState(sql);
+    const schemaState = await getCourseSchemaState(reserved);
 
     if (schemaState === 'partial') {
       throw new Error('Refusing to bootstrap partially provisioned course schema');
@@ -319,36 +364,39 @@ export async function publishCourseDbPostgres({
 
     if (schemaState === 'missing') {
       const schemaSql = await readFile(COURSE_SCHEMA_PATH, 'utf8');
-      await sql.unsafe(schemaSql).simple();
+      await reserved.unsafe(schemaSql).simple();
     }
 
-    await dropCourseStagingTables(sql);
-    await createCourseStagingTables(sql);
+    await disableStatementTimeout(reserved);
+    await ensureCourseRuntimeIndexes(reserved);
+
+    await dropCourseStagingTables(reserved);
+    await createCourseStagingTables(reserved);
 
     for (const tableName of COURSE_IMPORT_TABLES) {
       if (tableName === 'course_search_fts') {
         continue;
       }
 
-      await loadSqliteTableIntoStage({ sqlite, sql, tableName, sqliteBatchSize: normalizedSqliteBatchSize });
+      await loadSqliteTableIntoStage({ sqlite, sql: reserved, tableName, sqliteBatchSize: normalizedSqliteBatchSize });
     }
 
-    await loadCourseSearchFtsIntoStage({ sqlite, sql, sqliteBatchSize: normalizedSqliteBatchSize });
+    await loadCourseSearchFtsIntoStage({ sqlite, sql: reserved, sqliteBatchSize: normalizedSqliteBatchSize });
     await validateRowCounts({
       sqlite,
-      sql: makeStageCountSql(sql),
+      sql: makeStageCountSql(reserved),
       tables: COURSE_IMPORT_TABLES,
     });
-    await makeSwapSql(sql);
-    await dropCourseStagingTables(sql);
+    await makeSwapSql(reserved);
+    await dropCourseStagingTables(reserved);
 
     return undefined;
   } catch (error) {
     originalError = error;
 
-    if (sql) {
+    if (reserved) {
       try {
-        await dropCourseStagingTables(sql);
+        await dropCourseStagingTables(reserved);
       } catch {
         // Preserve the original publish failure if staging cleanup also fails.
       }
@@ -357,6 +405,16 @@ export async function publishCourseDbPostgres({
     throw error;
   } finally {
     sqlite?.close();
+
+    if (reserved) {
+      try {
+        reserved.release();
+      } catch (error) {
+        if (!originalError) {
+          throw error;
+        }
+      }
+    }
 
     if (sql) {
       try {

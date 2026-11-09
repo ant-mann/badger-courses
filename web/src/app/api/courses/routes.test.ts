@@ -1,9 +1,8 @@
-import { after, afterEach, test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCourseDbFixture, makeCourse } from "../../../../../tests/helpers/madgrades-db-fixture.mjs";
-import { __resetDbsForTests, getRuntimePostgresDb } from "@/lib/db";
-import { __resetCourseDataCachesForTests } from "@/lib/course-data";
+import { __resetDbForTests } from "@/lib/db";
+import { withDbRows } from "@/lib/db-test-helpers";
 
 import { GET as getCourseDetail } from "./[designation]/route";
 import { DEFAULT_PREFERENCE_ORDER } from "@/app/schedule-builder/preferences";
@@ -13,345 +12,14 @@ import {
   normalizeNullableIntegerField,
   normalizeNullableIntegerInput,
   normalizePreferenceOrderInput,
-  normalizeScheduleGenerationResult,
 } from "../schedules/normalize";
 import { GET as searchCourses } from "./search/route";
 
-function seedCourseDetailRows(db: import("better-sqlite3").Database) {
-  const instructorKey = db.prepare(`
-    SELECT instructor_key
-    FROM instructors
-    WHERE email = ?
-  `).pluck().get("ada@example.edu");
-
-  db.prepare(`
-    INSERT INTO madgrades_courses (
-      madgrades_course_id,
-      subject_code,
-      catalog_number,
-      course_designation
-    ) VALUES (?, ?, ?, ?)
-  `).run(11, "302", "577", "COMP SCI 577");
-
-  db.prepare(`
-    INSERT INTO madgrades_instructors (
-      madgrades_instructor_id,
-      display_name
-    ) VALUES (?, ?)
-  `).run(11, "Ada Lovelace");
-
-  db.prepare(`
-    INSERT INTO madgrades_course_matches (
-      term_code,
-      course_id,
-      madgrades_course_id,
-      match_status,
-      matched_at
-    ) VALUES (?, ?, ?, ?, ?)
-  `).run("1272", "005770", 11, "matched", "2024-01-16T00:00:00Z");
-
-  db.prepare(`
-    INSERT INTO madgrades_instructor_matches (
-      instructor_key,
-      madgrades_instructor_id,
-      match_status,
-      matched_at
-    ) VALUES (?, ?, ?, ?)
-  `).run(instructorKey, 11, "matched", "2024-01-16T00:00:00Z");
-
-  db.prepare(`
-    INSERT INTO madgrades_refresh_runs (
-      madgrades_refresh_run_id,
-      snapshot_run_at,
-      last_refreshed_at,
-      source_term_code,
-      notes
-    ) VALUES (?, ?, ?, ?, ?)
-  `).run(11, "2024-01-15T00:00:00Z", "2024-01-16T00:00:00Z", "1272", "routes test");
-
-  db.prepare(`
-    INSERT INTO madgrades_course_grades (
-      madgrades_course_grade_id,
-      madgrades_refresh_run_id,
-      madgrades_course_id,
-      term_code,
-      student_count,
-      avg_gpa
-    ) VALUES (?, ?, ?, ?, ?, ?)
-  `).run(11, 11, 11, "1264", 20, 3.7);
-
-  db.prepare(`
-    INSERT INTO madgrades_instructor_grades (
-      madgrades_instructor_grade_id,
-      madgrades_refresh_run_id,
-      madgrades_instructor_id,
-      term_code,
-      student_count,
-      avg_gpa
-    ) VALUES (?, ?, ?, ?, ?, ?)
-  `).run(11, 11, 11, "1264", 20, 3.7);
-
-  db.prepare(`
-    INSERT INTO madgrades_course_offerings (
-      madgrades_course_offering_id,
-      madgrades_course_id,
-      madgrades_instructor_id,
-      term_code,
-      section_type,
-      student_count,
-      avg_gpa
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(11, 11, 11, "1264", "LEC", 20, 3.7);
-}
-
-const fixture = buildCourseDbFixture({
-  courses: [
-    makeCourse({
-      termCode: "1272",
-      courseId: "003210",
-      subjectCode: "220",
-      catalogNumber: "340",
-      courseDesignation: "STAT 340",
-      title: "Data Science Modeling",
-    }),
-    makeCourse({
-      termCode: "1272",
-      courseId: "005770",
-      subjectCode: "302",
-      catalogNumber: "577",
-      courseDesignation: "COMP SCI 577",
-      title: "Algorithms for Large Data",
-    }),
-  ],
-  packageSnapshot: {
-    termCode: "1272",
-    results: [
-      {
-        course: {
-          termCode: "1272",
-          subjectCode: "220",
-          courseId: "003210",
-        },
-        packages: [
-          {
-            id: "stat340-early",
-            termCode: "1272",
-            subjectCode: "220",
-            courseId: "003210",
-            enrollmentClassNumber: 33210,
-            lastUpdated: 2000,
-            onlineOnly: false,
-            isAsynchronous: false,
-            packageEnrollmentStatus: {
-              status: "OPEN",
-              availableSeats: 4,
-              waitlistTotal: 0,
-            },
-            enrollmentStatus: {
-              openSeats: 4,
-              waitlistCurrentSize: 0,
-              capacity: 30,
-              currentlyEnrolled: 26,
-            },
-            sections: [
-              {
-                classUniqueId: { termCode: "1272", classNumber: 33211 },
-                sectionNumber: "001",
-                type: "LEC",
-                instructionMode: "Classroom Instruction",
-                sessionCode: "A1",
-                published: true,
-                enrollmentStatus: {
-                  openSeats: 4,
-                  waitlistCurrentSize: 0,
-                  capacity: 30,
-                  currentlyEnrolled: 26,
-                },
-                classMeetings: [
-                  {
-                    meetingType: "CLASS",
-                    meetingTimeStart: 28800000,
-                    meetingTimeEnd: 32400000,
-                    meetingDays: "MW",
-                    startDate: 1788325200000,
-                    endDate: 1796796000000,
-                    room: "140",
-                    building: {
-                      buildingCode: "0140",
-                      buildingName: "Grainger Hall",
-                      streetAddress: "975 University Ave.",
-                      latitude: 43.0727,
-                      longitude: -89.4015,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            id: "stat340-late",
-            termCode: "1272",
-            subjectCode: "220",
-            courseId: "003210",
-            enrollmentClassNumber: 33220,
-            lastUpdated: 2000,
-            onlineOnly: false,
-            isAsynchronous: false,
-            packageEnrollmentStatus: {
-              status: "OPEN",
-              availableSeats: 6,
-              waitlistTotal: 0,
-            },
-            enrollmentStatus: {
-              openSeats: 6,
-              waitlistCurrentSize: 0,
-              capacity: 30,
-              currentlyEnrolled: 24,
-            },
-            sections: [
-              {
-                classUniqueId: { termCode: "1272", classNumber: 33221 },
-                sectionNumber: "002",
-                type: "LEC",
-                instructionMode: "Classroom Instruction",
-                sessionCode: "A1",
-                published: true,
-                enrollmentStatus: {
-                  openSeats: 6,
-                  waitlistCurrentSize: 0,
-                  capacity: 30,
-                  currentlyEnrolled: 24,
-                },
-                classMeetings: [
-                  {
-                    meetingType: "CLASS",
-                    meetingTimeStart: 57600000,
-                    meetingTimeEnd: 61200000,
-                    meetingDays: "MW",
-                    startDate: 1788325200000,
-                    endDate: 1796796000000,
-                    room: "141",
-                    building: {
-                      buildingCode: "0140",
-                      buildingName: "Grainger Hall",
-                      streetAddress: "975 University Ave.",
-                      latitude: 43.0727,
-                      longitude: -89.4015,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        course: {
-          termCode: "1272",
-          subjectCode: "302",
-          courseId: "005770",
-        },
-        packages: [
-          {
-            id: "cs577-main",
-            termCode: "1272",
-            subjectCode: "302",
-            courseId: "005770",
-            enrollmentClassNumber: 55770,
-            lastUpdated: 2000,
-            onlineOnly: false,
-            isAsynchronous: false,
-            packageEnrollmentStatus: {
-              status: "OPEN",
-              availableSeats: 2,
-              waitlistTotal: 0,
-            },
-            enrollmentStatus: {
-              openSeats: 2,
-              waitlistCurrentSize: 0,
-              capacity: 20,
-              currentlyEnrolled: 18,
-            },
-            sections: [
-              {
-                classUniqueId: { termCode: "1272", classNumber: 55771 },
-                sectionNumber: "001",
-                type: "LEC",
-                instructionMode: "Classroom Instruction",
-                sessionCode: "A1",
-                published: true,
-                instructors: [
-                  {
-                    name: { first: "Ada", last: "Lovelace" },
-                    email: "ada@example.edu",
-                  },
-                ],
-                enrollmentStatus: {
-                  openSeats: 2,
-                  waitlistCurrentSize: 0,
-                  capacity: 20,
-                  currentlyEnrolled: 18,
-                },
-                classMeetings: [
-                  {
-                    meetingType: "CLASS",
-                    meetingTimeStart: 64800000,
-                    meetingTimeEnd: 68400000,
-                    meetingDays: "T",
-                    startDate: 1788325200000,
-                    endDate: 1796796000000,
-                    room: "1240",
-                    building: {
-                      buildingCode: "0231",
-                      buildingName: "Computer Sciences",
-                      streetAddress: "1210 W Dayton St.",
-                      latitude: 43.0715,
-                      longitude: -89.4066,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-});
-seedCourseDetailRows(fixture.db);
-
-const originalSupabaseDatabaseUrl = process.env.SUPABASE_DATABASE_URL;
-process.env.MADGRADES_DB_PATH = fixture.dbPath;
-process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
-process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
-process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
-process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
-process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
-process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
-afterEach(() => {
-  process.env.MADGRADES_DB_PATH = fixture.dbPath;
-  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
-  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
-  process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
-  process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}`;
-  process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
-  process.env.MADGRADES_MADGRADES_REPLICA_PATH = fixture.dbPath;
-  if (originalSupabaseDatabaseUrl === undefined) {
-    delete process.env.SUPABASE_DATABASE_URL;
-  } else {
-    process.env.SUPABASE_DATABASE_URL = originalSupabaseDatabaseUrl;
-  }
-  __resetDbsForTests();
-  __resetCourseDataCachesForTests();
-});
-
 after(() => {
-  __resetDbsForTests();
-  __resetCourseDataCachesForTests();
-  fixture.cleanup();
+  __resetDbForTests();
 });
 
-function makeRuntimeSearchRows(): Record<string, unknown>[] {
+function makeSearchRows(): Record<string, unknown>[] {
   return [
     {
       course_designation: "COMP SCI 577",
@@ -367,7 +35,7 @@ function makeRuntimeSearchRows(): Record<string, unknown>[] {
   ];
 }
 
-function makeRuntimeCourseDetailRows(sqlText: string): Record<string, unknown>[] {
+function makeCourseDetailRows(sqlText: string): Record<string, unknown>[] {
   if (sqlText.includes("FROM course_overview_v") && sqlText.includes("WHERE course_designation =")) {
     return [{ term_code: "1272", course_id: "005770" }];
   }
@@ -511,42 +179,10 @@ function makeRuntimeCourseDetailRows(sqlText: string): Record<string, unknown>[]
     ];
   }
 
-  throw new Error(`Unexpected runtime query in routes test: ${sqlText}`);
+  throw new Error(`Unexpected query in routes test: ${sqlText}`);
 }
 
-async function withSupabaseRuntimeRows<T>(
-  rowsForQuery: (sqlText: string, args: unknown[], rawArgs: unknown[]) => Record<string, unknown>[],
-  run: (queries: string[]) => Promise<T>,
-): Promise<T> {
-  process.env.SUPABASE_DATABASE_URL = "postgres://example.test/madgrades";
-  process.env.MADGRADES_DB_PATH = `${fixture.dbPath}.missing`;
-  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}.missing`;
-  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
-  process.env.MADGRADES_COURSE_REPLICA_PATH = `${fixture.dbPath}.missing`;
-  process.env.TURSO_MADGRADES_DATABASE_URL = `file:${fixture.dbPath}.missing`;
-  process.env.TURSO_MADGRADES_AUTH_TOKEN = "test-madgrades-token";
-  process.env.MADGRADES_MADGRADES_REPLICA_PATH = `${fixture.dbPath}.missing`;
-  __resetDbsForTests();
-  __resetCourseDataCachesForTests();
-
-  const runtimeDb = getRuntimePostgresDb();
-  const queries: string[] = [];
-  const originalUnsafe = runtimeDb.unsafe;
-  runtimeDb.unsafe = (async (...rawArgs: unknown[]) => {
-    const [sqlText, maybeArgs] = rawArgs as [string, unknown[]?];
-    const args = Array.isArray(maybeArgs) ? maybeArgs : [];
-    queries.push(sqlText);
-    return rowsForQuery(sqlText, args, rawArgs);
-  }) as typeof runtimeDb.unsafe;
-
-  try {
-    return await run(queries);
-  } finally {
-    runtimeDb.unsafe = originalUnsafe;
-  }
-}
-
-function makeRuntimeScheduleRows(sqlText: string): Record<string, unknown>[] {
+function makeScheduleRows(sqlText: string): Record<string, unknown>[] {
   if (sqlText.includes("FROM schedule_candidates_v")) {
     return [
       {
@@ -605,7 +241,7 @@ function makeRuntimeScheduleRows(sqlText: string): Record<string, unknown>[] {
     ];
   }
 
-  throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+  throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
 }
 
 test("course search route requires q or subject", async () => {
@@ -617,65 +253,9 @@ test("course search route requires q or subject", async () => {
   });
 });
 
-test("course search route returns FTS-backed matches", async () => {
-  const response = await searchCourses(new Request("https://example.test/api/courses/search?q=algorithms"));
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    courses: [
-      {
-        designation: "COMP SCI 577",
-        title: "Algorithms for Large Data",
-        minimumCredits: 3,
-        maximumCredits: 3,
-        crossListDesignations: ["COMP SCI 577"],
-        sectionCount: 1,
-        hasAnyOpenSeats: true,
-        hasAnyWaitlist: false,
-        hasAnyFullSection: false,
-      },
-    ],
-  });
-});
-
-test("course search route preserves its response shape when SUPABASE_DATABASE_URL is set", async () => {
-  const expectedResponse = await searchCourses(
-    new Request("https://example.test/api/courses/search?q=algorithms"),
-  );
-  const expectedBody = await expectedResponse.json();
-
-  const response = await withSupabaseRuntimeRows(
-    (sqlText) => {
-      if (sqlText.includes("to_regclass('public.course_search_fts')")) {
-        return [{ name: "course_search_fts" }];
-      }
-
-      if (sqlText.includes("FROM course_search_fts")) {
-        return makeRuntimeSearchRows();
-      }
-
-      throw new Error(`Unexpected search runtime query in routes test: ${sqlText}`);
-    },
-    async (queries) => {
-      const runtimeResponse = await searchCourses(
-        new Request("https://example.test/api/courses/search?q=algorithms"),
-      );
-      assert.ok(queries.length > 0);
-      return runtimeResponse;
-    },
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), expectedBody);
-});
-
-test("course search route sends valid Postgres tsquery text when SUPABASE_DATABASE_URL is set", async () => {
-  const response = await withSupabaseRuntimeRows(
+test("course search route sends valid Postgres tsquery text", async () => {
+  const response = await withDbRows(
     (sqlText, args) => {
-      if (sqlText.includes("to_regclass('public.course_search_fts')")) {
-        return [{ name: "course_search_fts" }];
-      }
-
       if (sqlText.includes("FROM course_search_fts")) {
         assert.match(sqlText, /to_tsquery\('simple', \$1\)/);
         assert.match(sqlText, /ts @@ to_tsquery\('simple', \$2\)/);
@@ -683,10 +263,10 @@ test("course search route sends valid Postgres tsquery text when SUPABASE_DATABA
         assert.match(sqlText, /best_search_rank DESC/);
         assert.equal(args[0], "algorithms:* & data:*");
         assert.equal(args[1], "algorithms:* & data:*");
-        return makeRuntimeSearchRows();
+        return makeSearchRows();
       }
 
-      throw new Error(`Unexpected search runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected search query in routes test: ${sqlText}`);
     },
     async () => searchCourses(new Request("https://example.test/api/courses/search?q=algorithms%20data")),
   );
@@ -719,9 +299,12 @@ test("course search route returns a controlled empty list for punctuation-only q
 });
 
 test("course detail route returns 404 json for missing courses", async () => {
-  const response = await getCourseDetail(new Request("https://example.test/api/courses/NOPE"), {
-    params: Promise.resolve({ designation: "NOPE 999" }),
-  });
+  const response = await withDbRows(
+    () => [],
+    async () => getCourseDetail(new Request("https://example.test/api/courses/NOPE"), {
+      params: Promise.resolve({ designation: "NOPE 999" }),
+    }),
+  );
 
   assert.equal(response.status, 404);
   assert.deepEqual(await response.json(), {
@@ -729,31 +312,8 @@ test("course detail route returns 404 json for missing courses", async () => {
   });
 });
 
-test("course detail route returns instructor grades for an existing course", async () => {
-  const response = await getCourseDetail(
-    new Request("https://example.test/api/courses/COMP%20SCI%20577"),
-    {
-      params: Promise.resolve({ designation: "COMP SCI 577" }),
-    },
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).instructor_grades, [
-    {
-      sectionNumber: "001",
-      sectionType: "LEC",
-      instructorDisplayName: "Ada Lovelace",
-      sameCoursePriorOfferingCount: 1,
-      sameCourseStudentCount: 20,
-      sameCourseGpa: 3.7,
-      courseHistoricalGpa: 3.7,
-      instructorMatchStatus: "matched",
-    },
-  ]);
-});
-
-test("course detail route qualifies Madgrades tables on the Supabase runtime path", async () => {
-  const response = await withSupabaseRuntimeRows(
+test("course detail route qualifies Madgrades tables with the madgrades schema", async () => {
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM madgrades_course_matches")) {
         assert.match(sqlText, /FROM madgrades\.madgrades_course_matches/);
@@ -765,7 +325,7 @@ test("course detail route qualifies Madgrades tables on the Supabase runtime pat
         assert.match(sqlText, /FROM madgrades\.madgrades_instructor_matches mim/);
       }
 
-      return makeRuntimeCourseDetailRows(sqlText);
+      return makeCourseDetailRows(sqlText);
     },
     async () => getCourseDetail(
       new Request("https://example.test/api/courses/COMP%20SCI%20577"),
@@ -779,42 +339,11 @@ test("course detail route qualifies Madgrades tables on the Supabase runtime pat
   assert.equal((await response.json()).instructor_grades[0]?.sameCourseGpa, 3.7);
 });
 
-test("schedule route uses the course database without requiring the compatibility db path", async () => {
-  process.env.MADGRADES_DB_PATH = "/tmp/does-not-exist.sqlite";
-  process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
-  process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
-  process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
-  __resetDbsForTests();
-
-  try {
-    const response = await buildSchedules(
-      new Request("https://example.test/api/schedules", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          courses: ["STAT 340", "COMP SCI 577"],
-          limit: 1,
-        }),
-      }),
-    );
-
-    assert.equal(response.status, 200);
-  } finally {
-    process.env.MADGRADES_DB_PATH = fixture.dbPath;
-    process.env.TURSO_COURSE_DATABASE_URL = `file:${fixture.dbPath}`;
-    process.env.TURSO_COURSE_AUTH_TOKEN = "test-course-token";
-    process.env.MADGRADES_COURSE_REPLICA_PATH = fixture.dbPath;
-    __resetDbsForTests();
-  }
-});
-
-test("schedule route uses the production Postgres path when SUPABASE_DATABASE_URL is set", async () => {
-  const response = await withSupabaseRuntimeRows(
-    (sqlText) => makeRuntimeScheduleRows(sqlText),
+test("schedule route generates schedules from Postgres candidate rows", async () => {
+  const response = await withDbRows(
+    (sqlText) => makeScheduleRows(sqlText),
     async (queries) => {
-      const runtimeResponse = await buildSchedules(
+      const routeResponse = await buildSchedules(
         new Request("https://example.test/api/schedules", {
           method: "POST",
           headers: {
@@ -828,7 +357,7 @@ test("schedule route uses the production Postgres path when SUPABASE_DATABASE_UR
       );
       assert.ok(queries.length > 0);
       assert.ok(queries.some((sqlText) => sqlText.includes("FROM schedule_candidates_v")));
-      return runtimeResponse;
+      return routeResponse;
     },
   );
 
@@ -858,7 +387,7 @@ test("schedule route uses the production Postgres path when SUPABASE_DATABASE_UR
 });
 
 test("schedule route ignores online-only meeting days in Postgres campus day counts and ordering", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -976,7 +505,7 @@ test("schedule route ignores online-only meeting days in Postgres campus day cou
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1009,7 +538,7 @@ test("schedule route ignores online-only meeting days in Postgres campus day cou
 });
 
 test("schedule route computes Postgres transition tie-breakers from meeting locations", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1114,7 +643,7 @@ test("schedule route computes Postgres transition tie-breakers from meeting loca
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1148,7 +677,7 @@ test("schedule route computes Postgres transition tie-breakers from meeting loca
 });
 
 test("schedule route dedupes equivalent visible Postgres schedules", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1222,7 +751,7 @@ test("schedule route dedupes equivalent visible Postgres schedules", async () =>
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1246,7 +775,7 @@ test("schedule route dedupes equivalent visible Postgres schedules", async () =>
 });
 
 test("schedule route rejects overlapping Postgres packages using canonical meeting rows", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1306,10 +835,10 @@ test("schedule route rejects overlapping Postgres packages using canonical meeti
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async (queries) => {
-      const runtimeResponse = await buildSchedules(
+      const routeResponse = await buildSchedules(
         new Request("https://example.test/api/schedules", {
           method: "POST",
           headers: {
@@ -1323,7 +852,7 @@ test("schedule route rejects overlapping Postgres packages using canonical meeti
       );
       assert.ok(queries.some((sqlText) => sqlText.includes("FROM schedule_candidates_v")));
       assert.ok(queries.some((sqlText) => sqlText.includes("FROM canonical_meetings")));
-      return runtimeResponse;
+      return routeResponse;
     },
   );
 
@@ -1335,7 +864,7 @@ test("schedule route rejects overlapping Postgres packages using canonical meeti
 });
 
 test("schedule route ignores timed non-class Postgres rows when checking conflicts", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1416,10 +945,10 @@ test("schedule route ignores timed non-class Postgres rows when checking conflic
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async (queries) => {
-      const runtimeResponse = await buildSchedules(
+      const routeResponse = await buildSchedules(
         new Request("https://example.test/api/schedules", {
           method: "POST",
           headers: {
@@ -1432,7 +961,7 @@ test("schedule route ignores timed non-class Postgres rows when checking conflic
         }),
       );
       assert.ok(queries.some((sqlText) => sqlText.includes("FROM canonical_meetings")));
-      return runtimeResponse;
+      return routeResponse;
     },
   );
 
@@ -1444,7 +973,7 @@ test("schedule route ignores timed non-class Postgres rows when checking conflic
 });
 
 test("schedule route keeps locked Postgres packages even when they are closed or waitlisted", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         if (sqlText.includes("COALESCE(is_full, 0) = 0") || sqlText.includes("COALESCE(has_waitlist, 0) = 0")) {
@@ -1560,7 +1089,7 @@ test("schedule route keeps locked Postgres packages even when they are closed or
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1585,7 +1114,7 @@ test("schedule route keeps locked Postgres packages even when they are closed or
 });
 
 test("schedule route allows overlapping Postgres meeting times when date ranges do not overlap", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1651,7 +1180,7 @@ test("schedule route allows overlapping Postgres meeting times when date ranges 
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1674,8 +1203,8 @@ test("schedule route allows overlapping Postgres meeting times when date ranges 
   ]);
 });
 
-test("schedule route computes fewer-long-gaps from normalized meeting minutes on the Postgres path", async () => {
-  const response = await withSupabaseRuntimeRows(
+test("schedule route computes fewer-long-gaps from normalized meeting minutes", async () => {
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1777,7 +1306,7 @@ test("schedule route computes fewer-long-gaps from normalized meeting minutes on
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1829,7 +1358,7 @@ test("schedule route rejects blank course strings with 400 json", async () => {
 });
 
 test("schedule route returns hard-filter empty-state metadata when schedule limits remove all valid schedules", async () => {
-  const response = await withSupabaseRuntimeRows(
+  const response = await withDbRows(
     (sqlText) => {
       if (sqlText.includes("FROM schedule_candidates_v")) {
         return [
@@ -1865,7 +1394,7 @@ test("schedule route returns hard-filter empty-state metadata when schedule limi
         ];
       }
 
-      throw new Error(`Unexpected schedule runtime query in routes test: ${sqlText}`);
+      throw new Error(`Unexpected schedule query in routes test: ${sqlText}`);
     },
     async () => buildSchedules(
       new Request("https://example.test/api/schedules", {
@@ -1890,119 +1419,18 @@ test("schedule route returns hard-filter empty-state metadata when schedule limi
   });
 });
 
-test("schedule route forwards hard-filter fields through the SQLite schedule path", async () => {
-  delete process.env.SUPABASE_DATABASE_URL;
-  __resetDbsForTests();
-
-  const response = await buildSchedules(
-    new Request("https://example.test/api/schedules", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        courses: ["STAT 340", "COMP SCI 577"],
-        limit: 1,
-        preference_order: ["earlier-finishes"],
-        start_after_minute_local: 600,
-      }),
-    }),
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).schedules[0].package_ids, [
-    "1272:220:003210:stat340-late",
-    "1272:302:005770:cs577-main",
-  ]);
-});
-
-test("schedule route forwards max_campus_days through the SQLite schedule path", async () => {
-  delete process.env.SUPABASE_DATABASE_URL;
-  __resetDbsForTests();
-
-  const response = await buildSchedules(
-    new Request("https://example.test/api/schedules", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        courses: ["STAT 340", "COMP SCI 577"],
-        limit: 5,
-        max_campus_days: 2,
-      }),
-    }),
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    schedules: [],
-    empty_state_reason: "hard-filters",
-  });
-});
-
-test("schedule route forwards end_before_minute_local through the SQLite schedule path", async () => {
-  delete process.env.SUPABASE_DATABASE_URL;
-  __resetDbsForTests();
-
-  const response = await buildSchedules(
-    new Request("https://example.test/api/schedules", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        courses: ["STAT 340"],
-        limit: 1,
-        preference_order: ["later-starts"],
-        end_before_minute_local: 600,
-      }),
-    }),
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).schedules[0].package_ids, ["1272:220:003210:stat340-early"]);
-});
-
-test("course detail route preserves its response shape when SUPABASE_DATABASE_URL is set", async () => {
-  const expectedResponse = await getCourseDetail(
-    new Request("https://example.test/api/courses/COMP%20SCI%20577"),
-    {
-      params: Promise.resolve({ designation: "COMP SCI 577" }),
-    },
-  );
-  const expectedBody = await expectedResponse.json();
-
-  const response = await withSupabaseRuntimeRows(
-    (sqlText) => makeRuntimeCourseDetailRows(sqlText),
+test("course detail route returns Madgrades-backed instructor history", async () => {
+  const response = await withDbRows(
+    (sqlText) => makeCourseDetailRows(sqlText),
     async (queries) => {
-      const runtimeResponse = await getCourseDetail(
-        new Request("https://example.test/api/courses/COMP%20SCI%20577"),
-        {
-          params: Promise.resolve({ designation: "COMP SCI 577" }),
-        },
-      );
-      assert.ok(queries.length > 0);
-      return runtimeResponse;
-    },
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), expectedBody);
-});
-
-test("course detail route still returns Madgrades-backed instructor history when SUPABASE_DATABASE_URL is set", async () => {
-  const response = await withSupabaseRuntimeRows(
-    (sqlText) => makeRuntimeCourseDetailRows(sqlText),
-    async (queries) => {
-      const runtimeResponse = await getCourseDetail(
+      const routeResponse = await getCourseDetail(
         new Request("https://example.test/api/courses/COMP%20SCI%20577"),
         {
           params: Promise.resolve({ designation: "COMP SCI 577" }),
         },
       );
       assert.ok(queries.some((sqlText) => sqlText.includes("WITH course_history AS")));
-      return runtimeResponse;
+      return routeResponse;
     },
   );
 
@@ -2096,198 +1524,6 @@ test("normalizeNullableIntegerField reports validity alongside the normalized va
   assert.deepEqual(normalizeNullableIntegerField(540), { value: 540, isValid: true });
   assert.deepEqual(normalizeNullableIntegerField(-1), { value: null, isValid: false });
   assert.deepEqual(normalizeNullableIntegerField("540"), { value: null, isValid: false });
-});
-
-const validNormalizedSchedulePackage = {
-  source_package_id: "1272:302:005770:cs577-main",
-  course_designation: "COMP SCI 577",
-  title: "Algorithms for Large Data",
-  section_bundle_label: "COMP SCI 577 LEC 001",
-  open_seats: 2,
-  is_full: 0,
-  has_waitlist: 0,
-  meeting_count: 1,
-  campus_day_count: 1,
-  earliest_start_minute_local: 720,
-  latest_end_minute_local: 780,
-  has_online_meeting: 0,
-  has_unknown_location: 0,
-  restriction_note: null,
-  has_temporary_restriction: 0,
-  meeting_summary_local: "T 12:00 PM-1:00 PM @ Computer Sciences",
-};
-
-test("normalizeScheduleGenerationResult preserves valid results and rejects malformed ones", () => {
-  const schedules = [
-    {
-      package_ids: ["1272:302:005770:cs577-main"],
-      packages: [
-        validNormalizedSchedulePackage,
-      ],
-      conflict_count: 0,
-      campus_day_count: 3,
-      earliest_start_minute_local: 480,
-      large_idle_gap_count: 0,
-      total_between_class_minutes: 0,
-      tight_transition_count: 0,
-      total_walking_distance_meters: 0,
-      total_open_seats: 6,
-      latest_end_minute_local: 780,
-    },
-  ];
-
-  assert.throws(
-    () => normalizeScheduleGenerationResult(schedules),
-    /Invalid schedule generation result/,
-  );
-  assert.deepEqual(
-    normalizeScheduleGenerationResult({
-      schedules,
-      emptyStateReason: "hard-filters",
-    }),
-    {
-      schedules,
-      emptyStateReason: "hard-filters",
-    },
-  );
-});
-
-test("normalizeScheduleGenerationResult rejects malformed schedule entries inside a valid wrapper", () => {
-  assert.throws(
-    () =>
-      normalizeScheduleGenerationResult({
-        schedules: [
-          {
-            packages: [],
-            conflict_count: 0,
-            campus_day_count: 3,
-            earliest_start_minute_local: 480,
-            large_idle_gap_count: 0,
-            total_between_class_minutes: 0,
-            tight_transition_count: 0,
-            total_walking_distance_meters: 0,
-            total_open_seats: 6,
-            latest_end_minute_local: 780,
-          },
-        ],
-        emptyStateReason: null,
-      }),
-    /Invalid schedule generation result/,
-  );
-});
-
-test("normalizeScheduleGenerationResult rejects malformed nested package entries inside a valid wrapper", () => {
-  assert.throws(
-    () =>
-      normalizeScheduleGenerationResult({
-        schedules: [
-          {
-            package_ids: ["1272:302:005770:cs577-main"],
-            packages: [
-              {
-                source_package_id: "1272:302:005770:cs577-main",
-              },
-            ],
-            conflict_count: 0,
-            campus_day_count: 3,
-            earliest_start_minute_local: 480,
-            large_idle_gap_count: 0,
-            total_between_class_minutes: 0,
-            tight_transition_count: 0,
-            total_walking_distance_meters: 0,
-            total_open_seats: 6,
-            latest_end_minute_local: 780,
-          },
-        ],
-        emptyStateReason: null,
-      }),
-    /Invalid schedule generation result/,
-  );
-});
-
-test("normalizeScheduleGenerationResult rejects mismatched package_ids and nested source_package_id values", () => {
-  assert.throws(
-    () =>
-      normalizeScheduleGenerationResult({
-        schedules: [
-          {
-            package_ids: ["1272:302:005770:cs577-main"],
-            packages: [
-              {
-                ...validNormalizedSchedulePackage,
-                source_package_id: "1272:302:005770:cs577-other",
-              },
-            ],
-            conflict_count: 0,
-            campus_day_count: 3,
-            earliest_start_minute_local: 480,
-            large_idle_gap_count: 0,
-            total_between_class_minutes: 0,
-            tight_transition_count: 0,
-            total_walking_distance_meters: 0,
-            total_open_seats: 6,
-            latest_end_minute_local: 780,
-          },
-        ],
-        emptyStateReason: null,
-      }),
-    /Invalid schedule generation result/,
-  );
-});
-
-test("normalizeScheduleGenerationResult rejects package entries that omit required nested fields", () => {
-  assert.throws(
-    () =>
-      normalizeScheduleGenerationResult({
-        schedules: [
-          {
-            package_ids: ["1272:302:005770:cs577-main"],
-            packages: [
-              {
-                source_package_id: "1272:302:005770:cs577-main",
-                course_designation: "COMP SCI 577",
-              },
-            ],
-            conflict_count: 0,
-            campus_day_count: 3,
-            earliest_start_minute_local: 480,
-            large_idle_gap_count: 0,
-            total_between_class_minutes: 0,
-            tight_transition_count: 0,
-            total_walking_distance_meters: 0,
-            total_open_seats: 6,
-            latest_end_minute_local: 780,
-          },
-        ],
-        emptyStateReason: null,
-      }),
-    /Invalid schedule generation result/,
-  );
-});
-
-test("normalizeScheduleGenerationResult rejects non-finite numeric schedule metrics", () => {
-  assert.throws(
-    () =>
-      normalizeScheduleGenerationResult({
-        schedules: [
-          {
-            package_ids: ["1272:302:005770:cs577-main"],
-            packages: [validNormalizedSchedulePackage],
-            conflict_count: NaN,
-            campus_day_count: 3,
-            earliest_start_minute_local: 480,
-            large_idle_gap_count: 0,
-            total_between_class_minutes: 0,
-            tight_transition_count: 0,
-            total_walking_distance_meters: 0,
-            total_open_seats: 6,
-            latest_end_minute_local: 780,
-          },
-        ],
-        emptyStateReason: null,
-      }),
-    /Invalid schedule generation result/,
-  );
 });
 
 test("schedule route accepts a valid preference_order array", async () => {
@@ -2426,18 +1662,21 @@ test("schedule route accepts explicit null hard-filter values", async () => {
 });
 
 test("schedule route forwards normalized preference_order into non-empty generation", async () => {
-  const response = await buildSchedules(
-    new Request("https://example.test/api/schedules", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        courses: ["STAT 340"],
-        limit: 1,
-        preference_order: ["earlier-finishes", "invalid"],
+  const response = await withDbRows(
+    (sqlText) => makeScheduleRows(sqlText),
+    async () => buildSchedules(
+      new Request("https://example.test/api/schedules", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          courses: ["STAT 340"],
+          limit: 1,
+          preference_order: ["earlier-finishes", "invalid"],
+        }),
       }),
-    }),
+    ),
   );
 
   assert.equal(response.status, 200);

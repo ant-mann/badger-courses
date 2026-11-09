@@ -233,7 +233,7 @@ test("serializeBuilderState emits normalized url params", () => {
       startAfterHour: 9,
       endBeforeHour: 16,
       preferenceOrder: [
-        "fewer-long-gaps",
+        "fewer-long-gaps" as never, // legacy id, normalized on serialize
         "later-starts",
         "earlier-finishes",
         "fewer-campus-days",

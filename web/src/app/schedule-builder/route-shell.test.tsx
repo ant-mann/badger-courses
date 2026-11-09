@@ -1,20 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import Home from "@/app/page";
 
+type ScheduleBuilderPage = (props?: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) => unknown;
+
 type ScheduleBuilderPageModule = {
-  default:
-    | ((props?: {
-        searchParams?: Promise<Record<string, string | string[] | undefined>>;
-      }) => Promise<React.ReactElement> | React.ReactElement)
-    | {
-        default: (props?: {
-          searchParams?: Promise<Record<string, string | string[] | undefined>>;
-        }) => Promise<React.ReactElement> | React.ReactElement;
-      };
+  default: ScheduleBuilderPage | { default: ScheduleBuilderPage };
 };
 
 async function invokeScheduleBuilderPageRedirect(searchParams: Record<string, string | string[] | undefined>) {

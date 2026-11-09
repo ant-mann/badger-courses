@@ -48,14 +48,6 @@ export function countBits(value) {
   return count;
 }
 
-export function expandDaysMask(daysMask) {
-  if (daysMask == null) {
-    return [];
-  }
-
-  return Object.values(DAY_BITS).filter((bit) => (daysMask & bit) !== 0);
-}
-
 export function meetingTimeToMinutes(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return null;

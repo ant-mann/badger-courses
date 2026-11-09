@@ -339,6 +339,8 @@ CREATE INDEX idx_canonical_sections_course_package ON canonical_sections(term_co
 CREATE INDEX idx_canonical_meetings_package_time ON canonical_meetings(package_id, days_mask, start_minute_local, end_minute_local);
 CREATE INDEX idx_schedulable_packages_designation_open ON schedulable_packages(course_designation, has_temporary_restriction, open_seats);
 CREATE INDEX idx_schedulable_packages_designation_day_start ON schedulable_packages(course_designation, campus_day_count, earliest_start_minute_local);
+CREATE INDEX idx_schedulable_packages_course_sort
+  ON schedulable_packages(term_code, course_id, is_full, campus_day_count, earliest_start_minute_local, source_package_id);
 
 CREATE TABLE course_search_fts (
   term_code TEXT,

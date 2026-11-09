@@ -4,6 +4,7 @@
 .playwright-mcp/
 .tmp-db-import-*/
 .tmp-madgrades-db-*/
+.tmp-schedule-options-*/
 .agents/
 .claude/
 .superpowers/

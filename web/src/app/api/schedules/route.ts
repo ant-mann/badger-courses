@@ -1,19 +1,15 @@
 import { NextResponse } from 'next/server';
 
-import { generateSchedulesWithMetadata } from '@madgrades/schedule';
 import { generateSchedulesFromPostgresWithMetadata } from '@/lib/course-data';
 
 import {
   clampScheduleLimit,
   normalizeUniqueCourseDesignations,
 } from '@/lib/course-designation';
-import { getCourseSqliteDb } from '@/lib/db';
-import { isSupabaseRuntimeEnabled } from '@/lib/env';
 import {
   normalizePreferenceOrderInput,
   normalizeBooleanInput,
   normalizeNullableIntegerField,
-  normalizeScheduleGenerationResult,
 } from './normalize';
 
 type ScheduleRequestBody = {
@@ -28,16 +24,6 @@ type ScheduleRequestBody = {
   start_after_minute_local?: unknown;
   end_before_minute_local?: unknown;
 };
-
-type GenerateSchedulesOptions = Parameters<typeof generateSchedulesFromPostgresWithMetadata>[0];
-type GenerateSchedulesResult = Awaited<ReturnType<typeof generateSchedulesFromPostgresWithMetadata>>;
-
-function generateSchedulesFromSqlite(
-  db: Awaited<ReturnType<typeof getCourseSqliteDb>>,
-  options: GenerateSchedulesOptions,
-): GenerateSchedulesResult {
-  return normalizeScheduleGenerationResult(generateSchedulesWithMetadata(db, options));
-}
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -128,37 +114,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid schedule request body.' }, { status: 400 });
   }
 
-  const generationResult = await (isSupabaseRuntimeEnabled()
-    ? generateSchedulesFromPostgresWithMetadata({
-        courses,
-        lockPackages,
-        excludePackages,
-        limit,
-        maxCampusDays: maxCampusDays.value,
-        startAfterMinuteLocal: startAfterMinuteLocal.value,
-        endBeforeMinuteLocal: endBeforeMinuteLocal.value,
-        preferenceOrder,
-        includeWaitlisted,
-        includeClosed,
-      })
-    : (() => {
-        const db = getCourseSqliteDb();
-
-        return db.then((resolvedDb) =>
-          generateSchedulesFromSqlite(resolvedDb, {
-            courses,
-            lockPackages,
-            excludePackages,
-            limit,
-            maxCampusDays: maxCampusDays.value,
-            startAfterMinuteLocal: startAfterMinuteLocal.value,
-            endBeforeMinuteLocal: endBeforeMinuteLocal.value,
-            preferenceOrder,
-            includeWaitlisted,
-            includeClosed,
-          }),
-        );
-      })());
+  const generationResult = await generateSchedulesFromPostgresWithMetadata({
+    courses,
+    lockPackages,
+    excludePackages,
+    limit,
+    maxCampusDays: maxCampusDays.value,
+    startAfterMinuteLocal: startAfterMinuteLocal.value,
+    endBeforeMinuteLocal: endBeforeMinuteLocal.value,
+    preferenceOrder,
+    includeWaitlisted,
+    includeClosed,
+  });
 
   return NextResponse.json(
     {

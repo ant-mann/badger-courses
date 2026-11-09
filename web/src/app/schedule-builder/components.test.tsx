@@ -98,6 +98,9 @@ function makeSchedule(overrides: Partial<GeneratedSchedule> = {}): GeneratedSche
 type ButtonElement = React.ReactElement<{
   children?: React.ReactNode;
   "aria-label"?: string;
+  "aria-pressed"?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
 }>;
 
 test("SectionOptionPanel starts collapsed with a course summary", () => {
@@ -1945,7 +1948,7 @@ test("ScheduleBuilder hides stale results while a hard-filter URL update is pend
     assert.match(container.textContent, /Schedule 1/i);
     assert.doesNotMatch(container.textContent, /No schedules matched your current schedule limits/i);
 
-    const maxDaysThreeButton = findElementByText(container, "BUTTON", "3");
+    const maxDaysThreeButton = findElementByText(container as unknown as Node, "BUTTON", "3");
     assert.ok(maxDaysThreeButton, "expected rendered max-days button");
 
     await React.act(async () => {
@@ -2007,7 +2010,8 @@ function installMiniDom() {
     "cancelAnimationFrame",
     "IS_REACT_ACT_ENVIRONMENT",
   ] as const;
-  const saved = new Map(keys.map((key) => [key, (globalThis as Record<string, unknown>)[key]]));
+  // Node defines some of these (navigator) as getter-only, so swap whole property descriptors.
+  const saved = new Map(keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   let nextHandle = 1;
   const timers = new Map<number, () => void>();
 
@@ -2198,7 +2202,7 @@ function installMiniDom() {
   } as unknown as Window & typeof globalThis;
 
   document.defaultView = window;
-  Object.assign(globalThis, {
+  const fakeGlobals = {
     window,
     document,
     navigator: window.navigator,
@@ -2215,7 +2219,11 @@ function installMiniDom() {
     requestAnimationFrame: window.requestAnimationFrame.bind(window),
     cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
     IS_REACT_ACT_ENVIRONMENT: true,
-  });
+  };
+
+  for (const [key, value] of Object.entries(fakeGlobals)) {
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
 
   return {
     document,
@@ -2235,7 +2243,13 @@ function installMiniDom() {
     cleanup() {
       timers.clear();
       for (const key of keys) {
-        (globalThis as Record<string, unknown>)[key] = saved.get(key);
+        const descriptor = saved.get(key);
+
+        if (descriptor) {
+          Object.defineProperty(globalThis, key, descriptor);
+        } else {
+          delete (globalThis as Record<string, unknown>)[key];
+        }
       }
     },
   };
@@ -2291,7 +2305,7 @@ function getButtonElements(node: React.ReactNode): ButtonElement[] {
     }
 
     if (typeof value.type === "function") {
-      visit(value.type(value.props));
+      visit((value.type as (props: unknown) => React.ReactNode)(value.props));
       return;
     }
 

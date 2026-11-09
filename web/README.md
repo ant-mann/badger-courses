@@ -13,15 +13,18 @@ cd web
 pnpm dev
 ```
 
-The app reads course and Madgrades data from [Turso](https://turso.tech/) embedded-replica databases. Set the following environment variables (or create a `.env.local` file in this directory) before starting the dev server:
+The app reads course and Madgrades data from Postgres. Set the connection string (or put it in a `.env.local` file in this directory) before starting the dev server:
 
 ```env
-TURSO_COURSE_DATABASE_URL=
-TURSO_COURSE_AUTH_TOKEN=
-TURSO_MADGRADES_DATABASE_URL=
-TURSO_MADGRADES_AUTH_TOKEN=
-MADGRADES_COURSE_REPLICA_PATH=/tmp/course-replica.db
-MADGRADES_MADGRADES_REPLICA_PATH=/tmp/madgrades-replica.db
+SUPABASE_DATABASE_URL=postgresql://...
+```
+
+Any Postgres works. To run against a local one, start it and load it from the SQLite files built by the root pipeline:
+
+```bash
+docker run -d --name badger-pg -e POSTGRES_PASSWORD=pw -p 54329:5432 postgres:17
+export SUPABASE_DATABASE_URL='postgres://postgres:pw@localhost:54329/postgres'
+pnpm run publish:course-db:postgres && pnpm run publish:madgrades-db:postgres   # from the repo root
 ```
 
 ## Deployment

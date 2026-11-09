@@ -175,6 +175,13 @@ function createCourseSchemaStubSql({ schemaExistsRow, stopMessage, onBootstrapAp
   sql.begin = async () => {
     throw new Error('sql.begin should not be called in this test');
   };
+  sql.reserve = async () => {
+    const reserved = (...args) => sql(...args);
+    reserved.unsafe = (...args) => sql.unsafe(...args);
+    reserved.begin = (...args) => sql.begin(...args);
+    reserved.release = () => {};
+    return reserved;
+  };
   sql.end = async () => {};
 
   return sql;
@@ -302,6 +309,7 @@ function createPostgresRecorder({
   cleanupError,
   rejectTemplateCreateStatements = false,
   rejectTemplateUnsafeIdentifierFragments = false,
+  throwOnBeginCall = false,
 }) {
   const events = [];
   let dropCallCount = 0;
@@ -453,6 +461,34 @@ function createPostgresRecorder({
         return Promise.resolve([schemaExistsRow]);
       }
 
+      if (query === 'SET statement_timeout = 0') {
+        record('statement-timeout-disabled');
+        return Promise.resolve([]);
+      }
+
+      if (query === 'BEGIN') {
+        record('swap-begin');
+        insideTransaction = true;
+        return Promise.resolve([]);
+      }
+
+      if (query === 'COMMIT') {
+        record('swap-commit');
+        insideTransaction = false;
+        return Promise.resolve([]);
+      }
+
+      if (query === 'ROLLBACK') {
+        record('swap-rollback');
+        insideTransaction = false;
+        return Promise.resolve([]);
+      }
+
+      if (query.startsWith('CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_schedulable_packages_course_sort')) {
+        record('ensure-index:idx_schedulable_packages_course_sort');
+        return Promise.resolve([]);
+      }
+
       if (query.startsWith('INSERT INTO public."course_search_fts_staging"')) {
         assert.equal(parameters.length, 10);
         record('load:public.course_search_fts_staging');
@@ -488,6 +524,10 @@ function createPostgresRecorder({
     };
 
     sql.begin = async (callback) => {
+      if (throwOnBeginCall) {
+        throw new Error('sql.begin should not be called in this test');
+      }
+
       record('swap-begin');
       insideTransaction = true;
 
@@ -496,6 +536,14 @@ function createPostgresRecorder({
       } finally {
         insideTransaction = false;
       }
+    };
+
+    sql.reserve = async () => {
+      const reserved = (...args) => sql(...args);
+      reserved.unsafe = (...args) => sql.unsafe(...args);
+      reserved.begin = (...args) => sql.begin(...args);
+      reserved.release = () => {};
+      return reserved;
     };
 
     sql.end = async (options) => {
@@ -900,7 +948,7 @@ test('courseBootstrapSchemaNeeded returns true when every required course table 
   assert.equal(await courseBootstrapSchemaNeeded(sql), true);
 });
 
-test('publishCourseDbPostgres rejects when SUPABASE_DATABASE_URL is missing', async () => {
+test('publishCourseDbPostgres rejects when neither importer Postgres URL is set', async () => {
   const { publishCourseDbPostgres } = await import(courseImporterPath);
 
   await assert.rejects(
@@ -910,8 +958,35 @@ test('publishCourseDbPostgres rejects when SUPABASE_DATABASE_URL is missing', as
         throw new Error('sqlFactory should not be called');
       },
     }),
-    /Missing SUPABASE_DATABASE_URL/,
+    /Missing SUPABASE_DIRECT_DATABASE_URL or SUPABASE_DATABASE_URL/,
   );
+});
+
+test('publishCourseDbPostgres prefers SUPABASE_DIRECT_DATABASE_URL when both importer URLs are set', async () => {
+  const { publishCourseDbPostgres } = await import(courseImporterPath);
+  let capturedDatabaseUrl;
+
+  await assert.rejects(
+    publishCourseDbPostgres({
+      env: {
+        SUPABASE_DIRECT_DATABASE_URL: 'postgres://direct.example/db',
+        SUPABASE_DATABASE_URL: 'postgres://pooler.example/db',
+      },
+      sqlitePath: path.join(repoRoot, 'data', 'does-not-exist.sqlite'),
+      sqlFactory(databaseUrl) {
+        capturedDatabaseUrl = databaseUrl;
+        return {
+          async reserve() {
+            return { release() {} };
+          },
+          async end() {},
+        };
+      },
+    }),
+    /unable to open database file/,
+  );
+
+  assert.equal(capturedDatabaseUrl, 'postgres://direct.example/db');
 });
 
 test('publishCourseDbPostgres closes the SQL client if SQLite initialization fails', async () => {
@@ -926,6 +1001,9 @@ test('publishCourseDbPostgres closes the SQL client if SQLite initialization fai
       sqlitePath: path.join(repoRoot, 'data', 'does-not-exist.sqlite'),
       sqlFactory() {
         return {
+          async reserve() {
+            return { release() {} };
+          },
           async end(options) {
             endCallCount += 1;
             assert.deepEqual(options, { timeout: 0 });
@@ -951,6 +1029,9 @@ test('publishCourseDbPostgres preserves the original publish failure when sql.en
       sqlitePath: path.join(repoRoot, 'data', 'does-not-exist.sqlite'),
       sqlFactory() {
         return {
+          async reserve() {
+            return { release() {} };
+          },
           async end(options) {
             assert.deepEqual(options, { timeout: 0 });
             throw endError;
@@ -1216,6 +1297,11 @@ test('publishCourseDbPostgres resets imported identity sequences after swap', as
     assert.ok(sequenceSyncIndex > recorder.events.indexOf('swap:public.course_search_fts'));
     assert.ok(sequenceSyncIndex < recorder.events.lastIndexOf('drop:public.schedulable_packages_staging'));
     assert.ok(sequenceSyncIndex < recorder.events.indexOf('end'));
+    assert.ok(recorder.events.indexOf('statement-timeout-disabled') > recorder.events.indexOf('bootstrap-check'));
+    assert.ok(
+      recorder.events.indexOf('ensure-index:idx_schedulable_packages_course_sort')
+        > recorder.events.indexOf('statement-timeout-disabled'),
+    );
   } finally {
     await fixture.cleanup();
   }
@@ -1386,6 +1472,32 @@ test('publishCourseDbPostgres runs the expected happy-path workflow when bootstr
   }
 });
 
+test('publishCourseDbPostgres swap uses explicit transaction statements on the reserved client', async () => {
+  const { publishCourseDbPostgres } = await import(courseImporterPath);
+  const fixture = await createCourseSqliteFixture({ withRows: true });
+  const recorder = createPostgresRecorder({
+    schemaExistsRow: makeCourseSchemaExistsRow(),
+    throwOnBeginCall: true,
+  });
+
+  try {
+    await publishCourseDbPostgres({
+      env: {
+        SUPABASE_DATABASE_URL: 'postgres://example.test/db',
+      },
+      sqlitePath: fixture.sqlitePath,
+      sqlFactory: recorder.sqlFactory,
+    });
+
+    assert.ok(recorder.events.includes('swap-begin'));
+    assert.ok(recorder.events.includes('swap-truncate'));
+    assert.ok(recorder.events.includes('swap-commit'));
+    assert.equal(recorder.events.at(-1), 'end');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test('publishCourseDbPostgres attempts staging cleanup after swap failure and preserves the original error', async () => {
   const { publishCourseDbPostgres } = await import(courseImporterPath);
   const fixture = await createCourseSqliteFixture({ withRows: true });
@@ -1422,7 +1534,7 @@ test('publishCourseDbPostgres attempts staging cleanup after swap failure and pr
   }
 });
 
-test('publish-madgrades-db-postgres exposes the Madgrades import order and requires SUPABASE_DATABASE_URL', async () => {
+test('publish-madgrades-db-postgres exposes the Madgrades import order and requires an importer Postgres URL', async () => {
   const { MADGRADES_IMPORT_TABLES, publishMadgradesDbPostgres } = await import(madgradesImporterPath);
 
   assert.deepEqual(MADGRADES_IMPORT_TABLES, expectedMadgradesImportTables);
@@ -1433,8 +1545,35 @@ test('publish-madgrades-db-postgres exposes the Madgrades import order and requi
         throw new Error('should not connect');
       },
     }),
-    /Missing SUPABASE_DATABASE_URL/,
+    /Missing SUPABASE_DIRECT_DATABASE_URL or SUPABASE_DATABASE_URL/,
   );
+});
+
+test('publishMadgradesDbPostgres prefers SUPABASE_DIRECT_DATABASE_URL when both importer URLs are set', async () => {
+  const { publishMadgradesDbPostgres } = await import(madgradesImporterPath);
+  const fixture = await createMadgradesSqliteFixture();
+  let capturedDatabaseUrl;
+
+  try {
+    await assert.rejects(
+      publishMadgradesDbPostgres({
+        env: {
+          SUPABASE_DIRECT_DATABASE_URL: 'postgres://direct.example/db',
+          SUPABASE_DATABASE_URL: 'postgres://pooler.example/db',
+        },
+        sqlitePath: fixture.sqlitePath,
+        sqlFactory(databaseUrl) {
+          capturedDatabaseUrl = databaseUrl;
+          throw new Error('stop after URL selection');
+        },
+      }),
+      /stop after URL selection/,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+
+  assert.equal(capturedDatabaseUrl, 'postgres://direct.example/db');
 });
 
 test('publishMadgradesDbPostgres wraps bootstrap schema application in a transaction so failures rollback cleanly', async () => {
