@@ -248,11 +248,11 @@ ORDER BY course_designation, earliest_start_minute_local;
 ```sql
 SELECT *
 FROM canonical_meetings
-WHERE source_package_id IN (
+WHERE package_id IN (
   '1274:266:004289:49313',
   '1274:266:004289:49330'
 )
-ORDER BY source_package_id, start_date, start_minute_local;
+ORDER BY package_id, start_date, start_minute_local;
 ```
 
 ---
