@@ -52,8 +52,8 @@ async function moveSqliteArtifacts(sourcePath, destinationPath) {
 }
 
 export async function buildMadgradesDb({
-  courseDbPath = path.join(repoRoot, 'data', 'fall-2026.sqlite'),
-  outputDbPath = path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite'),
+  courseDbPath = path.join(repoRoot, 'data', 'courses.sqlite'),
+  outputDbPath = path.join(repoRoot, 'data', 'madgrades.sqlite'),
   snapshotRoot = path.join(repoRoot, 'data', 'madgrades'),
   refreshApi = false,
   token = process.env.MADGRADES_API_TOKEN,
@@ -124,8 +124,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   const refreshApi = args.includes('--refresh-api');
 
   const result = await buildMadgradesDb({
-    courseDbPath: readFlagValue(args, '--course-db') ?? path.join(repoRoot, 'data', 'fall-2026.sqlite'),
-    outputDbPath: readFlagValue(args, '--output-db') ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite'),
+    courseDbPath: readFlagValue(args, '--course-db') ?? path.join(repoRoot, 'data', 'courses.sqlite'),
+    outputDbPath: readFlagValue(args, '--output-db') ?? path.join(repoRoot, 'data', 'madgrades.sqlite'),
     snapshotRoot: readFlagValue(args, '--snapshot-root') ?? path.join(repoRoot, 'data', 'madgrades'),
     refreshApi,
     onProgress(message) {

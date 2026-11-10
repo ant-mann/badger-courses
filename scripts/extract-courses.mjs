@@ -11,12 +11,12 @@ import {
   normalizeCourseSummary,
 } from '../src/extractor-helpers.mjs';
 
-const TERM_CODE = '1272';
+const TERM_CODE = '1274';
 const PAGE_SIZE = 50;
 const SEARCH_URL = `https://public.enroll.wisc.edu/search?orderBy=subject&term=${TERM_CODE}&closed=true`;
 const OUTPUT_DIR = new URL('../data/', import.meta.url);
-const COURSES_PATH = new URL('../data/fall-2026-courses.json', import.meta.url);
-const PACKAGES_PATH = new URL('../data/fall-2026-enrollment-packages.json', import.meta.url);
+const COURSES_PATH = new URL('../data/courses.json', import.meta.url);
+const PACKAGES_PATH = new URL('../data/enrollment-packages.json', import.meta.url);
 const includePackages = process.argv.includes('--include-packages');
 const runHeadless = process.argv.includes('--headless');
 const __filename = fileURLToPath(import.meta.url);
@@ -135,7 +135,7 @@ async function main() {
     const totalPages = Math.ceil(firstPage.found / PAGE_SIZE);
     const courses = [...firstPage.hits];
 
-    console.log(`Found ${firstPage.found} Fall 2026 course records across ${totalPages} pages`);
+    console.log(`Found ${firstPage.found} course records for term ${TERM_CODE} across ${totalPages} pages`);
 
     for (let pageNumber = 2; pageNumber <= totalPages; pageNumber += 1) {
       const nextPage = await fetchSearchPage(page, pageNumber);

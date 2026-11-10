@@ -23,8 +23,8 @@ function readFlagValue(args, flagName) {
 
 const args = process.argv.slice(2);
 const result = await rebuildMadgradesMatches({
-  courseDbPath: readFlagValue(args, '--course-db') ?? path.join(repoRoot, 'data', 'fall-2026.sqlite'),
-  madgradesDbPath: readFlagValue(args, '--madgrades-db') ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite'),
+  courseDbPath: readFlagValue(args, '--course-db') ?? path.join(repoRoot, 'data', 'courses.sqlite'),
+  madgradesDbPath: readFlagValue(args, '--madgrades-db') ?? path.join(repoRoot, 'data', 'madgrades.sqlite'),
 });
 
 process.stdout.write(`${JSON.stringify(result)}\n`);

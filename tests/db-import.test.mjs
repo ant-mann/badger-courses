@@ -69,15 +69,15 @@ function buildCourseDbFixture({ courses, packageSnapshot }) {
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
-  writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), courses);
-  writeJson(path.join(fixtureDataDir, 'fall-2026-enrollment-packages.json'), packageSnapshot);
+  writeJson(path.join(fixtureDataDir, 'courses.json'), courses);
+  writeJson(path.join(fixtureDataDir, 'enrollment-packages.json'), packageSnapshot);
 
   execFileSync(process.execPath, [path.join(fixtureDbDir, 'build-course-db.mjs')], {
     cwd: fixtureRoot,
     stdio: 'pipe',
   });
 
-  const db = new Database(path.join(fixtureDataDir, 'fall-2026.sqlite'), { readonly: true });
+  const db = new Database(path.join(fixtureDataDir, 'courses.sqlite'), { readonly: true });
 
   return {
     fixtureRoot,
@@ -723,8 +723,8 @@ async function loadBuildCourseDbModule() {
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
-  writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), []);
-  writeJson(path.join(fixtureDataDir, 'fall-2026-enrollment-packages.json'), {
+  writeJson(path.join(fixtureDataDir, 'courses.json'), []);
+  writeJson(path.join(fixtureDataDir, 'enrollment-packages.json'), {
     termCode: '1272',
     results: [],
   });
@@ -4934,7 +4934,7 @@ test('build-course-db materializes canonical/package schedule tables without glo
 
 test('build-course-db drops legacy schedule tables when rebuilding an existing upgraded database file', () => {
   const fixture = buildCourseDbFixture(buildScheduleReadModelFixture());
-  const fixtureDbPath = path.join(fixture.fixtureRoot, 'data', 'fall-2026.sqlite');
+  const fixtureDbPath = path.join(fixture.fixtureRoot, 'data', 'courses.sqlite');
 
   try {
     fixture.db.close();
@@ -5417,8 +5417,8 @@ test('build-course-db can rebuild an existing database file after adding schedul
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
   const fixtureData = buildScheduleReadModelFixture();
-  writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), fixtureData.courses);
-  writeJson(path.join(fixtureDataDir, 'fall-2026-enrollment-packages.json'), fixtureData.packageSnapshot);
+  writeJson(path.join(fixtureDataDir, 'courses.json'), fixtureData.courses);
+  writeJson(path.join(fixtureDataDir, 'enrollment-packages.json'), fixtureData.packageSnapshot);
 
   try {
     execFileSync(process.execPath, [path.join(fixtureDbDir, 'build-course-db.mjs')], {

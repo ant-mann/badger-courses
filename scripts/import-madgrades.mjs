@@ -24,12 +24,12 @@ function readFlagValue(args, flagName) {
 const args = process.argv.slice(2);
 const refreshApi = args.includes('--refresh-api');
 const explicitDbPath = readFlagValue(args, '--db');
-const dbPath = explicitDbPath ?? path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite');
+const dbPath = explicitDbPath ?? path.join(repoRoot, 'data', 'madgrades.sqlite');
 const snapshotRoot = readFlagValue(args, '--snapshot-root') ?? path.join(repoRoot, 'data', 'madgrades');
 
 const result = await runMadgradesImport({
   dbPath,
-  courseDbPath: path.join(repoRoot, 'data', 'fall-2026.sqlite'),
+  courseDbPath: path.join(repoRoot, 'data', 'courses.sqlite'),
   snapshotRoot,
   refreshApi,
   onProgress(message) {

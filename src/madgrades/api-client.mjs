@@ -1,5 +1,7 @@
 export const DEFAULT_MADGRADES_BASE_URL = 'https://api.madgrades.com/v1';
 
+const NETWORK_ATTEMPTS = 4;
+
 function normalizeMadgradesToken(token) {
   const normalized = String(token ?? '').trim();
   if (!normalized) {
@@ -59,17 +61,36 @@ export function buildMadgradesHeaders(token) {
   };
 }
 
+// A full refresh makes several thousand requests, so one dropped connection must not abort it.
+async function fetchTextWithRetry({ fetchImpl, url, headers, retryDelayMs }) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const response = await fetchImpl(url, { headers });
+      return { response, responseText: await response.text() };
+    } catch (error) {
+      if (attempt === NETWORK_ATTEMPTS) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+    }
+  }
+}
+
 export async function fetchMadgradesJson({
   token,
   path,
   baseUrl = DEFAULT_MADGRADES_BASE_URL,
   fetchImpl = fetch,
+  retryDelayMs = 1000,
 }) {
   const url = buildMadgradesUrl(baseUrl, path);
-  const response = await fetchImpl(url, {
+  const { response, responseText } = await fetchTextWithRetry({
+    fetchImpl,
+    url,
     headers: buildMadgradesHeaders(token),
+    retryDelayMs,
   });
-  const responseText = await response.text();
 
   if (!response.ok) {
     let parsedError = null;

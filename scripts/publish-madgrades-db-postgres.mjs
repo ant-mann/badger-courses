@@ -244,7 +244,7 @@ export async function madgradesBootstrapSchemaNeeded(sql) {
 
 export async function publishMadgradesDbPostgres({
   env = process.env,
-  sqlitePath = path.join(repoRoot, 'data', 'fall-2026-madgrades.sqlite'),
+  sqlitePath = path.join(repoRoot, 'data', 'madgrades.sqlite'),
   schemaPath = MADGRADES_SCHEMA_PATH,
   sqliteBatchSize = SQLITE_BATCH_SIZE,
   sqlFactory = postgres,

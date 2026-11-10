@@ -340,7 +340,7 @@ export async function courseBootstrapSchemaNeeded(sql) {
 
 export async function publishCourseDbPostgres({
   env = process.env,
-  sqlitePath = path.join(repoRoot, 'data', 'fall-2026.sqlite'),
+  sqlitePath = path.join(repoRoot, 'data', 'courses.sqlite'),
   sqliteBatchSize = SQLITE_BATCH_SIZE,
   sqlFactory = postgres,
 } = {}) {

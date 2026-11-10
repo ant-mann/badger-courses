@@ -224,3 +224,64 @@ test('fetchMadgradesPagedResults accepts array responses for explore endpoints',
     'https://api.madgrades.com/v1/explore/instructors?subject=COMP%20SCI&per_page=200&page=3',
   ]);
 });
+
+test('fetchMadgradesJson retries a request that fails with a network error', async () => {
+  const { fetchMadgradesJson } = await loadApiClient();
+  let calls = 0;
+
+  const result = await fetchMadgradesJson({
+    token: 'test-token',
+    path: '/courses/1/grades',
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      calls += 1;
+
+      if (calls < 3) {
+        throw new TypeError('fetch failed', { cause: new Error('read ECONNRESET') });
+      }
+
+      return createJsonResponse({ body: { cumulative: { total: 10 } } });
+    },
+  });
+
+  assert.equal(calls, 3);
+  assert.deepEqual(result, { cumulative: { total: 10 } });
+});
+
+test('fetchMadgradesJson gives up after repeated network errors', async () => {
+  const { fetchMadgradesJson } = await loadApiClient();
+  let calls = 0;
+
+  await assert.rejects(
+    fetchMadgradesJson({
+      token: 'test-token',
+      path: '/courses/1/grades',
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        calls += 1;
+        throw new TypeError('fetch failed');
+      },
+    }),
+    /fetch failed/,
+  );
+  assert.equal(calls, 4);
+});
+
+test('fetchMadgradesJson does not retry an HTTP error response', async () => {
+  const { fetchMadgradesJson } = await loadApiClient();
+  let calls = 0;
+
+  await assert.rejects(
+    fetchMadgradesJson({
+      token: 'test-token',
+      path: '/courses/1/grades',
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        calls += 1;
+        return createJsonResponse({ ok: false, status: 401, statusText: 'Unauthorized', body: { error: 'bad token' } });
+      },
+    }),
+    /401 Unauthorized/,
+  );
+  assert.equal(calls, 1);
+});

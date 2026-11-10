@@ -77,16 +77,16 @@ export function buildCourseDbFixture({ courses, packageSnapshot, madgradesSnapsh
   fs.copyFileSync(path.join(repoRoot, 'src/db/schedule-helpers.mjs'), path.join(fixtureDbDir, 'schedule-helpers.mjs'));
   fs.copyFileSync(path.join(repoRoot, 'src/db/schema.sql'), path.join(fixtureDbDir, 'schema.sql'));
 
-  writeJson(path.join(fixtureDataDir, 'fall-2026-courses.json'), courses);
-  writeJson(path.join(fixtureDataDir, 'fall-2026-enrollment-packages.json'), packageSnapshot);
+  writeJson(path.join(fixtureDataDir, 'courses.json'), courses);
+  writeJson(path.join(fixtureDataDir, 'enrollment-packages.json'), packageSnapshot);
 
   execFileSync(process.execPath, [path.join(fixtureDbDir, 'build-course-db.mjs')], {
     cwd: fixtureRoot,
     stdio: 'pipe',
   });
 
-  const dbPath = path.join(fixtureDataDir, 'fall-2026.sqlite');
-  const madgradesDbPath = path.join(fixtureDataDir, 'fall-2026-madgrades.sqlite');
+  const dbPath = path.join(fixtureDataDir, 'courses.sqlite');
+  const madgradesDbPath = path.join(fixtureDataDir, 'madgrades.sqlite');
   const db = new Database(dbPath);
 
   if (madgradesSnapshot) {

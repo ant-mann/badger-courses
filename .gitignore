@@ -15,5 +15,6 @@ node_modules/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-data/fall-2026-enrollment-packages.json
+data/enrollment-packages.json
 pnpm-debug.log*
+token.txt
