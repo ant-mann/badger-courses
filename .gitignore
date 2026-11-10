@@ -17,3 +17,4 @@ node_modules/
 *.sqlite-wal
 data/enrollment-packages.json
 pnpm-debug.log*
+token.txt
