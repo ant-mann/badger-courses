@@ -1709,3 +1709,53 @@ test("searchCourses reads section_count when Postgres returns the bigint count a
 
   assert.equal(courses[0].sectionCount, 11);
 });
+
+test("generateSchedulesFromPostgres loads meetings by owning package, not canonical source package", async () => {
+  await withDbRows(
+    (sqlText) => {
+      if (sqlText.includes("FROM schedule_candidates_v")) {
+        return [
+          {
+            course_designation: "MATH 222",
+            title: "Calculus and Analytic Geometry 2",
+            source_package_id: "pkg-lec-dis-2",
+            section_bundle_label: "MATH 222 LEC 001 + DIS 302",
+            open_seats: 5,
+            is_full: 0,
+            has_waitlist: 0,
+            meeting_count: 2,
+            campus_day_count: 5,
+            earliest_start_minute_local: 595,
+            latest_end_minute_local: 915,
+            has_online_meeting: 0,
+            has_unknown_location: 0,
+            restriction_note: null,
+            has_temporary_restriction: 0,
+            meeting_summary_local: "MWF 9:55 AM-10:45 AM; TR 2:25 PM-3:15 PM",
+          },
+        ];
+      }
+
+      if (sqlText.includes("FROM canonical_meetings")) {
+        // A shared lecture row has package_id = this package but source_package_id = another one,
+        // so the query has to select and filter on package_id.
+        assert.match(sqlText, /package_id AS source_package_id/);
+        assert.match(sqlText, /WHERE package_id IN \(\$1\)/);
+        assert.doesNotMatch(sqlText, /WHERE source_package_id IN/);
+        return [];
+      }
+
+      throw new Error(`Unexpected query in course-data test: ${sqlText}`);
+    },
+    async () =>
+      generateSchedulesFromPostgres({
+        courses: ["MATH 222"],
+        lockPackages: [],
+        excludePackages: [],
+        limit: 5,
+        preferenceOrder: [],
+        includeWaitlisted: false,
+        includeClosed: false,
+      }),
+  );
+});

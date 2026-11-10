@@ -95,11 +95,11 @@ export function loadMeetings(db, packageIds) {
         longitude
       FROM canonical_meetings
       WHERE meeting_type = 'CLASS'
-        AND source_package_id IN (__PLACEHOLDERS__)
+        AND package_id IN (__PLACEHOLDERS__)
         AND days_mask IS NOT NULL
         AND start_minute_local IS NOT NULL
         AND end_minute_local IS NOT NULL
-      ORDER BY source_package_id, start_minute_local, end_minute_local
+      ORDER BY package_id, start_minute_local, end_minute_local
     `,
     packageIds,
   );
